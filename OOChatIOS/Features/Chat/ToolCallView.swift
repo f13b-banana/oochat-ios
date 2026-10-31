@@ -11,6 +11,13 @@ struct ToolCallView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isExpanded = false
 
+    init(message: ChatMessage, presentation: ToolCallPresentation = .standalone) {
+        self.message = message
+        self.presentation = presentation
+        // a direct run was asked for by hand, answer is shown without a tap
+        _isExpanded = State(initialValue: message.isDirectExec)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             headerButton
@@ -136,12 +143,13 @@ struct ToolCallView: View {
     }
 
     private var toolTitle: String {
-        (message.toolName ?? "Tool")
+        let name = (message.toolName ?? "Tool")
             .replacingOccurrences(of: "_", with: " ")
             .replacingOccurrences(of: ".", with: " ")
             .split(separator: " ")
             .map { $0.prefix(1).uppercased() + $0.dropFirst() }
             .joined(separator: " ")
+        return message.isDirectExec ? "Direct \u{00B7} \(name)" : name
     }
 
     private var toolState: ToolCallState {

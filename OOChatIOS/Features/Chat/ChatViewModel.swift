@@ -1,4 +1,5 @@
 import Combine
+import ConnectOnionKit
 import Foundation
 import UIKit
 
@@ -12,8 +13,14 @@ enum ConversationActivityState: Hashable {
 @MainActor
 final class ChatViewModel: ObservableObject {
     @Published var identity: StoredIdentity?
+    // Request mode per conversation: Remains set until mode_changed confirms it.
+    @Published private(set) var pendingModeByConversationID: [String: ChatMode] = [:]
+    // Server reported full access turns budget, keyed by conversation.
+    @Published private(set) var fullAccessTurnsLeftByConversationID: [String: Int] = [:]
     @Published var isConnecting = false
     @Published var errorMessage: String?
+     /// Set when the agent answered -32010. The Incompatible screen shows while it is non-nil.
+    @Published var incompatibility: OIPHandshake.Incompatibility?
     @Published var agentAddressDraft = ""
     @Published var prompt = "" {
         didSet {
@@ -135,6 +142,27 @@ final class ChatViewModel: ObservableObject {
 
     var activeMode: ChatMode {
         activeConversation?.mode ?? .safe
+    }
+
+    var activePendingMode: ChatMode? {
+        guard let id = activeConversationID else {
+            return nil
+        }
+        return pendingModeByConversationID[id]
+    }
+
+    var activeFullAccessTurnsLeft: Int? {
+        guard let id = activeConversationID else {
+            return nil
+        }
+        return fullAccessTurnsLeftByConversationID[id]
+    }
+
+    // Full access only when the host listed it. Hidden until a CONNECTED arrives, as on macOS
+    var offeredModes: [ChatMode] {
+        let available = activeConversation
+            .flatMap { deliveryCoordinator.availableModesByAgentAddress[$0.agentAddress] } ?? []
+        return ChatMode.offered.filter { $0 != .ulw || available.contains(.fullAccess) }
     }
 
     var connectionState: ConversationConnectionState {
@@ -387,6 +415,10 @@ final class ChatViewModel: ObservableObject {
         deliveryCoordinator.onDeliveriesIdle = { [weak self] in
             self?.endBackgroundDeliveryHold()
         }
+        // Covers our confirmations and the host's own (each full-access turn, and expiry).
+        deliveryCoordinator.onModeChanged = { [weak self] conversationID, mode, turnsLeft in
+            self?.fullAccessTurnsLeftByConversationID[conversationID] = mode == .fullAccess ? turnsLeft : nil
+        }
         offlineStateCancellable = recoveryCoordinator.$isOffline
             .removeDuplicates()
             .sink { [weak self] isOffline in
@@ -580,23 +612,42 @@ final class ChatViewModel: ObservableObject {
         conversationState.searchConversations(query, for: agent)
     }
 
+    // Asks the host to switch. The picker shows the mode as pending until mode_changed.
     func setMode(_ mode: ChatMode) {
-        guard var conversation = activeConversation else {
+        guard let conversation = activeConversation,
+              conversation.mode != mode,
+              pendingModeByConversationID[conversation.id] == nil else {
             return
         }
-        guard conversation.mode != mode else {
-            return
+        let id = conversation.id
+        pendingModeByConversationID[id] = mode
+        Task {
+            do {
+                try await client.requestModeChange(
+                    agentAddress: conversation.agentAddress,
+                    conversation: conversation,
+                    mode: mode.oipPermissionMode
+                ) { [weak self] event in
+                    self?.handleModeEvent(event, conversationID: id)
+                }
+            } catch {
+                pendingModeByConversationID[id] = nil
+                errorMessage = error.localizedDescription
+            }
         }
-        conversation.mode = mode
-        conversation.serverSession = HostedAgentSessionState.applying(
-            mode,
-            to: conversation.serverSession,
-            conversationID: conversation.id
-        )
-        // Integral seconds only: this session feeds `session_sha256`, and CanonicalJSON
-        // serializes non-integral doubles via Swift's own formatting, which is not
-        // guaranteed to match the Python/TS reference implementations byte for byte.
-        conversation.serverSession?["updated"] = .number(Date().timeIntervalSince1970.rounded(.down))
-        upsert(conversation)
+    }
+
+    private func handleModeEvent(_ event: HostedAgentEvent, conversationID id: String) {
+        pendingModeByConversationID[id] = nil
+        switch event {
+        case .modeChanged:
+            deliveryCoordinator.apply(event, toConversationID: id)
+        case .modeChangeFailed(let message):
+            errorMessage = message
+        case .modeChangeTimedOut:
+            errorMessage = "The agent didn't confirm the mode change."
+        default:
+            break
+        }
     }
 }

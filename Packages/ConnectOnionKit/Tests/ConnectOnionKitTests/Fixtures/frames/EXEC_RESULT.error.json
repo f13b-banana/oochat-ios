@@ -1,0 +1,8 @@
+{
+  "type": "EXEC_RESULT",
+  "exec_id": "7c2a91d1",
+  "tool": "bash",
+  "status": "error",
+  "error": "tool not whitelisted",
+  "duration_ms": 3
+}

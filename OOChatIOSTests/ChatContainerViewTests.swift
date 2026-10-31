@@ -39,7 +39,7 @@ final class ChatViewTests: XCTestCase {
                     toolArguments: ["cmd": .string("swift test")],
                     toolState: .completed
                 ),
-                ChatMessage(id: "agent1", role: .agent, content: "Here is the summary."),
+                ChatMessage(id: "agent1", role: .agent, content: "Here is the summary.")
             ]
         )
         let viewModel = makeContainerViewModel(
@@ -69,7 +69,7 @@ final class ChatViewTests: XCTestCase {
         let window = ViewHost.host(ChatView(viewModel: viewModel))
 
         XCTAssertNotNil(ViewHost.element(labelContains: "Send message", in: window))
-        XCTAssertNotNil(ViewHost.element(labelContains: "Chat mode: Safe", in: window))
+        XCTAssertNotNil(ViewHost.element(labelContains: "Chat mode: Auto", in: window))
     }
 
     func testToolbarPresenceMatchesSidebarWithoutConversationSocket() async {

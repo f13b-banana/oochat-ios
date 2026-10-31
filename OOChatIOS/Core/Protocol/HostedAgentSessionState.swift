@@ -1,3 +1,6 @@
+import ConnectOnionKit
+import Foundation
+
 enum HostedAgentSessionState {
     static func applying(
         _ mode: ChatMode,
@@ -20,5 +23,70 @@ enum HostedAgentSessionState {
             return fallback
         }
         return mode
+    }
+}
+
+// Same mapping as macOS AgentExecutionMode.permissionMode.
+extension ChatMode {
+    // The picker's modes, in order. accept_edits is legacy: kept so stored rows decode.
+    static let offered: [ChatMode] = [.plan, .safe, .ulw]
+
+    var oipPermissionMode: OIPPermissionMode {
+        switch self {
+        case .plan:
+            return .readOnly
+        case .safe, .accept:
+            return .auto
+        case .ulw:
+            return .fullAccess
+        }
+    }
+
+    init(permissionMode: OIPPermissionMode) {
+        switch permissionMode {
+        case .readOnly:
+            self = .plan
+        case .fullAccess:
+            self = .ulw
+        case .auto, .unknown:
+            self = .safe
+        }
+    }
+}
+
+/// One SessionBookmark per conversation, mirroring macOS
+/// ConnectOnionRemoteSessionStore keeping its sesssion state
+
+struct HostedAgentBookmarkStore: Sendable {
+    private let suiteName: String?
+
+    private var defaults: UserDefaults {
+        suiteName.flatMap { UserDefaults(suiteName: $0) } ?? .standard
+    }
+
+    private func key(for conversationID: String) -> String {
+        "connectonion.session-bookmark.\(conversationID)"
+    }
+
+    init(suiteName: String? = nil) {
+        self.suiteName = suiteName
+    }
+
+    func load(conversationID: String) -> SessionBookmark? {
+        guard let data = defaults.data(forKey: key(for: conversationID)) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(SessionBookmark.self, from: data)
+    }
+
+    func save(_ bookmark: SessionBookmark, conversationID: String) {
+        guard let data = try? JSONEncoder().encode(bookmark) else {
+            return
+        }
+        defaults.set(data, forKey: key(for: conversationID))
+    }
+
+    func remove(conversationID: String) {
+        defaults.removeObject(forKey: key(for: conversationID))
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import ConnectOnionKit
 
 struct AgentSkill: Identifiable, Decodable, Equatable {
     let name: String
@@ -68,4 +69,5 @@ struct HostedAgentResult {
     let output: String?
     let endpointLabel: String
     let serverSession: [String: JSONValue]?
+    var sessionModes: OIPSessionModes?
 }

@@ -1,7 +1,7 @@
 import Foundation
 
-enum CanonicalJSON {
-    static func string(from value: JSONValue) -> String {
+public enum CanonicalJSON {
+    public static func string(from value: JSONValue) -> String {
         switch value {
         case .string(let text):
             return quote(text)
@@ -23,7 +23,7 @@ enum CanonicalJSON {
         }
     }
 
-    static func data(from object: [String: JSONValue]) -> Data {
+    public static func data(from object: [String: JSONValue]) -> Data {
         Data(string(from: .object(object)).utf8)
     }
 

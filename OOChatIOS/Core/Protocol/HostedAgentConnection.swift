@@ -1,4 +1,5 @@
 import Foundation
+import ConnectOnionKit
 
 // Owns one socket and one active prompt for a conversation.
 actor HostedAgentConnection {
@@ -20,10 +21,16 @@ actor HostedAgentConnection {
         let files: [HostedAgentFilePayload]
         // A reconnect may resend input only when the original frame was not delivered.
         var inputDelivered = false
+        // Set for a prompt sent by an earlier run of the app: a finished turn counts only
+        // if the host's last user message is this prompt.
+        var requiresMatchingUserTurn = false
+        // Called just before each INPUT write, so the app can save that it may have been sent.
+        var onInputDispatched: (@MainActor () -> Void)?
     }
 
     let key: HostedAgentConnectionKey
     let identityStore: IdentityStore
+    let frames: OIPClientFrames
     let connectionStateObserver: HostedAgentConnectionStateObserver
     let socketFactory: HostedAgentWebSocketFactory
     let endpointResolver: HostedAgentEndpointResolver
@@ -32,7 +39,11 @@ actor HostedAgentConnection {
     let livenessCheckInterval: TimeInterval
     let resumeAttemptLimit: Int
     let resumeRetryDelay: TimeInterval
-
+    let modeChangeTimeout: TimeInterval
+    let bookmarkStore: HostedAgentBookmarkStore
+    let reconnectPolicy: ReconnectPolicy
+    let execTimeout: TimeInterval
+    var eventLedger = EventLedger()
     var state: State = .disconnected
     var socket: (any HostedAgentWebSocketTask)?
     var endpoint: ResolvedEndpoint?
@@ -45,12 +56,19 @@ actor HostedAgentConnection {
     var socketGeneration = 0
     var connectWaiters: [UUID: CheckedContinuation<HostedAgentResult, Error>] = [:]
     var pendingPrompt: PendingPrompt?
+
+    // The mode_change request waiting for its mode_changed, if any.
+    var pendingModeChangeHandler: (@MainActor (HostedAgentEvent) -> Void)?
+    var modeChangeTimeoutTask: Task<Void, Never>?
+
     var serverSession: [String: JSONValue]?
+    var sessionModes: OIPSessionModes?
     var connectionStatus: String?
     var lastNetworkActivityAt = Date()
     var resumeAttemptsUsed = 0
     var lastConversation: Conversation?
     var requiresRevalidation = false
+    var pendingExecs: [String: CheckedContinuation<OIPExecResult, Error>] = [:]
 
     init(
         key: HostedAgentConnectionKey,
@@ -64,10 +82,14 @@ actor HostedAgentConnection {
         livenessTimeout: TimeInterval = 75,
         livenessCheckInterval: TimeInterval = 10,
         resumeAttemptLimit: Int = 3,
-        resumeRetryDelay: TimeInterval = 1
+        resumeRetryDelay: TimeInterval = 1,
+        modeChangeTimeout: TimeInterval = 15,
+        bookmarkStore: HostedAgentBookmarkStore = HostedAgentBookmarkStore(),
+        execTimeout: TimeInterval = 30
     ) {
         self.key = key
         self.identityStore = identityStore
+        self.frames = OIPClientFrames(keyStore: identityStore, to: key.agentAddress)
         self.connectionStateObserver = connectionStateObserver
         self.socketFactory = socketFactory ?? { session.webSocketTask(with: $0) }
         self.endpointResolver = endpointResolver ?? { agentAddress in
@@ -78,6 +100,10 @@ actor HostedAgentConnection {
         self.livenessCheckInterval = livenessCheckInterval
         self.resumeAttemptLimit = resumeAttemptLimit
         self.resumeRetryDelay = resumeRetryDelay
+        self.modeChangeTimeout = modeChangeTimeout
+        self.bookmarkStore = bookmarkStore
+        self.reconnectPolicy = ReconnectPolicy(maxAttempts: resumeAttemptLimit + 1, baseDelay: resumeRetryDelay)
+        self.execTimeout = execTimeout
     }
 
     // Share one connection attempt across callers for this conversation.
@@ -90,7 +116,12 @@ actor HostedAgentConnection {
             disconnect(with: HostedAgentClientError.closed, closeCode: .goingAway)
         }
         if state == .connected, socket != nil, let endpoint {
-            return HostedAgentResult(output: nil, endpointLabel: endpoint.label, serverSession: serverSession)
+            return HostedAgentResult(
+                output: nil,
+                endpointLabel: endpoint.label,
+                serverSession: serverSession,
+                sessionModes: sessionModes
+            )
         }
 
         let waiterID = UUID()
@@ -126,7 +157,8 @@ actor HostedAgentConnection {
         images: [String] = [],
         files: [HostedAgentFilePayload] = [],
         onEvent: (@MainActor (HostedAgentEvent) -> Void)?,
-        onInteraction: (@MainActor (HostedAgentInteraction) async -> HostedAgentInteractionDecision)?
+        onInteraction: (@MainActor (HostedAgentInteraction) async -> HostedAgentInteractionDecision)?,
+        onInputDispatched: (@MainActor () -> Void)? = nil
     ) async throws -> HostedAgentResult {
         try Task.checkCancellation()
         _ = try await ensureConnected(conversation: conversation)
@@ -147,7 +179,8 @@ actor HostedAgentConnection {
                     onInteraction: onInteraction,
                     prompt: prompt,
                     images: images,
-                    files: files
+                    files: files,
+                    onInputDispatched: onInputDispatched
                 )
                 guard !Task.isCancelled else {
                     disconnect(with: CancellationError(), closeCode: .goingAway)
@@ -168,6 +201,174 @@ actor HostedAgentConnection {
                 await self?.cancelPrompt(promptID)
             }
         }
+    }
+
+    /// Sends a signed mode-change command. The confirmation is delivered asynchronously
+    /// by the socket receive loop through `pendingModeChangeHandler`.
+    func requestModeChange(
+        conversation: Conversation,
+        mode: OIPPermissionMode,
+        onEvent: @escaping @MainActor (HostedAgentEvent) -> Void
+    ) async throws {
+        try Task.checkCancellation()
+        _ = try await ensureConnected(conversation: conversation)
+        try Task.checkCancellation()
+
+        guard pendingModeChangeHandler == nil else {
+            throw HostedAgentClientError.busy
+        }
+        guard let socket, state == .connected else {
+            throw HostedAgentClientError.closed
+        }
+
+        // Install the callback before sending so a fast server confirmation cannot be missed.
+        pendingModeChangeHandler = onEvent
+        do {
+            try await send(frames.modeChange(mode), over: socket)
+            // A mode change should be acknowledged promptly. Avoid leaving the UI pending
+            // forever if the host never sends mode_changed.
+            if pendingModeChangeHandler != nil {
+                modeChangeTimeoutTask?.cancel()
+                let timeout = modeChangeTimeout
+                modeChangeTimeoutTask = Task { [weak self] in
+                    do {
+                        try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    } catch {
+                        return
+                    }
+                    await self?.expireModeChangeRequest()
+                }
+            }
+        } catch {
+            pendingModeChangeHandler = nil
+            modeChangeTimeoutTask?.cancel()
+            modeChangeTimeoutTask = nil
+            throw error
+        }
+    }
+
+    func expireModeChangeRequest() async {
+        guard let handler = pendingModeChangeHandler else { return }
+        pendingModeChangeHandler = nil
+        modeChangeTimeoutTask?.cancel()
+        modeChangeTimeoutTask = nil
+        await handler(.modeChangeTimedOut)
+    }
+
+    // Settles a prompt that an earlier run of the app may already have sent, without
+    // sending INPUT again. The CONNECTED frame decides: "running" streams the rest of the
+    // turn here, a finished turn is read from chat_items (only if its user message is this
+    // prompt), and anything else fails with .outcomeUnknown so the user decides on a retry.
+    func resumePrompt(
+        conversation: Conversation,
+        prompt: String,
+        onEvent: (@MainActor (HostedAgentEvent) -> Void)?,
+        onInteraction: (@MainActor (HostedAgentInteraction) async -> HostedAgentInteractionDecision)?
+    ) async throws -> HostedAgentResult {
+        try Task.checkCancellation()
+        guard pendingPrompt == nil else {
+            throw HostedAgentClientError.busy
+        }
+        // Only a fresh CONNECTED says what happened to the earlier INPUT.
+        if state == .connected {
+            disconnect(with: HostedAgentClientError.closed, closeCode: .goingAway)
+        }
+        resumeAttemptsUsed = 0
+        // Send no turn history: the host then always counts its own copy as newer and
+        // returns chat_items, even if another reconnect already updated our copy.
+        let probe: Conversation = {
+            var copy = conversation
+            copy.serverSession = nil
+            return copy
+        }()
+
+        let promptID = UUID()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                pendingPrompt = PendingPrompt(
+                    id: promptID,
+                    inputID: UUID().uuidString,
+                    continuation: continuation,
+                    onEvent: onEvent,
+                    onInteraction: onInteraction,
+                    prompt: prompt,
+                    images: [],
+                    files: [],
+                    inputDelivered: true,
+                    requiresMatchingUserTurn: true
+                )
+                guard !Task.isCancelled else {
+                    disconnect(with: CancellationError(), closeCode: .goingAway)
+                    return
+                }
+                Task { [weak self] in
+                    // CONNECTED settles the prompt in resumePendingPrompt; a failed connect
+                    // settles it through disconnect(with:), so the result is not needed here.
+                    _ = try? await self?.ensureConnected(conversation: probe)
+                }
+            }
+        } onCancel: {
+            Task { [weak self] in
+                await self?.cancelPrompt(promptID)
+            }
+        }
+    }
+
+    /// Runs tool on the host without the LLM (EXEC); each reply is matched to its request by `exec_id`. 
+    /// A tool that fails still returns as a result. Throws only when the round trip itself fails.
+    func exec(
+        conversation: Conversation,
+        execID: String,
+        tool: String,
+        args: [String: JSONValue]
+    ) async throws -> OIPExecResult {
+        try Task.checkCancellation()
+        _ = try await ensureConnected(conversation: conversation)
+        try Task.checkCancellation()
+        guard pendingExecs[execID] == nil else {
+            throw HostedAgentClientError.busy
+        }
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                pendingExecs[execID] = continuation
+                Task { [weak self] in
+                    await self?.transmitExec(execID: execID, tool: tool, args: args)
+                }
+                Task { [weak self, execTimeout] in
+                    try? await Task.sleep(nanoseconds: UInt64(execTimeout * 1_000_000_000))
+                    await self?.failExec(execID, with: HostedAgentClientError.timeout)
+                }
+            }
+        } onCancel: {
+            Task { [weak self] in
+                await self?.failExec(execID, with: CancellationError())
+            }
+        }
+    }
+
+    private func transmitExec(execID: String, tool: String, args: [String: JSONValue]) async {
+        let generation = socketGeneration
+        guard pendingExecs[execID] != nil else {
+            return
+        }
+        guard let socket else {
+            failExec(execID, with: HostedAgentClientError.closed)
+            return
+        }
+        do {
+            try await send(try frames.exec(execID: execID, tool: tool, args: args), over: socket)
+        } catch {
+            failExec(execID, with: error)
+            failConnection(error, generation: generation)
+        }
+    }
+
+    private func failExec(_ execID: String, with error: Error) {
+        pendingExecs.removeValue(forKey: execID)?.resume(throwing: error)
     }
 
     func close() {
@@ -206,7 +407,14 @@ actor HostedAgentConnection {
             startReceiveLoop(socket: socket, generation: generation)
             startLivenessMonitor(generation: generation)
 
-            let connectFrame = try buildConnectFrame(conversation: conversation)
+            // direct: false keeps the top-level `to` iOS has always sent: a relay needs it and the host
+            // ignores it on a direct socket. The builder also adds the protocol descriptor.
+            let connectFrame = try frames.connect(
+                direct: false,
+                sessionID: conversation.id,
+                session: .object(sessionPayload(for: conversation)),
+                lastMessageID: bookmarkStore.load(conversationID: key.conversationID)?.lastMessageID
+            )
             try await send(connectFrame, over: socket)
         } catch {
             failConnection(error, generation: generation)
@@ -300,13 +508,22 @@ actor HostedAgentConnection {
             return
         }
         do {
-            let inputFrame = try buildInputFrame(
+            let inputFrame = try frames.input(
+                inputID: pending.inputID,
                 prompt: prompt,
                 images: images,
-                files: files,
-                conversation: conversation,
-                inputID: pending.inputID
+                files: files.map(\.jsonValue)
             )
+            // Save "may have reached the host" before the bytes leave. If the app is killed
+            // after this, the relaunch asks the host instead of sending the INPUT again.
+            if let onInputDispatched = pending.onInputDispatched {
+                await onInputDispatched()
+                // The await let other work run. Send only on the socket and prompt we
+                // started with; a resume attempt sends again after its CONNECTED.
+                guard pendingPrompt?.id == promptID, self.socket === socket else {
+                    return
+                }
+            }
             try await send(inputFrame, over: socket)
             if pendingPrompt?.id == promptID {
                 pendingPrompt?.inputDelivered = true

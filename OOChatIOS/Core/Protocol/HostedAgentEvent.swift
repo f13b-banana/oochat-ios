@@ -1,9 +1,13 @@
 import Foundation
+import ConnectOnionKit
 
 enum HostedAgentEvent: Equatable {
     case toolCall(id: String, name: String, arguments: [String: JSONValue])
     case toolResult(id: String, name: String?, output: String, state: ToolCallState)
-    case modeChanged(ChatMode)
+
+    case modeChanged(mode: OIPPermissionMode, turnsLeft: Int?)
+    case modeChangeFailed(String)
+    case modeChangeTimedOut
 
     static func from(_ frame: [String: JSONValue]) -> HostedAgentEvent? {
         guard let type = frame["type"]?.stringValue else {
@@ -11,9 +15,11 @@ enum HostedAgentEvent: Equatable {
         }
 
         if type == "mode_changed",
-           let rawMode = frame["mode"]?.stringValue,
-           let mode = ChatMode(rawValue: rawMode) {
-            return .modeChanged(mode)
+            let rawMode = frame["mode"]?.stringValue {
+            return .modeChanged(
+                mode: OIPPermissionMode(protocolValue: rawMode),
+                turnsLeft: frame["turns_left"]?.intValue
+            )
         }
 
         guard let id = frame["tool_id"]?.stringValue ?? frame["id"]?.stringValue,

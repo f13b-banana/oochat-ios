@@ -1,4 +1,5 @@
 import XCTest
+import ConnectOnionKit
 @testable import OOChatIOS
 
 // end to end integration tests for chat
@@ -99,6 +100,120 @@ final class ChatJourneyIntegrationTests: XCTestCase {
         let reloaded = try XCTUnwrap(viewModel.conversation(withID: conversation.id))
         XCTAssertEqual(reloaded.messages.map(\.content), ["Restart the worker", "Worker restarted."])
         XCTAssertFalse(reloaded.messages.contains { $0.deliveryState == .queued })
+    }
+
+    // The reported bug: force-quit while the agent runs, relaunch, and the app sent the same
+    // prompt again, so the agent ran it twice. The relaunch must ask the host, not resend.
+    func testForceQuitMidRunSettlesFromHostWithoutResending() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        var viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Files", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+
+        let gate = PromptGate()
+        app.transport.sendBehavior = .wait(gate: gate, output: "never seen")
+        viewModel.prompt = "Make him a text file"
+        viewModel.sendPrompt()
+
+        // The mark must be on disk before the reply, or a kill now would resend.
+        var onDisk: MessageDeliveryState?
+        for _ in 0..<200 where onDisk != .transmitted {
+            await Task.yield()
+            onDisk = app.snapshotFromDisk()?
+                .conversations.first { $0.id == conversation.id }?
+                .messages.first { $0.role == .user }?.deliveryState
+        }
+        XCTAssertEqual(onDisk, .transmitted)
+
+        // "Force quit": the old process never gets its reply.
+        viewModel = try app.relaunch()
+        app.transport.resumeBehavior = .succeed(output: "Created smiley.txt")
+        app.monitor.simulate(online: true)
+        await viewModel.flushQueuedMessages()
+
+        XCTAssertTrue(app.transport.sentPrompts.isEmpty, "the prompt was sent again")
+        XCTAssertEqual(app.transport.resumedPrompts, ["Make him a text file"])
+        let settled = try XCTUnwrap(viewModel.conversation(withID: conversation.id))
+        XCTAssertEqual(settled.messages.map(\.role), [.user, .agent])
+        XCTAssertEqual(settled.messages.map(\.deliveryState), [.sent, .sent])
+        XCTAssertEqual(settled.messages.last?.content, "Created smiley.txt")
+        // Release the old process's stalled send only now, so it cannot race the relaunch.
+        await gate.open()
+    }
+
+    // If the host has no record of the turn, the app must not guess: the message fails
+    // with a Retry button and nothing is sent.
+    func testRelaunchWithUnknownOutcomeFailsInsteadOfResending() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        var viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Files", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+
+        let gate = PromptGate()
+        app.transport.sendBehavior = .wait(gate: gate, output: "never seen")
+        viewModel.prompt = "Delete the temp folder"
+        viewModel.sendPrompt()
+        var onDisk: MessageDeliveryState?
+        for _ in 0..<200 where onDisk != .transmitted {
+            await Task.yield()
+            onDisk = app.snapshotFromDisk()?
+                .conversations.first { $0.id == conversation.id }?
+                .messages.first { $0.role == .user }?.deliveryState
+        }
+        XCTAssertEqual(onDisk, .transmitted)
+
+        viewModel = try app.relaunch()
+        // MockAgentTransport's default resumeBehavior is .fail(.outcomeUnknown).
+        app.monitor.simulate(online: true)
+        await viewModel.flushQueuedMessages()
+
+        XCTAssertTrue(app.transport.sentPrompts.isEmpty, "the prompt was sent again")
+        XCTAssertEqual(app.transport.resumedPrompts, ["Delete the temp folder"])
+        let settled = try XCTUnwrap(viewModel.conversation(withID: conversation.id))
+        XCTAssertEqual(settled.messages.map(\.deliveryState), [.failed])
+        XCTAssertFalse(settled.messages.contains { $0.role == .thinking })
+        // Release the old process's stalled send only now, so it cannot race the relaunch.
+        await gate.open()
+    }
+
+    // A message queued behind the unsettled one still goes out once, after it.
+    func testQueuedMessageAfterTransmittedOneSendsOnceAfterSettling() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        var viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Files", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+
+        let gate = PromptGate()
+        app.transport.sendBehavior = .wait(gate: gate, output: "never seen")
+        viewModel.prompt = "first"
+        viewModel.sendPrompt()
+        viewModel.prompt = "second"
+        viewModel.sendPrompt()
+        var states: [MessageDeliveryState] = []
+        for _ in 0..<200 where states != [.transmitted, .queued] {
+            await Task.yield()
+            states = app.snapshotFromDisk()?
+                .conversations.first { $0.id == conversation.id }?
+                .messages.filter { $0.role == .user }.map(\.deliveryState) ?? []
+        }
+        XCTAssertEqual(states, [.transmitted, .queued])
+
+        viewModel = try app.relaunch()
+        app.transport.resumeBehavior = .succeed(output: "first done")
+        app.transport.sendBehavior = .succeed(output: "second done")
+        app.monitor.simulate(online: true)
+        await viewModel.flushQueuedMessages()
+
+        XCTAssertEqual(app.transport.resumedPrompts, ["first"])
+        XCTAssertEqual(app.transport.sentPrompts, ["second"])
+        let settled = try XCTUnwrap(viewModel.conversation(withID: conversation.id))
+        XCTAssertEqual(settled.messages.filter { $0.role == .user }.map(\.deliveryState), [.sent, .sent])
+        XCTAssertEqual(settled.messages.filter { $0.role == .agent }.map(\.content), ["first done", "second done"])
+        // Release the old process's stalled send only now, so it cannot race the relaunch.
+        await gate.open()
     }
 
     // Each conversation must keep its own row
@@ -211,6 +326,7 @@ final class ChatJourneyIntegrationTests: XCTestCase {
         XCTAssertEqual(app.transport.connectedAddresses, [Self.address])
 
         viewModel.setMode(.ulw)
+        await viewModel.settleModeChange()
         XCTAssertEqual(viewModel.activeMode, .ulw)
 
         viewModel = try app.relaunch()
@@ -222,6 +338,102 @@ final class ChatJourneyIntegrationTests: XCTestCase {
         XCTAssertEqual(restored.serverSession?["session_id"], .string(conversation.id))
         XCTAssertNil(restored.serverSession?["skip_tool_approval"])
         XCTAssertNil(restored.serverSession?["ulw_turns"])
+    }
+
+    // /exec: one tool runs on the host with no LLM turn, and the card shows the answer
+    func testExecCommandShowsASuccessCardWithoutStartingATurn() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        let viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Ops", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+        app.transport.execBehavior = .reply(status: "success", text: "max")
+
+        viewModel.prompt = "/exec bash command=whoami"
+        viewModel.sendPrompt()
+        await viewModel.deliveryCoordinator.lastExecTask?.value
+
+        XCTAssertEqual(app.transport.executedTools, ["bash"])
+        XCTAssertEqual(app.transport.executedArguments, [["command": .string("whoami")]])
+        XCTAssertTrue(app.transport.sentPrompts.isEmpty, "an EXEC never starts an LLM turn")
+        XCTAssertEqual(viewModel.prompt, "")
+        XCTAssertNil(viewModel.errorMessage)
+        let messages = try XCTUnwrap(viewModel.conversation(withID: conversation.id)).messages
+        XCTAssertEqual(messages.map(\.role), [.tool], "no user message is added")
+        let card = try XCTUnwrap(messages.first)
+        XCTAssertTrue(card.isDirectExec)
+        XCTAssertEqual(card.toolName, "bash")
+        XCTAssertEqual(card.toolState, .completed)
+        XCTAssertEqual(card.content, "max")
+    }
+
+    // a refused tool is an answer: the card says why, and the session keeps working
+    func testFailedExecShowsAFailedCardAndTheSessionKeepsWorking() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        let viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Ops", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+        let stateBefore = viewModel.connectionState
+        app.transport.execBehavior = .reply(status: "error", text: "blocked: bash is not allowed")
+
+        viewModel.prompt = "/exec bash command=whoami"
+        viewModel.sendPrompt()
+        await viewModel.deliveryCoordinator.lastExecTask?.value
+
+        let failed = try XCTUnwrap(viewModel.conversation(withID: conversation.id)).messages
+        XCTAssertEqual(failed.first?.toolState, .failed)
+        XCTAssertEqual(failed.first?.content, "blocked: bash is not allowed")
+        XCTAssertNil(viewModel.errorMessage, "a refused tool is not a banner-level error")
+        XCTAssertEqual(viewModel.connectionState, stateBefore, "a refused tool does not touch the connection state")
+        XCTAssertFalse(viewModel.hasFailedDelivery(forConversationID: conversation.id))
+
+        app.transport.sendBehavior = .succeed(output: "Still here.")
+        viewModel.prompt = "Are you still there?"
+        viewModel.sendPrompt()
+        await viewModel.sendTask?.value
+
+        XCTAssertEqual(app.transport.sentPrompts, ["Are you still there?"])
+        let messages = try XCTUnwrap(viewModel.conversation(withID: conversation.id)).messages
+        XCTAssertEqual(messages.map(\.role), [.tool, .user, .agent])
+        XCTAssertEqual(messages.last?.content, "Still here.")
+    }
+
+    // no answer at all (socket lost, timeout) also ends as a failed card, not a stuck Running one
+    func testExecThatGetsNoAnswerEndsAsAFailedCard() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        let viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Ops", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+        app.transport.execBehavior = .fail(HostedAgentClientError.closed)
+
+        viewModel.prompt = "/exec bash command=whoami"
+        viewModel.sendPrompt()
+        await viewModel.deliveryCoordinator.lastExecTask?.value
+
+        let card = try XCTUnwrap(viewModel.conversation(withID: conversation.id)).messages.first
+        XCTAssertEqual(card?.toolState, .failed)
+        XCTAssertEqual(card?.content, HostedAgentClientError.closed.errorDescription)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    // a malformed /exec shows the usage line and sends nothing anywhere
+    func testMalformedExecCommandShowsTheUsageAndRunsNothing() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        let viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Ops", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+
+        viewModel.prompt = "/exec"
+        viewModel.sendPrompt()
+
+        XCTAssertEqual(viewModel.errorMessage, OIPExecCommand.usage)
+        XCTAssertEqual(viewModel.prompt, "/exec", "the text stays so it can be fixed")
+        XCTAssertTrue(app.transport.executedTools.isEmpty)
+        XCTAssertTrue(app.transport.sentPrompts.isEmpty)
+        XCTAssertEqual(try XCTUnwrap(viewModel.conversation(withID: conversation.id)).messages.count, 0)
     }
 
     // assertions

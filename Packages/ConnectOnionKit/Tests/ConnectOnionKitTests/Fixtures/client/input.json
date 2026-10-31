@@ -1,0 +1,36 @@
+{
+  "frame": {
+    "files": [
+      {
+        "name": "notes.txt"
+      }
+    ],
+    "from": "0x03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+    "images": [
+      "data:image/png;base64,AA=="
+    ],
+    "input_id": "input-1",
+    "nonce": "nonce-1",
+    "payload": {
+      "files": [
+        {
+          "name": "notes.txt"
+        }
+      ],
+      "images": [
+        "data:image/png;base64,AA=="
+      ],
+      "input_id": "input-1",
+      "nonce": "nonce-1",
+      "prompt": "hi",
+      "timestamp": 1700000000,
+      "to": "0xabababababababababababababababababababababababababababababababab",
+      "type": "INPUT"
+    },
+    "prompt": "hi",
+    "timestamp": 1700000000,
+    "to": "0xabababababababababababababababababababababababababababababababab",
+    "type": "INPUT"
+  },
+  "signed": true
+}

@@ -79,11 +79,19 @@ final class NetworkRecoveryTests: XCTestCase {
 
         XCTAssertEqual(transport.sentPrompts, ["first"])
         XCTAssertTrue(viewModel.isProcessing)
+        // "first" has gone to the host, so it is .transmitted, never .queued (which would resend it).
+        func firstState() -> MessageDeliveryState? {
+            viewModel.activeConversation?.messages.first { $0.content == "first" }?.deliveryState
+        }
+        for _ in 0..<100 where firstState() != .transmitted {
+            await Task.yield()
+        }
+        XCTAssertEqual(firstState(), .transmitted)
         XCTAssertEqual(
             viewModel.activeConversation?.messages.filter {
                 $0.role == .user && $0.deliveryState == .queued
             }.map(\.content),
-            ["first", "second"]
+            ["second"]
         )
 
         await firstGate.open()
@@ -103,7 +111,7 @@ final class NetworkRecoveryTests: XCTestCase {
         let secondGate = PromptGate()
         transport.sendBehaviorsByPrompt = [
             "first": .wait(gate: firstGate, output: "first reply"),
-            "second": .wait(gate: secondGate, output: "second reply"),
+            "second": .wait(gate: secondGate, output: "second reply")
         ]
 
         viewModel.prompt = "first"
@@ -218,7 +226,7 @@ final class NetworkRecoveryTests: XCTestCase {
         let backgroundGate = PromptGate()
         transport.sendBehaviorsByPrompt = [
             "background": .wait(gate: backgroundGate, output: "background reply"),
-            "active": .waitUntilCancelled,
+            "active": .waitUntilCancelled
         ]
 
         viewModel.prompt = "background"
@@ -590,7 +598,7 @@ final class NetworkRecoveryTests: XCTestCase {
                 name: "read_file",
                 output: "# Project notes",
                 state: .completed
-            ),
+            )
         ]
         transport.sendBehavior = .succeed(output: "I found the project notes.")
 
@@ -623,7 +631,7 @@ final class NetworkRecoveryTests: XCTestCase {
                 name: "read_file",
                 output: "Background output",
                 state: .completed
-            ),
+            )
         ]
 
         viewModel.prompt = "Run in the background"
@@ -890,7 +898,7 @@ final class NetworkRecoveryTests: XCTestCase {
                 id: "question-1",
                 question: "Which environment?",
                 options: ["Staging", "Production"]
-            ),
+            )
         ]
 
         viewModel.prompt = "Deploy the app"
@@ -912,7 +920,7 @@ final class NetworkRecoveryTests: XCTestCase {
         let (viewModel, transport, _) = makeEnvironment()
         setUpAgentAndConversation(viewModel)
         transport.askUserRequests = [
-            AskUserRequest(id: "question-1", question: "Continue?", options: ["Yes", "No"]),
+            AskUserRequest(id: "question-1", question: "Continue?", options: ["Yes", "No"])
         ]
         transport.waitAfterInteractionsUntilCancelled = true
 
@@ -935,7 +943,7 @@ final class NetworkRecoveryTests: XCTestCase {
         setUpAgentAndConversation(viewModel)
         let conversation = viewModel.activeConversation!
         transport.askUserRequests = [
-            AskUserRequest(id: "question-1", question: "Continue?", options: ["Yes", "No"]),
+            AskUserRequest(id: "question-1", question: "Continue?", options: ["Yes", "No"])
         ]
         transport.waitAfterInteractionsUntilCancelled = true
 
@@ -958,7 +966,7 @@ final class NetworkRecoveryTests: XCTestCase {
         let agent = setUpAgentAndConversation(viewModel)
         let questionConversation = viewModel.activeConversation!
         transport.askUserRequests = [
-            AskUserRequest(id: "question-1", question: "Continue?", options: ["Yes", "No"]),
+            AskUserRequest(id: "question-1", question: "Continue?", options: ["Yes", "No"])
         ]
 
         viewModel.prompt = "Start task"
@@ -1026,6 +1034,7 @@ final class NetworkRecoveryTests: XCTestCase {
             let (viewModel, transport, _) = makeEnvironment()
             setUpAgentAndConversation(viewModel)
             viewModel.setMode(mode)
+            await viewModel.settleModeChange()
             transport.approvalRequests = [approvalRequest(tool: "credit_card_charge")]
 
             viewModel.prompt = "Charge the card"
@@ -1041,34 +1050,36 @@ final class NetworkRecoveryTests: XCTestCase {
         }
     }
 
-    func testSelectingUlwDoesNotForgeServerOwnedCapabilityState() {
-        let (viewModel, _, _) = makeEnvironment()
+    func testSelectingUlwDoesNotForgeServerOwnedCapabilityState() async {
+        let (viewModel, transport, _) = makeEnvironment()
         setUpAgentAndConversation(viewModel)
-        // Floored: the signed payload carries whole seconds so CanonicalJSON stays
-        // byte-identical to the Python/TS reference implementations.
-        let selectedAt = Date().timeIntervalSince1970.rounded(.down)
 
         viewModel.setMode(.ulw)
+        // Nothing changes on the device until the host confirms.
+        XCTAssertEqual(viewModel.activeMode, .safe)
+        XCTAssertNil(viewModel.activeConversation?.serverSession?["mode"])
+        await viewModel.settleModeChange()
 
+        XCTAssertEqual(transport.requestedModes, [.fullAccess])
         let session = viewModel.activeConversation?.serverSession
         XCTAssertEqual(session?["mode"], .string("ulw"))
         XCTAssertNil(session?["skip_tool_approval"])
         XCTAssertNil(session?["ulw_turns"])
         XCTAssertNil(session?["ulw_turns_used"])
-        let updated = session?["updated"]?.numberValue ?? 0
-        XCTAssertGreaterThanOrEqual(updated, selectedAt)
-        XCTAssertEqual(updated, updated.rounded(.down))
+        XCTAssertNil(session?["updated"])
     }
 
-    func testLeavingUlwClearsAutonomousSessionState() {
+    func testLeavingUlwClearsAutonomousSessionState() async {
         let (viewModel, _, _) = makeEnvironment()
         setUpAgentAndConversation(viewModel)
         viewModel.setMode(.ulw)
+        await viewModel.settleModeChange()
         var conversation = viewModel.activeConversation!
         conversation.serverSession?["skip_tool_approval"] = .bool(true)
         viewModel.upsertForTesting(conversation)
 
         viewModel.setMode(.safe)
+        await viewModel.settleModeChange()
 
         let session = viewModel.activeConversation?.serverSession
         XCTAssertEqual(session?["mode"], .string("safe"))
@@ -1081,7 +1092,9 @@ final class NetworkRecoveryTests: XCTestCase {
         let (viewModel, transport, _) = makeEnvironment()
         setUpAgentAndConversation(viewModel)
         viewModel.setMode(.ulw)
-        transport.streamedEvents = [.modeChanged(.safe)]
+        await viewModel.settleModeChange()
+        XCTAssertEqual(viewModel.activeMode, .ulw)
+        transport.streamedEvents = [.modeChanged(mode: .auto, turnsLeft: nil)]
 
         viewModel.prompt = "Keep working"
         viewModel.sendPrompt()
@@ -1094,7 +1107,7 @@ final class NetworkRecoveryTests: XCTestCase {
     func testApprovalSupportsStopAndExplain() async {
         for expected in [
             ApprovalDecision.rejectHard(feedback: nil),
-            ApprovalDecision.rejectExplain(feedback: nil),
+            ApprovalDecision.rejectExplain(feedback: nil)
         ] {
             let (viewModel, transport, _) = makeEnvironment()
             setUpAgentAndConversation(viewModel)
@@ -1120,6 +1133,7 @@ final class NetworkRecoveryTests: XCTestCase {
         let (viewModel, transport, _) = makeEnvironment()
         setUpAgentAndConversation(viewModel)
         viewModel.setMode(.ulw)
+        await viewModel.settleModeChange()
         transport.ulwCheckpoints = [UlwCheckpointRequest(turnsUsed: 100, maxTurns: 100)]
 
         viewModel.prompt = "Keep working"
@@ -1138,6 +1152,7 @@ final class NetworkRecoveryTests: XCTestCase {
         let (viewModel, transport, _) = makeEnvironment()
         setUpAgentAndConversation(viewModel)
         viewModel.setMode(.ulw)
+        await viewModel.settleModeChange()
         transport.ulwCheckpoints = [UlwCheckpointRequest(turnsUsed: 100, maxTurns: 100)]
 
         viewModel.prompt = "Keep working"
@@ -1145,15 +1160,18 @@ final class NetworkRecoveryTests: XCTestCase {
         await waitForUlwCheckpoint(on: viewModel)
         viewModel.switchModeFromUlwCheckpoint(id: viewModel.activePendingUlwCheckpoint!.id, to: .accept)
         await viewModel.sendTask?.value
+        await viewModel.settleModeChange()
 
         XCTAssertEqual(transport.ulwDecisions, [.switchMode(.accept)])
-        XCTAssertEqual(viewModel.activeMode, .accept)
+        // accept_edits is auto on the wire, and a confirmed auto reads back as .safe.
+        XCTAssertEqual(viewModel.activeMode, .safe)
     }
 
     func testPlanReviewWaitsForApproval() async {
         let (viewModel, transport, _) = makeEnvironment()
         setUpAgentAndConversation(viewModel)
         viewModel.setMode(.plan)
+        await viewModel.settleModeChange()
         transport.planReviews = [PlanReviewRequest(planContent: "# Plan")]
 
         viewModel.prompt = "Plan the change"
@@ -1548,7 +1566,7 @@ final class NetworkRecoveryTests: XCTestCase {
         transport.availableSkills = [
             AgentSkill(name: "Review", description: "Review current changes"),
             AgentSkill(name: "commit", description: "Create a commit"),
-            AgentSkill(name: "release", description: "Prepare a release"),
+            AgentSkill(name: "release", description: "Prepare a release")
         ]
 
         viewModel.prompt = "/"
@@ -1624,7 +1642,7 @@ final class NetworkRecoveryTests: XCTestCase {
         _ = viewModel.createConversation(for: second)
         transport.skillsByAddress = [
             first.address: [AgentSkill(name: "first")],
-            second.address: [AgentSkill(name: "second")],
+            second.address: [AgentSkill(name: "second")]
         ]
 
         viewModel.prompt = "/"

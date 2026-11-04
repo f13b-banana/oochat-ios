@@ -1,4 +1,5 @@
 import Foundation
+import ConnectOnionKit
 import XCTest
 @testable import OOChatIOS
 

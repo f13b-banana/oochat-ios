@@ -1,4 +1,5 @@
 import Foundation
+import ConnectOnionKit
 
 extension HostedAgentConnection {
     func handle(_ frame: [String: JSONValue], generation: Int) async {

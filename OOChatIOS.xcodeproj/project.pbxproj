@@ -3,49 +3,24 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
 		100000000000000000000101 /* OOChatIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000001 /* OOChatIOSApp.swift */; };
 		100000000000000000000102 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000002 /* ContentView.swift */; };
 		100000000000000000000103 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000003 /* ChatViewModel.swift */; };
-		100000000000000000000341 /* ChatViewModel+Messaging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000343 /* ChatViewModel+Messaging.swift */; };
-		100000000000000000000154 /* ConversationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000059 /* ConversationState.swift */; };
-		100000000000000000000155 /* MessageDeliveryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000060 /* MessageDeliveryCoordinator.swift */; };
-		100000000000000000000156 /* ConnectionRecoveryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000061 /* ConnectionRecoveryCoordinator.swift */; };
-		100000000000000000000157 /* SkillLoadingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000062 /* SkillLoadingCoordinator.swift */; };
 		100000000000000000000104 /* ConversationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000004 /* ConversationModels.swift */; };
-		100000000000000000000105 /* CanonicalJSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000005 /* CanonicalJSON.swift */; };
-		100000000000000000000106 /* Hex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000006 /* Hex.swift */; };
 		100000000000000000000107 /* IdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000007 /* IdentityStore.swift */; };
+		100000000000000000000109 /* HostedAgentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000009 /* HostedAgentClient.swift */; };
+		100000000000000000000110 /* MockHostedAgentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000013 /* MockHostedAgentTests.swift */; };
 		100000000000000000000111 /* ConversationRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000015 /* ConversationRepository.swift */; };
 		100000000000000000000113 /* StoredModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000017 /* StoredModels.swift */; };
 		100000000000000000000114 /* SwiftDataConversationRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000018 /* SwiftDataConversationRepository.swift */; };
-		100000000000000000000116 /* ConversationRepositoryFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000020 /* ConversationRepositoryFactory.swift */; };
-		100000000000000000000109 /* HostedAgentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000009 /* HostedAgentClient.swift */; };
-		990952282DCB4FEFBDD22DF3 /* AgentLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A33F8902AD24789890AE6C8 /* AgentLink.swift */; };
-		100000000000000000000110 /* MockHostedAgentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000013 /* MockHostedAgentTests.swift */; };
 		100000000000000000000115 /* SwiftDataConversationRepositoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000019 /* SwiftDataConversationRepositoryTests.swift */; };
-		100000000000000000000162 /* ViewTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000067 /* ViewTestSupport.swift */; };
-		100000000000000000000163 /* ChatCardViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000068 /* ChatCardViewTests.swift */; };
-		100000000000000000000164 /* ComposerToolCallViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000069 /* ComposerToolCallViewTests.swift */; };
-		100000000000000000000167 /* AgentSettingsViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000072 /* AgentSettingsViewTests.swift */; };
-		100000000000000000000168 /* ChatSidebarViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000073 /* ChatSidebarViewTests.swift */; };
-		100000000000000000000169 /* ChatContainerViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000074 /* ChatContainerViewTests.swift */; };
-		100000000000000000000171 /* VoiceInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000076 /* VoiceInputController.swift */; };
+		100000000000000000000116 /* ConversationRepositoryFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000020 /* ConversationRepositoryFactory.swift */; };
 		100000000000000000000119 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000023 /* ChatView.swift */; };
 		100000000000000000000120 /* Composer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000024 /* Composer.swift */; };
-		100000000000000000000331 /* ChatScreenHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000321 /* ChatScreenHelpers.swift */; };
-		100000000000000000000332 /* ChatScreenBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000322 /* ChatScreenBackdrop.swift */; };
-		100000000000000000000333 /* ChatScrollSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000323 /* ChatScrollSupport.swift */; };
-		100000000000000000000334 /* EmptyChatState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000324 /* EmptyChatState.swift */; };
-		100000000000000000000335 /* EmptyChatTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000325 /* EmptyChatTheme.swift */; };
-		100000000000000000000336 /* ComposerInputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000326 /* ComposerInputBar.swift */; };
-		100000000000000000000337 /* ComposerSkillPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000327 /* ComposerSkillPicker.swift */; };
-		100000000000000000000338 /* ComposerModeMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000328 /* ComposerModeMenu.swift */; };
-		100000000000000000000339 /* ComposerAttachments.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000329 /* ComposerAttachments.swift */; };
-		100000000000000000000340 /* ComposerMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000330 /* ComposerMetrics.swift */; };
 		100000000000000000000121 /* MessageBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000025 /* MessageBubble.swift */; };
 		100000000000000000000122 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000026 /* SettingsView.swift */; };
 		100000000000000000000123 /* AgentPresencePill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000027 /* AgentPresencePill.swift */; };
@@ -56,9 +31,7 @@
 		100000000000000000000128 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000032 /* NetworkMonitor.swift */; };
 		100000000000000000000129 /* OfflineBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000033 /* OfflineBanner.swift */; };
 		100000000000000000000130 /* NetworkRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000034 /* NetworkRecoveryTests.swift */; };
-		100000000000000000000190 /* ChatJourneyIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000090 /* ChatJourneyIntegrationTests.swift */; };
 		100000000000000000000131 /* AgentQRCodePayloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000035 /* AgentQRCodePayloadTests.swift */; };
-		100000000000000000000170 /* IdentityStoreErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000075 /* IdentityStoreErrorTests.swift */; };
 		100000000000000000000132 /* AgentQRCodeScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000036 /* AgentQRCodeScanner.swift */; };
 		100000000000000000000133 /* AgentQRCodeShareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000037 /* AgentQRCodeShareView.swift */; };
 		100000000000000000000134 /* MarkdownCodeBlockLanguageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000038 /* MarkdownCodeBlockLanguageTests.swift */; };
@@ -68,24 +41,37 @@
 		100000000000000000000138 /* ToolActionSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000043 /* ToolActionSummary.swift */; };
 		100000000000000000000139 /* ApprovalCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000044 /* ApprovalCard.swift */; };
 		100000000000000000000140 /* PlanReviewCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000045 /* PlanReviewCard.swift */; };
+		100000000000000000000141 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000046 /* Assets.xcassets */; };
+		100000000000000000000142 /* AppAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000047 /* AppAppearance.swift */; };
+		100000000000000000000143 /* ChatShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000048 /* ChatShellView.swift */; };
+		100000000000000000000144 /* ChatSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000049 /* ChatSidebarView.swift */; };
+		100000000000000000000145 /* SidebarButtonStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000050 /* SidebarButtonStyles.swift */; };
 		100000000000000000000146 /* AskUserCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000051 /* AskUserCard.swift */; };
 		100000000000000000000147 /* InteractionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000052 /* InteractionCoordinator.swift */; };
 		100000000000000000000148 /* HostedAgentInteractionCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000053 /* HostedAgentInteractionCodec.swift */; };
 		100000000000000000000149 /* HostedAgentDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000054 /* HostedAgentDiscovery.swift */; };
 		100000000000000000000150 /* HostedAgentConnectionPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000055 /* HostedAgentConnectionPool.swift */; };
 		100000000000000000000151 /* HostedAgentConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000056 /* HostedAgentConnection.swift */; };
-		100000000000000000000342 /* HostedAgentConnection+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000344 /* HostedAgentConnection+Lifecycle.swift */; };
 		100000000000000000000153 /* SettingsFeatureModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000058 /* SettingsFeatureModel.swift */; };
-		100000000000000000000141 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000046 /* Assets.xcassets */; };
-		100000000000000000000217 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000365 /* PrivacyInfo.xcprivacy */; };
-		100000000000000000000142 /* AppAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000047 /* AppAppearance.swift */; };
-		100000000000000000000143 /* ChatShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000048 /* ChatShellView.swift */; };
-		100000000000000000000144 /* ChatSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000049 /* ChatSidebarView.swift */; };
-		100000000000000000000145 /* SidebarButtonStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000050 /* SidebarButtonStyles.swift */; };
+		100000000000000000000154 /* ConversationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000059 /* ConversationState.swift */; };
+		100000000000000000000155 /* MessageDeliveryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000060 /* MessageDeliveryCoordinator.swift */; };
+		100000000000000000000156 /* ConnectionRecoveryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000061 /* ConnectionRecoveryCoordinator.swift */; };
+		100000000000000000000157 /* SkillLoadingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000062 /* SkillLoadingCoordinator.swift */; };
 		100000000000000000000158 /* ChatSidebarMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000063 /* ChatSidebarMetrics.swift */; };
 		100000000000000000000159 /* ChatSidebarHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000064 /* ChatSidebarHeaderView.swift */; };
 		100000000000000000000160 /* ChatSidebarFooterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000065 /* ChatSidebarFooterView.swift */; };
 		100000000000000000000161 /* ChatSidebarRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000066 /* ChatSidebarRows.swift */; };
+		100000000000000000000162 /* ViewTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000067 /* ViewTestSupport.swift */; };
+		100000000000000000000163 /* ChatCardViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000068 /* ChatCardViewTests.swift */; };
+		100000000000000000000164 /* ComposerToolCallViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000069 /* ComposerToolCallViewTests.swift */; };
+		100000000000000000000165 /* HostedAgentConnectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000070 /* HostedAgentConnectionTests.swift */; };
+		100000000000000000000166 /* SidebarComponentViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000071 /* SidebarComponentViewTests.swift */; };
+		100000000000000000000167 /* AgentSettingsViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000072 /* AgentSettingsViewTests.swift */; };
+		100000000000000000000168 /* ChatSidebarViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000073 /* ChatSidebarViewTests.swift */; };
+		100000000000000000000169 /* ChatContainerViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000074 /* ChatContainerViewTests.swift */; };
+		100000000000000000000170 /* IdentityStoreErrorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000075 /* IdentityStoreErrorTests.swift */; };
+		100000000000000000000171 /* VoiceInputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000076 /* VoiceInputController.swift */; };
+		100000000000000000000190 /* ChatJourneyIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000090 /* ChatJourneyIntegrationTests.swift */; };
 		100000000000000000000191 /* AgentPresenceCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000345 /* AgentPresenceCoordinator.swift */; };
 		100000000000000000000192 /* HostedAgentTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000346 /* HostedAgentTransport.swift */; };
 		100000000000000000000193 /* HostedAgentWebSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000347 /* HostedAgentWebSocket.swift */; };
@@ -94,7 +80,6 @@
 		100000000000000000000196 /* HostedAgentSessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000350 /* HostedAgentSessionState.swift */; };
 		100000000000000000000197 /* AgentModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000351 /* AgentModels.swift */; };
 		100000000000000000000198 /* InteractionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000352 /* InteractionModels.swift */; };
-		100000000000000000000199 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000353 /* JSONValue.swift */; };
 		100000000000000000000200 /* HostedAgentModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000354 /* HostedAgentModels.swift */; };
 		100000000000000000000207 /* StoredIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000355 /* StoredIdentity.swift */; };
 		100000000000000000000208 /* ChatViewModel+AppLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000356 /* ChatViewModel+AppLifecycle.swift */; };
@@ -106,8 +91,21 @@
 		100000000000000000000214 /* AgentPresenceCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000362 /* AgentPresenceCoordinatorTests.swift */; };
 		100000000000000000000215 /* HostedAgentDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000363 /* HostedAgentDiscoveryTests.swift */; };
 		100000000000000000000216 /* ChatSidebarSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000364 /* ChatSidebarSearch.swift */; };
-		100000000000000000000165 /* HostedAgentConnectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000070 /* HostedAgentConnectionTests.swift */; };
-		100000000000000000000166 /* SidebarComponentViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000071 /* SidebarComponentViewTests.swift */; };
+		100000000000000000000217 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000365 /* PrivacyInfo.xcprivacy */; };
+		100000000000000000000331 /* ChatScreenHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000321 /* ChatScreenHelpers.swift */; };
+		100000000000000000000332 /* ChatScreenBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000322 /* ChatScreenBackdrop.swift */; };
+		100000000000000000000333 /* ChatScrollSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000323 /* ChatScrollSupport.swift */; };
+		100000000000000000000334 /* EmptyChatState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000324 /* EmptyChatState.swift */; };
+		100000000000000000000335 /* EmptyChatTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000325 /* EmptyChatTheme.swift */; };
+		100000000000000000000336 /* ComposerInputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000326 /* ComposerInputBar.swift */; };
+		100000000000000000000337 /* ComposerSkillPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000327 /* ComposerSkillPicker.swift */; };
+		100000000000000000000338 /* ComposerModeMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000328 /* ComposerModeMenu.swift */; };
+		100000000000000000000339 /* ComposerAttachments.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000329 /* ComposerAttachments.swift */; };
+		100000000000000000000340 /* ComposerMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000330 /* ComposerMetrics.swift */; };
+		100000000000000000000341 /* ChatViewModel+Messaging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000343 /* ChatViewModel+Messaging.swift */; };
+		100000000000000000000342 /* HostedAgentConnection+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000344 /* HostedAgentConnection+Lifecycle.swift */; };
+		35AE410930777ECB004216E9 /* ConnectOnionKit in Frameworks */ = {isa = PBXBuildFile; productRef = 35AE410830777ECB004216E9 /* ConnectOnionKit */; };
+		990952282DCB4FEFBDD22DF3 /* AgentLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A33F8902AD24789890AE6C8 /* AgentLink.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -124,46 +122,21 @@
 		100000000000000000000001 /* OOChatIOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OOChatIOSApp.swift; sourceTree = "<group>"; };
 		100000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		100000000000000000000003 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
-		100000000000000000000343 /* ChatViewModel+Messaging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatViewModel+Messaging.swift"; sourceTree = "<group>"; };
-		100000000000000000000059 /* ConversationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationState.swift; sourceTree = "<group>"; };
-		100000000000000000000060 /* MessageDeliveryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageDeliveryCoordinator.swift; sourceTree = "<group>"; };
-		100000000000000000000061 /* ConnectionRecoveryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionRecoveryCoordinator.swift; sourceTree = "<group>"; };
-		100000000000000000000062 /* SkillLoadingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillLoadingCoordinator.swift; sourceTree = "<group>"; };
 		100000000000000000000004 /* ConversationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationModels.swift; sourceTree = "<group>"; };
-		100000000000000000000005 /* CanonicalJSON.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanonicalJSON.swift; sourceTree = "<group>"; };
-		100000000000000000000006 /* Hex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Hex.swift; sourceTree = "<group>"; };
 		100000000000000000000007 /* IdentityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityStore.swift; sourceTree = "<group>"; };
-		100000000000000000000015 /* ConversationRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationRepository.swift; sourceTree = "<group>"; };
-		100000000000000000000017 /* StoredModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredModels.swift; sourceTree = "<group>"; };
-		100000000000000000000018 /* SwiftDataConversationRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataConversationRepository.swift; sourceTree = "<group>"; };
-		100000000000000000000020 /* ConversationRepositoryFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationRepositoryFactory.swift; sourceTree = "<group>"; };
 		100000000000000000000009 /* HostedAgentClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentClient.swift; sourceTree = "<group>"; };
-		2A33F8902AD24789890AE6C8 /* AgentLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLink.swift; sourceTree = "<group>"; };
 		100000000000000000000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		100000000000000000000011 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		100000000000000000000012 /* OOChatIOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OOChatIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		100000000000000000000013 /* MockHostedAgentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockHostedAgentTests.swift; sourceTree = "<group>"; };
-		100000000000000000000019 /* SwiftDataConversationRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataConversationRepositoryTests.swift; sourceTree = "<group>"; };
-		100000000000000000000067 /* ViewTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewTestSupport.swift; sourceTree = "<group>"; };
-		100000000000000000000068 /* ChatCardViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCardViewTests.swift; sourceTree = "<group>"; };
-		100000000000000000000069 /* ComposerToolCallViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerToolCallViewTests.swift; sourceTree = "<group>"; };
-		100000000000000000000072 /* AgentSettingsViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSettingsViewTests.swift; sourceTree = "<group>"; };
-		100000000000000000000073 /* ChatSidebarViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarViewTests.swift; sourceTree = "<group>"; };
-		100000000000000000000074 /* ChatContainerViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatContainerViewTests.swift; sourceTree = "<group>"; };
-		100000000000000000000076 /* VoiceInputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputController.swift; sourceTree = "<group>"; };
 		100000000000000000000014 /* OOChatIOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OOChatIOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		100000000000000000000015 /* ConversationRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationRepository.swift; sourceTree = "<group>"; };
+		100000000000000000000017 /* StoredModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredModels.swift; sourceTree = "<group>"; };
+		100000000000000000000018 /* SwiftDataConversationRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataConversationRepository.swift; sourceTree = "<group>"; };
+		100000000000000000000019 /* SwiftDataConversationRepositoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftDataConversationRepositoryTests.swift; sourceTree = "<group>"; };
+		100000000000000000000020 /* ConversationRepositoryFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationRepositoryFactory.swift; sourceTree = "<group>"; };
 		100000000000000000000023 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		100000000000000000000024 /* Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Composer.swift; sourceTree = "<group>"; };
-		100000000000000000000321 /* ChatScreenHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScreenHelpers.swift; sourceTree = "<group>"; };
-		100000000000000000000322 /* ChatScreenBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScreenBackdrop.swift; sourceTree = "<group>"; };
-		100000000000000000000323 /* ChatScrollSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScrollSupport.swift; sourceTree = "<group>"; };
-		100000000000000000000324 /* EmptyChatState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyChatState.swift; sourceTree = "<group>"; };
-		100000000000000000000325 /* EmptyChatTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyChatTheme.swift; sourceTree = "<group>"; };
-		100000000000000000000326 /* ComposerInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerInputBar.swift; sourceTree = "<group>"; };
-		100000000000000000000327 /* ComposerSkillPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerSkillPicker.swift; sourceTree = "<group>"; };
-		100000000000000000000328 /* ComposerModeMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerModeMenu.swift; sourceTree = "<group>"; };
-		100000000000000000000329 /* ComposerAttachments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerAttachments.swift; sourceTree = "<group>"; };
-		100000000000000000000330 /* ComposerMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerMetrics.swift; sourceTree = "<group>"; };
 		100000000000000000000025 /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
 		100000000000000000000026 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		100000000000000000000027 /* AgentPresencePill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPresencePill.swift; sourceTree = "<group>"; };
@@ -174,9 +147,7 @@
 		100000000000000000000032 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
 		100000000000000000000033 /* OfflineBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineBanner.swift; sourceTree = "<group>"; };
 		100000000000000000000034 /* NetworkRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRecoveryTests.swift; sourceTree = "<group>"; };
-		100000000000000000000090 /* ChatJourneyIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatJourneyIntegrationTests.swift; sourceTree = "<group>"; };
 		100000000000000000000035 /* AgentQRCodePayloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentQRCodePayloadTests.swift; sourceTree = "<group>"; };
-		100000000000000000000075 /* IdentityStoreErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityStoreErrorTests.swift; sourceTree = "<group>"; };
 		100000000000000000000036 /* AgentQRCodeScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentQRCodeScanner.swift; sourceTree = "<group>"; };
 		100000000000000000000037 /* AgentQRCodeShareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentQRCodeShareView.swift; sourceTree = "<group>"; };
 		100000000000000000000038 /* MarkdownCodeBlockLanguageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownCodeBlockLanguageTests.swift; sourceTree = "<group>"; };
@@ -185,26 +156,49 @@
 		100000000000000000000043 /* ToolActionSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolActionSummary.swift; sourceTree = "<group>"; };
 		100000000000000000000044 /* ApprovalCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalCard.swift; sourceTree = "<group>"; };
 		100000000000000000000045 /* PlanReviewCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanReviewCard.swift; sourceTree = "<group>"; };
-		100000000000000000000051 /* AskUserCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskUserCard.swift; sourceTree = "<group>"; };
-		100000000000000000000052 /* InteractionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractionCoordinator.swift; sourceTree = "<group>"; };
-		100000000000000000000053 /* HostedAgentInteractionCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentInteractionCodec.swift; sourceTree = "<group>"; };
-		100000000000000000000054 /* HostedAgentDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentDiscovery.swift; sourceTree = "<group>"; };
-		100000000000000000000058 /* SettingsFeatureModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsFeatureModel.swift; sourceTree = "<group>"; };
-		100000000000000000000055 /* HostedAgentConnectionPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentConnectionPool.swift; sourceTree = "<group>"; };
-		100000000000000000000056 /* HostedAgentConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentConnection.swift; sourceTree = "<group>"; };
-		100000000000000000000344 /* HostedAgentConnection+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HostedAgentConnection+Lifecycle.swift"; sourceTree = "<group>"; };
 		100000000000000000000046 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		100000000000000000000365 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		100000000000000000000047 /* AppAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAppearance.swift; sourceTree = "<group>"; };
 		100000000000000000000048 /* ChatShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatShellView.swift; sourceTree = "<group>"; };
 		100000000000000000000049 /* ChatSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarView.swift; sourceTree = "<group>"; };
 		100000000000000000000050 /* SidebarButtonStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarButtonStyles.swift; sourceTree = "<group>"; };
+		100000000000000000000051 /* AskUserCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskUserCard.swift; sourceTree = "<group>"; };
+		100000000000000000000052 /* InteractionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractionCoordinator.swift; sourceTree = "<group>"; };
+		100000000000000000000053 /* HostedAgentInteractionCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentInteractionCodec.swift; sourceTree = "<group>"; };
+		100000000000000000000054 /* HostedAgentDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentDiscovery.swift; sourceTree = "<group>"; };
+		100000000000000000000055 /* HostedAgentConnectionPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentConnectionPool.swift; sourceTree = "<group>"; };
+		100000000000000000000056 /* HostedAgentConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentConnection.swift; sourceTree = "<group>"; };
+		100000000000000000000058 /* SettingsFeatureModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsFeatureModel.swift; sourceTree = "<group>"; };
+		100000000000000000000059 /* ConversationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationState.swift; sourceTree = "<group>"; };
+		100000000000000000000060 /* MessageDeliveryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageDeliveryCoordinator.swift; sourceTree = "<group>"; };
+		100000000000000000000061 /* ConnectionRecoveryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionRecoveryCoordinator.swift; sourceTree = "<group>"; };
+		100000000000000000000062 /* SkillLoadingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillLoadingCoordinator.swift; sourceTree = "<group>"; };
 		100000000000000000000063 /* ChatSidebarMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarMetrics.swift; sourceTree = "<group>"; };
 		100000000000000000000064 /* ChatSidebarHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarHeaderView.swift; sourceTree = "<group>"; };
 		100000000000000000000065 /* ChatSidebarFooterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarFooterView.swift; sourceTree = "<group>"; };
 		100000000000000000000066 /* ChatSidebarRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarRows.swift; sourceTree = "<group>"; };
+		100000000000000000000067 /* ViewTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewTestSupport.swift; sourceTree = "<group>"; };
+		100000000000000000000068 /* ChatCardViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCardViewTests.swift; sourceTree = "<group>"; };
+		100000000000000000000069 /* ComposerToolCallViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerToolCallViewTests.swift; sourceTree = "<group>"; };
 		100000000000000000000070 /* HostedAgentConnectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentConnectionTests.swift; sourceTree = "<group>"; };
 		100000000000000000000071 /* SidebarComponentViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarComponentViewTests.swift; sourceTree = "<group>"; };
+		100000000000000000000072 /* AgentSettingsViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSettingsViewTests.swift; sourceTree = "<group>"; };
+		100000000000000000000073 /* ChatSidebarViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarViewTests.swift; sourceTree = "<group>"; };
+		100000000000000000000074 /* ChatContainerViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatContainerViewTests.swift; sourceTree = "<group>"; };
+		100000000000000000000075 /* IdentityStoreErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityStoreErrorTests.swift; sourceTree = "<group>"; };
+		100000000000000000000076 /* VoiceInputController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputController.swift; sourceTree = "<group>"; };
+		100000000000000000000090 /* ChatJourneyIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatJourneyIntegrationTests.swift; sourceTree = "<group>"; };
+		100000000000000000000321 /* ChatScreenHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScreenHelpers.swift; sourceTree = "<group>"; };
+		100000000000000000000322 /* ChatScreenBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScreenBackdrop.swift; sourceTree = "<group>"; };
+		100000000000000000000323 /* ChatScrollSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScrollSupport.swift; sourceTree = "<group>"; };
+		100000000000000000000324 /* EmptyChatState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyChatState.swift; sourceTree = "<group>"; };
+		100000000000000000000325 /* EmptyChatTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyChatTheme.swift; sourceTree = "<group>"; };
+		100000000000000000000326 /* ComposerInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerInputBar.swift; sourceTree = "<group>"; };
+		100000000000000000000327 /* ComposerSkillPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerSkillPicker.swift; sourceTree = "<group>"; };
+		100000000000000000000328 /* ComposerModeMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerModeMenu.swift; sourceTree = "<group>"; };
+		100000000000000000000329 /* ComposerAttachments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerAttachments.swift; sourceTree = "<group>"; };
+		100000000000000000000330 /* ComposerMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerMetrics.swift; sourceTree = "<group>"; };
+		100000000000000000000343 /* ChatViewModel+Messaging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatViewModel+Messaging.swift"; sourceTree = "<group>"; };
+		100000000000000000000344 /* HostedAgentConnection+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HostedAgentConnection+Lifecycle.swift"; sourceTree = "<group>"; };
 		100000000000000000000345 /* AgentPresenceCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPresenceCoordinator.swift; sourceTree = "<group>"; };
 		100000000000000000000346 /* HostedAgentTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentTransport.swift; sourceTree = "<group>"; };
 		100000000000000000000347 /* HostedAgentWebSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentWebSocket.swift; sourceTree = "<group>"; };
@@ -213,7 +207,6 @@
 		100000000000000000000350 /* HostedAgentSessionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentSessionState.swift; sourceTree = "<group>"; };
 		100000000000000000000351 /* AgentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentModels.swift; sourceTree = "<group>"; };
 		100000000000000000000352 /* InteractionModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractionModels.swift; sourceTree = "<group>"; };
-		100000000000000000000353 /* JSONValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValue.swift; sourceTree = "<group>"; };
 		100000000000000000000354 /* HostedAgentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentModels.swift; sourceTree = "<group>"; };
 		100000000000000000000355 /* StoredIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredIdentity.swift; sourceTree = "<group>"; };
 		100000000000000000000356 /* ChatViewModel+AppLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatViewModel+AppLifecycle.swift"; sourceTree = "<group>"; };
@@ -225,6 +218,8 @@
 		100000000000000000000362 /* AgentPresenceCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPresenceCoordinatorTests.swift; sourceTree = "<group>"; };
 		100000000000000000000363 /* HostedAgentDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentDiscoveryTests.swift; sourceTree = "<group>"; };
 		100000000000000000000364 /* ChatSidebarSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarSearch.swift; sourceTree = "<group>"; };
+		100000000000000000000365 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		2A33F8902AD24789890AE6C8 /* AgentLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLink.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -232,6 +227,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				35AE410930777ECB004216E9 /* ConnectOnionKit in Frameworks */,
 				100000000000000000000136 /* MarkdownUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -252,6 +248,7 @@
 				100000000000000000000303 /* OOChatIOS */,
 				100000000000000000000314 /* OOChatIOSTests */,
 				100000000000000000000011 /* README.md */,
+				35E860443077722B00CFC583 /* Frameworks */,
 				100000000000000000000302 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -305,17 +302,8 @@
 				100000000000000000000319 /* Network */,
 				100000000000000000000311 /* Persistence */,
 				100000000000000000000312 /* Models */,
-				100000000000000000000313 /* Utilities */,
 			);
 			path = Core;
-			sourceTree = "<group>";
-		};
-		100000000000000000000319 /* Network */ = {
-			isa = PBXGroup;
-			children = (
-				100000000000000000000032 /* NetworkMonitor.swift */,
-			);
-			path = Network;
 			sourceTree = "<group>";
 		};
 		100000000000000000000307 /* Resources */ = {
@@ -376,6 +364,82 @@
 			path = Chat;
 			sourceTree = "<group>";
 		};
+		100000000000000000000309 /* Protocol */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000053 /* HostedAgentInteractionCodec.swift */,
+				100000000000000000000346 /* HostedAgentTransport.swift */,
+				100000000000000000000347 /* HostedAgentWebSocket.swift */,
+				100000000000000000000348 /* HostedAgentClientError.swift */,
+				100000000000000000000349 /* HostedAgentEvent.swift */,
+				100000000000000000000350 /* HostedAgentSessionState.swift */,
+				100000000000000000000009 /* HostedAgentClient.swift */,
+				2A33F8902AD24789890AE6C8 /* AgentLink.swift */,
+				100000000000000000000054 /* HostedAgentDiscovery.swift */,
+				100000000000000000000055 /* HostedAgentConnectionPool.swift */,
+				100000000000000000000056 /* HostedAgentConnection.swift */,
+				100000000000000000000344 /* HostedAgentConnection+Lifecycle.swift */,
+			);
+			path = Protocol;
+			sourceTree = "<group>";
+		};
+		100000000000000000000310 /* Identity */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000007 /* IdentityStore.swift */,
+				100000000000000000000355 /* StoredIdentity.swift */,
+			);
+			path = Identity;
+			sourceTree = "<group>";
+		};
+		100000000000000000000311 /* Persistence */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000015 /* ConversationRepository.swift */,
+				100000000000000000000017 /* StoredModels.swift */,
+				100000000000000000000018 /* SwiftDataConversationRepository.swift */,
+				100000000000000000000020 /* ConversationRepositoryFactory.swift */,
+			);
+			path = Persistence;
+			sourceTree = "<group>";
+		};
+		100000000000000000000312 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000351 /* AgentModels.swift */,
+				100000000000000000000004 /* ConversationModels.swift */,
+				100000000000000000000352 /* InteractionModels.swift */,
+				100000000000000000000354 /* HostedAgentModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		100000000000000000000314 /* OOChatIOSTests */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000038 /* MarkdownCodeBlockLanguageTests.swift */,
+				100000000000000000000035 /* AgentQRCodePayloadTests.swift */,
+				100000000000000000000075 /* IdentityStoreErrorTests.swift */,
+				100000000000000000000072 /* AgentSettingsViewTests.swift */,
+				100000000000000000000031 /* AgentsFeatureTests.swift */,
+				100000000000000000000090 /* ChatJourneyIntegrationTests.swift */,
+				100000000000000000000068 /* ChatCardViewTests.swift */,
+				100000000000000000000074 /* ChatContainerViewTests.swift */,
+				100000000000000000000073 /* ChatSidebarViewTests.swift */,
+				100000000000000000000069 /* ComposerToolCallViewTests.swift */,
+				100000000000000000000013 /* MockHostedAgentTests.swift */,
+				100000000000000000000034 /* NetworkRecoveryTests.swift */,
+				100000000000000000000071 /* SidebarComponentViewTests.swift */,
+				100000000000000000000019 /* SwiftDataConversationRepositoryTests.swift */,
+				100000000000000000000067 /* ViewTestSupport.swift */,
+				100000000000000000000070 /* HostedAgentConnectionTests.swift */,
+				100000000000000000000361 /* HostedAgentTestDoubles.swift */,
+				100000000000000000000362 /* AgentPresenceCoordinatorTests.swift */,
+				100000000000000000000363 /* HostedAgentDiscoveryTests.swift */,
+			);
+			path = OOChatIOSTests;
+			sourceTree = "<group>";
+		};
 		100000000000000000000315 /* Agents */ = {
 			isa = PBXGroup;
 			children = (
@@ -414,90 +478,19 @@
 			path = Components;
 			sourceTree = "<group>";
 		};
-		100000000000000000000309 /* Protocol */ = {
+		100000000000000000000319 /* Network */ = {
 			isa = PBXGroup;
 			children = (
-				100000000000000000000053 /* HostedAgentInteractionCodec.swift */,
-				100000000000000000000346 /* HostedAgentTransport.swift */,
-				100000000000000000000347 /* HostedAgentWebSocket.swift */,
-				100000000000000000000348 /* HostedAgentClientError.swift */,
-				100000000000000000000349 /* HostedAgentEvent.swift */,
-				100000000000000000000350 /* HostedAgentSessionState.swift */,
-				100000000000000000000009 /* HostedAgentClient.swift */,
-				2A33F8902AD24789890AE6C8 /* AgentLink.swift */,
-				100000000000000000000054 /* HostedAgentDiscovery.swift */,
-				100000000000000000000055 /* HostedAgentConnectionPool.swift */,
-				100000000000000000000056 /* HostedAgentConnection.swift */,
-				100000000000000000000344 /* HostedAgentConnection+Lifecycle.swift */,
-				100000000000000000000005 /* CanonicalJSON.swift */,
+				100000000000000000000032 /* NetworkMonitor.swift */,
 			);
-			path = Protocol;
+			path = Network;
 			sourceTree = "<group>";
 		};
-		100000000000000000000310 /* Identity */ = {
+		35E860443077722B00CFC583 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				100000000000000000000007 /* IdentityStore.swift */,
-				100000000000000000000355 /* StoredIdentity.swift */,
 			);
-			path = Identity;
-			sourceTree = "<group>";
-		};
-		100000000000000000000311 /* Persistence */ = {
-			isa = PBXGroup;
-			children = (
-				100000000000000000000015 /* ConversationRepository.swift */,
-				100000000000000000000017 /* StoredModels.swift */,
-				100000000000000000000018 /* SwiftDataConversationRepository.swift */,
-				100000000000000000000020 /* ConversationRepositoryFactory.swift */,
-			);
-			path = Persistence;
-			sourceTree = "<group>";
-		};
-		100000000000000000000312 /* Models */ = {
-			isa = PBXGroup;
-			children = (
-				100000000000000000000351 /* AgentModels.swift */,
-				100000000000000000000004 /* ConversationModels.swift */,
-				100000000000000000000352 /* InteractionModels.swift */,
-				100000000000000000000353 /* JSONValue.swift */,
-				100000000000000000000354 /* HostedAgentModels.swift */,
-			);
-			path = Models;
-			sourceTree = "<group>";
-		};
-		100000000000000000000313 /* Utilities */ = {
-			isa = PBXGroup;
-			children = (
-				100000000000000000000006 /* Hex.swift */,
-			);
-			path = Utilities;
-			sourceTree = "<group>";
-		};
-		100000000000000000000314 /* OOChatIOSTests */ = {
-			isa = PBXGroup;
-			children = (
-				100000000000000000000038 /* MarkdownCodeBlockLanguageTests.swift */,
-				100000000000000000000035 /* AgentQRCodePayloadTests.swift */,
-				100000000000000000000075 /* IdentityStoreErrorTests.swift */,
-				100000000000000000000072 /* AgentSettingsViewTests.swift */,
-				100000000000000000000031 /* AgentsFeatureTests.swift */,
-				100000000000000000000090 /* ChatJourneyIntegrationTests.swift */,
-				100000000000000000000068 /* ChatCardViewTests.swift */,
-				100000000000000000000074 /* ChatContainerViewTests.swift */,
-				100000000000000000000073 /* ChatSidebarViewTests.swift */,
-				100000000000000000000069 /* ComposerToolCallViewTests.swift */,
-				100000000000000000000013 /* MockHostedAgentTests.swift */,
-				100000000000000000000034 /* NetworkRecoveryTests.swift */,
-				100000000000000000000071 /* SidebarComponentViewTests.swift */,
-				100000000000000000000019 /* SwiftDataConversationRepositoryTests.swift */,
-				100000000000000000000067 /* ViewTestSupport.swift */,
-				100000000000000000000070 /* HostedAgentConnectionTests.swift */,
-				100000000000000000000361 /* HostedAgentTestDoubles.swift */,
-				100000000000000000000362 /* AgentPresenceCoordinatorTests.swift */,
-				100000000000000000000363 /* HostedAgentDiscoveryTests.swift */,
-			);
-			path = OOChatIOSTests;
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -518,6 +511,7 @@
 			name = OOChatIOS;
 			packageProductDependencies = (
 				100000000000000000000041 /* MarkdownUI */,
+				35AE410830777ECB004216E9 /* ConnectOnionKit */,
 			);
 			productName = OOChatIOS;
 			productReference = 100000000000000000000012 /* OOChatIOS.app */;
@@ -537,6 +531,8 @@
 				100000000000000000000901 /* PBXTargetDependency */,
 			);
 			name = OOChatIOSTests;
+			packageProductDependencies = (
+			);
 			productName = OOChatIOSTests;
 			productReference = 100000000000000000000014 /* OOChatIOSTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -571,6 +567,7 @@
 			mainGroup = 100000000000000000000301;
 			packageReferences = (
 				100000000000000000000040 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
+				35AE410730777434004216E9 /* XCLocalSwiftPackageReference "Packages/ConnectOnionKit" */,
 			);
 			productRefGroup = 100000000000000000000302 /* Products */;
 			projectDirPath = "";
@@ -601,25 +598,6 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		100000000000000000000040 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/gonzalezreal/swift-markdown-ui";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.4.1;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		100000000000000000000041 /* MarkdownUI */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 100000000000000000000040 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
-			productName = MarkdownUI;
-		};
-/* End XCSwiftPackageProductDependency section */
-
 /* Begin PBXSourcesBuildPhase section */
 		100000000000000000000202 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -645,11 +623,8 @@
 				100000000000000000000104 /* ConversationModels.swift in Sources */,
 				100000000000000000000197 /* AgentModels.swift in Sources */,
 				100000000000000000000198 /* InteractionModels.swift in Sources */,
-				100000000000000000000199 /* JSONValue.swift in Sources */,
 				100000000000000000000200 /* HostedAgentModels.swift in Sources */,
 				100000000000000000000207 /* StoredIdentity.swift in Sources */,
-				100000000000000000000105 /* CanonicalJSON.swift in Sources */,
-				100000000000000000000106 /* Hex.swift in Sources */,
 				100000000000000000000107 /* IdentityStore.swift in Sources */,
 				100000000000000000000111 /* ConversationRepository.swift in Sources */,
 				100000000000000000000113 /* StoredModels.swift in Sources */,
@@ -986,6 +961,37 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		35AE410730777434004216E9 /* XCLocalSwiftPackageReference "Packages/ConnectOnionKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/ConnectOnionKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		100000000000000000000040 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/gonzalezreal/swift-markdown-ui";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.4.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		100000000000000000000041 /* MarkdownUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 100000000000000000000040 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
+			productName = MarkdownUI;
+		};
+		35AE410830777ECB004216E9 /* ConnectOnionKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 35AE410730777434004216E9 /* XCLocalSwiftPackageReference "Packages/ConnectOnionKit" */;
+			productName = ConnectOnionKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 100000000000000000000501 /* Project object */;
 }

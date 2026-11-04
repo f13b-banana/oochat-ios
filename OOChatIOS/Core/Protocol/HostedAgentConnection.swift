@@ -1,4 +1,5 @@
 import Foundation
+import ConnectOnionKit
 
 // Owns one socket and one active prompt for a conversation.
 actor HostedAgentConnection {

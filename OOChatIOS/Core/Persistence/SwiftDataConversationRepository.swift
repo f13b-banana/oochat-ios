@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import ConnectOnionKit
 
 @MainActor
 final class SwiftDataConversationRepository: ConversationRepository {

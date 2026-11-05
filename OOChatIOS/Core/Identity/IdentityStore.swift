@@ -46,10 +46,6 @@ final class IdentityStore: Sendable {
         return StoredIdentity(address: "0x\(publicKeyHex)", publicKeyHex: publicKeyHex, createdAt: createdAt)
     }
 
-    func signedEnvelope(type: String, payload: [String: JSONValue]) throws -> [String: JSONValue] {
-        try OIPSigner(keyStore: self).envelope(type: type, payload: payload)
-    }
-
     func loadOrCreateSigningKey() throws -> Curve25519.Signing.PrivateKey {
         if let data = try readPrivateKeyData() {
             return try Curve25519.Signing.PrivateKey(rawRepresentation: data)

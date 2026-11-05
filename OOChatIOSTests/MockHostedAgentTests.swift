@@ -274,27 +274,24 @@ final class MockHostedAgentTests: XCTestCase {
         XCTAssertEqual(request?.arguments, ["value": .string("prompt.md")])
     }
 
-    func testApprovalDecisionsEncodeProtocolFrames() {
+    func testApprovalDecisionsEncodeTheirFields() {
         XCTAssertEqual(
-            ApprovalDecision.allowOnce.responseFrame,
+            ApprovalDecision.allowOnce.decisionFields,
             [
-                "type": .string("APPROVAL_RESPONSE"),
                 "approved": .bool(true),
                 "scope": .string("once")
             ]
         )
         XCTAssertEqual(
-            ApprovalDecision.allowSession.responseFrame,
+            ApprovalDecision.allowSession.decisionFields,
             [
-                "type": .string("APPROVAL_RESPONSE"),
                 "approved": .bool(true),
                 "scope": .string("session")
             ]
         )
         XCTAssertEqual(
-            ApprovalDecision.rejectSoft(feedback: "Use a different file").responseFrame,
+            ApprovalDecision.rejectSoft(feedback: "Use a different file").decisionFields,
             [
-                "type": .string("APPROVAL_RESPONSE"),
                 "approved": .bool(false),
                 "scope": .string("once"),
                 "mode": .string("reject_soft"),
@@ -302,53 +299,21 @@ final class MockHostedAgentTests: XCTestCase {
             ]
         )
         XCTAssertEqual(
-            ApprovalDecision.rejectHard(feedback: nil).responseFrame,
+            ApprovalDecision.rejectHard(feedback: nil).decisionFields,
             [
-                "type": .string("APPROVAL_RESPONSE"),
                 "approved": .bool(false),
                 "scope": .string("once"),
                 "mode": .string("reject_hard")
             ]
         )
         XCTAssertEqual(
-            ApprovalDecision.rejectExplain(feedback: nil).responseFrame,
+            ApprovalDecision.rejectExplain(feedback: nil).decisionFields,
             [
-                "type": .string("APPROVAL_RESPONSE"),
                 "approved": .bool(false),
                 "scope": .string("once"),
                 "mode": .string("reject_explain")
             ]
         )
-
-        let relayEndpoint = ResolvedEndpoint(
-            wsURL: URL(string: "wss://relay.example/ws/input")!,
-            kind: .relay,
-            label: "relay"
-        )
-        let directEndpoint = ResolvedEndpoint(
-            wsURL: URL(string: "ws://127.0.0.1:8000/ws")!,
-            kind: .direct,
-            label: "local"
-        )
-
-        XCTAssertEqual(
-            HostedAgentClient.approvalResponseFrame(
-                decision: .allowOnce,
-                agentAddress: endpointA,
-                endpoint: relayEndpoint
-            ),
-            [
-                "type": .string("APPROVAL_RESPONSE"),
-                "approved": .bool(true),
-                "scope": .string("once"),
-                "to": .string(endpointA)
-            ]
-        )
-        XCTAssertNil(HostedAgentClient.approvalResponseFrame(
-            decision: .allowOnce,
-            agentAddress: endpointA,
-            endpoint: directEndpoint
-        )["to"])
     }
 
     /// `Int(Double)` traps on out-of-range values, so a hostile frame could crash the app.
@@ -412,22 +377,12 @@ final class MockHostedAgentTests: XCTestCase {
         XCTAssertEqual(request?.turnsUsed, 100)
         XCTAssertEqual(request?.maxTurns, 100)
 
-        let relay = ResolvedEndpoint(
-            wsURL: URL(string: "wss://relay.example/ws/input")!,
-            kind: .relay,
-            label: "relay"
-        )
         XCTAssertEqual(
-            HostedAgentClient.ulwResponseFrame(
-                decision: .continueWork(turns: 100),
-                agentAddress: endpointA,
-                endpoint: relay
-            ),
+            UlwCheckpointDecision.continueWork(turns: 100).responseFrame,
             [
                 "type": .string("ULW_RESPONSE"),
                 "action": .string("continue"),
-                "turns": .number(100),
-                "to": .string(endpointA)
+                "turns": .number(100)
             ]
         )
         XCTAssertEqual(
@@ -518,46 +473,11 @@ final class MockHostedAgentTests: XCTestCase {
         XCTAssertFalse(request?.id.isEmpty ?? true)
     }
 
-    func testAskUserRejectsMissingQuestionAndEncodesResponseForEndpoint() {
+    func testAskUserRejectsMissingQuestion() {
         XCTAssertNil(AskUserRequest.from([
             "type": .string("ask_user"),
             "options": .array([.string("Yes")])
         ]))
-
-        let relayEndpoint = ResolvedEndpoint(
-            wsURL: URL(string: "wss://relay.example/ws/input")!,
-            kind: .relay,
-            label: "relay"
-        )
-        let directEndpoint = ResolvedEndpoint(
-            wsURL: URL(string: "ws://127.0.0.1:8000/ws")!,
-            kind: .direct,
-            label: "local"
-        )
-
-        XCTAssertEqual(
-            HostedAgentClient.askUserResponseFrame(
-                answer: #"{"username":"me","password":"secret"}"#,
-                agentAddress: endpointA,
-                endpoint: relayEndpoint
-            ),
-            [
-                "type": .string("ASK_USER_RESPONSE"),
-                "answer": .string(#"{"username":"me","password":"secret"}"#),
-                "to": .string(endpointA)
-            ]
-        )
-        XCTAssertEqual(
-            HostedAgentClient.askUserResponseFrame(
-                answer: "red, blue",
-                agentAddress: endpointA,
-                endpoint: directEndpoint
-            ),
-            [
-                "type": .string("ASK_USER_RESPONSE"),
-                "answer": .string("red, blue")
-            ]
-        )
     }
 
     @MainActor

@@ -25,7 +25,7 @@ actor HostedAgentConnection {
 
     let key: HostedAgentConnectionKey
     let identityStore: IdentityStore
-    let signer: OIPSigner
+    let frames: OIPClientFrames
     let connectionStateObserver: HostedAgentConnectionStateObserver
     let socketFactory: HostedAgentWebSocketFactory
     let endpointResolver: HostedAgentEndpointResolver
@@ -70,7 +70,7 @@ actor HostedAgentConnection {
     ) {
         self.key = key
         self.identityStore = identityStore
-        self.signer = OIPSigner(keyStore: identityStore)
+        self.frames = OIPClientFrames(keyStore: identityStore, to: key.agentAddress)
         self.connectionStateObserver = connectionStateObserver
         self.socketFactory = socketFactory ?? { session.webSocketTask(with: $0) }
         self.endpointResolver = endpointResolver ?? { agentAddress in
@@ -303,12 +303,11 @@ actor HostedAgentConnection {
             return
         }
         do {
-            let inputFrame = try buildInputFrame(
+            let inputFrame = try frames.input(
+                inputID: pending.inputID,
                 prompt: prompt,
                 images: images,
-                files: files,
-                conversation: conversation,
-                inputID: pending.inputID
+                files: files.map(\.jsonValue)
             )
             try await send(inputFrame, over: socket)
             if pendingPrompt?.id == promptID {

@@ -1,0 +1,27 @@
+{
+  "frame": {
+    "from": "0x03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+    "last_msg_id": "msg-9",
+    "payload": {
+      "nonce": "nonce-1",
+      "signed_commands": 1,
+      "timestamp": 1700000000,
+      "to": "0xabababababababababababababababababababababababababababababababab"
+    },
+    "protocol": {
+      "max_version": "0.1",
+      "min_version": "0.1",
+      "name": "oip",
+      "version": "0.1"
+    },
+    "session": {
+      "mode": "auto",
+      "turns_left": 1
+    },
+    "session_id": "session-1",
+    "timestamp": 1700000000,
+    "to": "0xabababababababababababababababababababababababababababababababab",
+    "type": "CONNECT"
+  },
+  "signed": true
+}

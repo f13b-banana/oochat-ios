@@ -448,7 +448,7 @@ final class HostedAgentConnectionTests: XCTestCase {
 
         let input = try await socket.waitForSentFrame(type: "INPUT")
         XCTAssertEqual(input["prompt"]?.stringValue, "hello agent")
-        XCTAssertEqual(input["mode"]?.stringValue, ChatMode.safe.rawValue)
+        XCTAssertNil(input["mode"], "The host reads the mode from the session, not from INPUT.")
         XCTAssertEqual(input["to"]?.stringValue, agentAddress)
         XCTAssertNotNil(input["input_id"]?.stringValue)
         XCTAssertEqual(
@@ -479,7 +479,9 @@ final class HostedAgentConnectionTests: XCTestCase {
         try socket.enqueueFrame(
             ["type": .string("approval_needed"), "id": .string("approval-1"), "tool": .string("shell")]
         )
-        _ = try await socket.waitForSentFrame(type: "APPROVAL_RESPONSE")
+        let approvalResponse = try await socket.waitForSentFrame(type: "APPROVAL_RESPONSE")
+        // 16.3-> each answer names the id of the prompt it answers inside the signed payload
+        XCTAssertEqual(try signedPayload(of: approvalResponse)["request_id"], .string("approval-1"))
         try socket.enqueueFrame(
             [
                 "type": .string("ulw_turns_reached"),
@@ -498,6 +500,7 @@ final class HostedAgentConnectionTests: XCTestCase {
         )
         let askResponse = try await socket.waitForSentFrame(type: "ASK_USER_RESPONSE")
         XCTAssertEqual(askResponse["answer"]?.stringValue, "Sydney")
+        XCTAssertEqual(try signedPayload(of: askResponse)["request_id"], .string("ask-1"))
 
         await connection.waitForPendingInteractionResponses()
         try socket.enqueueFrame(
@@ -917,12 +920,11 @@ final class HostedAgentConnectionTests: XCTestCase {
 
     func testInputFrameSignsEveryFieldTheHostReads() async throws {
         let connection = makeConnection(factory: MockHostedAgentSocketFactory())
-        let frame = try await connection.buildInputFrame(
+        let frame = try await connection.frames.input(
+            inputID: "input-1",
             prompt: "ls /tmp",
             images: ["data:image/png;base64,AA=="],
-            files: [HostedAgentFilePayload(name: "note.txt", data: "data:text/plain;base64,SGk=")],
-            conversation: makeConversation(id: "c-1", mode: .ulw),
-            inputID: "input-1"
+            files: [HostedAgentFilePayload(name: "note.txt", data: "data:text/plain;base64, SGk=").jsonValue]
         )
         let payload = try signedPayload(of: frame)
 
@@ -930,8 +932,6 @@ final class HostedAgentConnectionTests: XCTestCase {
         XCTAssertEqual(payload["to"], .string(agentAddress))
         XCTAssertEqual(payload["prompt"], .string("ls /tmp"))
         XCTAssertEqual(payload["input_id"], .string("input-1"))
-        XCTAssertEqual(payload["session_id"], .string("c-1"))
-        XCTAssertEqual(payload["mode"], .string("ulw"))
         XCTAssertEqual(payload["images"], .array([.string("data:image/png;base64,AA==")]))
         XCTAssertNotNil(payload["files"])
         XCTAssertFalse(try XCTUnwrap(payload["nonce"]?.stringValue).isEmpty)
@@ -939,16 +939,23 @@ final class HostedAgentConnectionTests: XCTestCase {
         try assertSignatureVerifies(frame)
     }
 
-    func testInteractionResponsesAreSignedAsCommands() async throws {
+    func testInteractionResponsesAreSignedAndNameTheirRequest() async throws {
         let connection = makeConnection(factory: MockHostedAgentSocketFactory())
-        let signed = try await connection.signedCommand(ApprovalDecision.allowOnce.responseFrame)
-        let payload = try signedPayload(of: signed)
+        let approval = try await connection.frames.approvalResponse(
+            requestID: "approval-1",
+            decision: ApprovalDecision.allowOnce.decisionFields
+        )
+        let payload = try signedPayload(of: approval)
 
         XCTAssertEqual(payload["type"], .string("APPROVAL_RESPONSE"))
         XCTAssertEqual(payload["approved"], .bool(true))
+        XCTAssertEqual(payload["request_id"], .string("approval-1"))
         XCTAssertEqual(payload["to"], .string(agentAddress))
-        XCTAssertFalse(try XCTUnwrap(payload["nonce"]?.stringValue).isEmpty)
-        try assertSignatureVerifies(signed)
+        try assertSignatureVerifies(approval)
+
+        let ulw = try await connection.signedCommand(UlwCheckpointDecision.continueWork(turns: 10).responseFrame)
+        XCTAssertEqual(try signedPayload(of: ulw)["type"], .string("ULW_RESPONSE"))
+        try assertSignatureVerifies(ulw)
     }
 
     private func makeConversation(

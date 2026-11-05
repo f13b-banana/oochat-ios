@@ -50,7 +50,7 @@ final class SkillLoadingCoordinator: ObservableObject {
         allowWhileOffline: Bool = false
     ) {
         let address = agent.address
-        guard (allowWhileOffline || !isOffline),
+        guard allowWhileOffline || !isOffline,
               HostedAgentClient.isHostedAgentAddress(address),
               skillsByAgentAddress[address] == nil,
               fetchTasksByAgentAddress[address] == nil else {

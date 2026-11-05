@@ -1,0 +1,24 @@
+{
+  "type": "AGENT_PROFILE",
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "my-agent",
+  "address": "0x3d4017c3e843a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1",
+  "model": "co/gemini-3.8-flash",
+  "tools": [
+    "search",
+    "shell"
+  ],
+  "skills": [
+    {
+      "name": "co-browser",
+      "description": "drive a browser",
+      "location": "project"
+    },
+    {
+      "name": "my-notes",
+      "description": "personal",
+      "location": "user"
+    }
+  ],
+  "balance_usd": 25.34
+}

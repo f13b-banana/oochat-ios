@@ -1,0 +1,6 @@
+{
+  "code": -32010,
+  "message": "Unsupported OIP protocol",
+  "retryable": false,
+  "type": "ERROR"
+}

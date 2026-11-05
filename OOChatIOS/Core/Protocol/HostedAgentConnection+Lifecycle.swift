@@ -1,5 +1,5 @@
-import Foundation
 import ConnectOnionKit
+import Foundation
 
 extension HostedAgentConnection {
     func handle(_ frame: [String: JSONValue], generation: Int) async {
@@ -483,6 +483,7 @@ extension HostedAgentConnection {
         frame["to"] = .string(key.agentAddress)
         frame["session_id"] = .string(conversation.id)
         frame["session"] = .object(session)
+        frame["protocol"] = .object(OIP.descriptor)
         return frame
     }
 

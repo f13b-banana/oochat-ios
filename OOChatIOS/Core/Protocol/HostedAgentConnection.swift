@@ -281,7 +281,14 @@ actor HostedAgentConnection {
             startReceiveLoop(socket: socket, generation: generation)
             startLivenessMonitor(generation: generation)
 
-            let connectFrame = try buildConnectFrame(conversation: conversation)
+            // direct: false keeps the top-level `to` iOS has always sent: a relay needs it and the host
+            // ignores it on a direct socket. The builder also adds the protocol descriptor.
+            let connectFrame = try frames.connect(
+                direct: false,
+                sessionID: conversation.id,
+                session: .object(sessionPayload(for: conversation)),
+                lastMessageID: bookmarkStore.load(conversationID: key.conversationID)?.lastMessageID
+            )
             try await send(connectFrame, over: socket)
         } catch {
             failConnection(error, generation: generation)

@@ -59,7 +59,9 @@ extension ChatViewModel {
         } else {
             recoveryCoordinator.setConnectionState(.disconnected, forConversationID: conversation.id)
         }
-        errorMessage = message
+        if !presentIncompatibility(error) {
+            errorMessage = message
+        }
         isConnecting = false
     }
 
@@ -82,9 +84,29 @@ extension ChatViewModel {
         connectivityErrorMessage = nil
     }
 
+    /// -32010 gets its own screen instead of the red banner. Returns false for every other error.
+    @discardableResult
+    func presentIncompatibility(_ error: Error) -> Bool {
+        guard let value = (error as? HostedAgentClientError)?.incompatibility else {
+            return false
+        }
+        // Final: HostedAgentConnection.canResume(after:) refuses this error, so no reconnect follows.
+        incompatibility = value
+        errorMessage = nil
+        connectivityErrorMessage = nil
+        return true
+    }
+
+    func dismissIncompatibility() {
+        incompatibility = nil
+    }
+
     // Show a banner for a failed delivery or reconnect.
     func presentConnectionError(_ error: Error, forConversationID conversationID: String) {
         guard activeConversationID == conversationID else {
+            return
+        }
+        if presentIncompatibility(error) {
             return
         }
         let message = error.localizedDescription

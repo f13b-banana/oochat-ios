@@ -23,10 +23,7 @@ extension HostedAgentConnection {
         case "approval_needed", "APPROVAL_NEEDED", "ulw_turns_reached", "plan_review", "ask_user":
             await handleInteraction(frame, generation: generation)
         case "ERROR":
-            failConnection(
-                HostedAgentClientError.server(messageText(frame)),
-                generation: generation
-            )
+            failConnection(connectError(for: frame), generation: generation)
         default:
             break
         }
@@ -73,8 +70,13 @@ extension HostedAgentConnection {
     }
 
     private func handleConnected(_ frame: [String: JSONValue], generation: Int) async {
+        // The kit reads CONNECTED and refuses a session index. A frame it cannot use ends the attempt.
+        guard case .established(let connected)? = try? OIPHandshake.interpret(frame) else {
+            failConnection(HostedAgentClientError.badFrame, generation: generation)
+            return
+        }
         updateServerSession(from: frame)
-        connectionStatus = frame["status"]?.stringValue
+        connectionStatus = connected.status
         setState(.connected)
         connectTimeoutTask?.cancel()
         connectTimeoutTask = nil
@@ -88,7 +90,7 @@ extension HostedAgentConnection {
         for waiter in waiters {
             waiter.resume(returning: result)
         }
-        await resumePendingPrompt(from: frame, generation: generation)
+        await resumePendingPrompt(from: frame, isRunning: connected.isRunning, generation: generation)
     }
 
     private func handleOutput(_ frame: [String: JSONValue]) {
@@ -136,11 +138,11 @@ extension HostedAgentConnection {
     // `status` says where the run stands: "running" means events and the OUTPUT will stream
     // on this socket; anything else means the run finished while we were away (the reply is
     // the trailing agent entry in `chat_items`) or the INPUT never started it (resend it).
-    private func resumePendingPrompt(from frame: [String: JSONValue], generation: Int) async {
+    private func resumePendingPrompt(from frame: [String: JSONValue], isRunning: Bool, generation: Int) async {
         guard let pending = pendingPrompt else {
             return
         }
-        guard frame["status"]?.stringValue != "running" else {
+        guard !isRunning else {
             return
         }
         if pending.inputDelivered {
@@ -538,16 +540,6 @@ extension HostedAgentConnection {
         try await endpointResolver(agentAddress)
     }
 
-    /// iOS has always sent the top-levl 'to' direcgt or relay - host ignores it on a direct socket.
-    func buildConnectFrame(conversation: Conversation) throws -> [String: JSONValue] {
-        try frames.connect(
-            direct: false,
-            sessionID: conversation.id,
-            session: .object(sessionPayload(for: conversation)),
-            lastMessageID: bookmarkStore.load(conversationID: key.conversationID)?.lastMessageID
-        )
-    }
-
     func sessionPayload(for conversation: Conversation) -> [String: JSONValue] {
         HostedAgentSessionState.applying(
             conversation.mode,
@@ -600,5 +592,15 @@ extension HostedAgentConnection {
 
     private func messageText(_ frame: [String: JSONValue]) -> String {
         HostedAgentEvent.messageText(frame)
+    }
+
+    // -32010 means the host speaks another OIP version. canResume(after:) already treats every
+    // client error except .closed and .timeout as final, so this ends the attempt with no retry.
+    // Every other ERROR keeps its old meaning: the host's own text.
+    private func connectError(for frame: [String: JSONValue]) -> HostedAgentClientError {
+        if case .incompatible(let incompatibility)? = try? OIPHandshake.interpret(frame) {
+            return .incompatibleProtocol(incompatibility)
+        }
+        return .server(messageText(frame))
     }
 }

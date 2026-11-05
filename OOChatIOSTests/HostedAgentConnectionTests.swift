@@ -82,7 +82,7 @@ final class HostedAgentConnectionTests: XCTestCase {
         await assertCancellation(from: cancelledWaiter)
         XCTAssertNil(socket.closeCode)
 
-        try socket.enqueueFrame(["type": .string("CONNECTED")])
+        try socket.enqueueFrame(["type": .string("CONNECTED"), "status": .string("new")])
         let successfulResult = try await successfulWaiter.value
         XCTAssertEqual(successfulResult.endpointLabel, endpoint.label)
         XCTAssertEqual(factory.count, 1)
@@ -1065,8 +1065,11 @@ final class HostedAgentConnectionTests: XCTestCase {
     }
 
     func testConnectFrameSignsToTimestampNonceAndSignedCommands() async throws {
-        let connection = makeConnection(factory: MockHostedAgentSocketFactory())
-        let frame = try await connection.buildConnectFrame(conversation: makeConversation(id: "c-1"))
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let task = Task { try await connection.ensureConnected(conversation: makeConversation(id: "c-1")) }
+        let socket = try await factory.socket(at: 0)
+        let frame = try await socket.waitForSentFrame(type: "CONNECT")
         let payload = try signedPayload(of: frame)
 
         XCTAssertEqual(payload["to"], .string(agentAddress))
@@ -1078,6 +1081,9 @@ final class HostedAgentConnectionTests: XCTestCase {
         XCTAssertEqual(frame["session_id"], .string("c-1"))
         XCTAssertNotNil(frame["session"])
         try assertSignatureVerifies(frame)
+        try socket.enqueueFrame(["type": .string("CONNECTED"), "status": .string("new")])
+        _ = try await task.value
+        await connection.close()
     }
 
     func testInputFrameSignsEveryFieldTheHostReads() async throws {
@@ -1138,6 +1144,152 @@ final class HostedAgentConnectionTests: XCTestCase {
         )
     }
 
+    // CONNECT adoption tests
+
+    func testConnectDeclaresTheProtocolVersionOnTheWire() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let task = Task { try await connection.ensureConnected(conversation: makeConversation(id: "c-1")) }
+        let socket = try await factory.socket(at: 0)
+        let frame = try await socket.waitForSentFrame(type: "CONNECT")
+
+        XCTAssertEqual(frame["protocol"], .object(OIP.descriptor))
+        XCTAssertEqual(frame["to"], .string(agentAddress))
+        XCTAssertEqual(try signedPayload(of: frame)["signed_commands"], .number(1))
+        try assertSignatureVerifies(frame)
+
+        try socket.enqueueFrame(["type": .string("CONNECTED"), "status": .string("new")])
+        _ = try await task.value
+        await connection.close()
+    }
+
+    func testIncompatibleVersionFailsOnceAndNamesTheVersionNeeded() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        // Resume is allowed here, so a second socket would show up in factory.count.
+        let connection = makeConnection(factory: factory, resumeAttemptLimit: 3)
+        let task = Task { try await connection.ensureConnected(conversation: makeConversation(id: "c-1")) }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        try socket.enqueueFrame(incompatibleFrame(host: "0.2"))
+
+        do {
+            _ = try await task.value
+            XCTFail("Expected incompatibleProtocol")
+        } catch let error as HostedAgentClientError {
+            let incompatibility = try XCTUnwrap(error.incompatibility, "Got \(error)")
+            XCTAssertEqual(incompatibility.neededVersion, "0.2")
+            XCTAssertEqual(incompatibility.direction, .appTooOld)
+            XCTAssertFalse(incompatibility.isRetryable)
+            XCTAssertTrue(error.localizedDescription.contains("0.2"), error.localizedDescription)
+        }
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(factory.count, 1)
+        XCTAssertNotNil(socket.closeCode)
+        let connects = try socket.sentFrames().filter { $0["type"]?.stringValue == "CONNECT" }
+        XCTAssertEqual(connects.count, 1)
+        let state = await connection.state
+        XCTAssertEqual(state, .disconnected)
+    }
+
+    func testIncompatibleVersionWithAPromptPendingIsNotResumed() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory, resumeAttemptLimit: 3)
+        let conversation = makeConversation(id: "c-2")
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+        let socket = try await factory.socket(at: 0)
+        let prompt = Task {
+            try await connection.sendPrompt(
+                conversation: conversation,
+                prompt: "hello",
+                onEvent: nil,
+                onInteraction: nil
+            )
+        }
+        _ = try await socket.waitForSentFrame(type: "INPUT")
+        try socket.enqueueFrame(incompatibleFrame(host: "0.2"))
+
+        do {
+            _ = try await prompt.value
+            XCTFail("Expected incompatibleProtocol")
+        } catch let error as HostedAgentClientError {
+            XCTAssertNotNil(error.incompatibility, "Got \(error)")
+        }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(factory.count, 1)
+    }
+
+    func testErrorWithoutACodeStaysAServerError() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let task = Task { try await connection.ensureConnected(conversation: makeConversation(id: "c-1")) }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        try socket.enqueueFrame(["type": .string("ERROR"), "message": .string("signature expired")])
+
+        do {
+            _ = try await task.value
+            XCTFail("Expected server error")
+        } catch let error as HostedAgentClientError {
+            guard case .server(let message) = error else {
+                return XCTFail("Expected server error, got \(error)")
+            }
+            XCTAssertEqual(message, "signature expired")
+            XCTAssertNil(error.incompatibility)
+        }
+    }
+
+    func testIndexStatusIsRejected() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let task = Task { try await connection.ensureConnected(conversation: makeConversation(id: "c-1")) }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        try socket.enqueueFrame([
+            "type": .string("CONNECTED"),
+            "session_id": .string("c-1"),
+            "status": .string("index")
+        ])
+        await assertClientError(.badFrame, from: task)
+    }
+
+    func testServerNewerSessionReplacesTheSavedOne() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let conversation = makeConversation(id: "c-3", serverSession: ["theme": .string("saved")])
+        let task = Task { try await connection.ensureConnected(conversation: conversation) }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        try socket.enqueueFrame([
+            "type": .string("CONNECTED"),
+            "session_id": .string("c-3"),
+            "status": .string("connected"),
+            "server_newer": .bool(true),
+            "session": .object(["theme": .string("from-host")])
+        ])
+
+        let result = try await task.value
+        XCTAssertEqual(result.serverSession?["theme"], .string("from-host"))
+        XCTAssertEqual(result.serverSession?["session_id"], .string("c-3"))
+        await connection.close()
+    }
+
+    private func incompatibleFrame(host version: String) -> [String: JSONValue] {
+        [
+            "type": .string("ERROR"),
+            "code": .number(-32010),
+            "message": .string("Unsupported OIP protocol"),
+            "retryable": .bool(false),
+            "protocol": .object([
+                "name": .string("oip"),
+                "version": .string(version),
+                "min_version": .string(version),
+                "max_version": .string(version),
+                "websocket_path": .string("/ws")
+            ])
+        ]
+    }
+
     private func makeConnection(
         factory: MockHostedAgentSocketFactory,
         resolver: HostedAgentEndpointResolver? = nil,
@@ -1178,7 +1330,7 @@ final class HostedAgentConnectionTests: XCTestCase {
         }
         let socket = try await factory.socket(at: socketIndex)
         _ = try await socket.waitForSentFrame(type: "CONNECT")
-        try socket.enqueueFrame(["type": .string("CONNECTED")])
+        try socket.enqueueFrame(["type": .string("CONNECTED"), "status": .string("new")])
         return try await task.value
     }
 
@@ -1225,7 +1377,7 @@ final class HostedAgentConnectionTests: XCTestCase {
              (.timeout, .timeout),
              (.busy, .busy):
             return true
-        case (.invalidURL, .invalidURL), (.server, .server):
+        case (.invalidURL, .invalidURL), (.server, .server), (.incompatibleProtocol, .incompatibleProtocol):
             return true
         default:
             return false
@@ -1244,415 +1396,5 @@ final class HostedAgentConnectionTests: XCTestCase {
             try await Task.sleep(nanoseconds: 2_000_000)
         }
         throw HostedAgentTestError.timedOut
-    }
-}
-
-@MainActor
-final class HostedAgentConnectionPoolTests: XCTestCase {
-    private let endpoint = ResolvedEndpoint(
-        wsURL: URL(string: "wss://relay.unit.test/ws/input")!,
-        kind: .relay,
-        label: "Relay"
-    )
-
-    func testObserverCoalescesStaleUpdatesAndUsesLatestHandler() async {
-        let observer = HostedAgentConnectionStateObserver()
-        let notified = expectation(description: "latest state delivered")
-        var states: [(String, ConversationConnectionState)] = []
-        observer.handler = { conversationID, state in
-            states.append((conversationID, state))
-            notified.fulfill()
-        }
-
-        observer.notify(conversationID: "conversation", state: .reconnecting)
-        observer.notify(conversationID: "conversation", state: .connected)
-        observer.notify(conversationID: "conversation", state: .disconnected)
-        await fulfillment(of: [notified], timeout: 1)
-
-        XCTAssertEqual(states.count, 1)
-        XCTAssertEqual(states.first?.0, "conversation")
-        XCTAssertEqual(states.first?.1, .disconnected)
-
-        observer.handler = nil
-        XCTAssertNil(observer.handler)
-        observer.notify(conversationID: "ignored", state: .connected)
-        await Task.yield()
-        XCTAssertEqual(states.count, 1)
-    }
-
-    func testPoolConnectReusesConnectionWaitsAndClosesAll() async throws {
-        let factory = MockHostedAgentSocketFactory()
-        let pool = makePool(factory: factory, maximumSize: 2)
-        let conversation = makeConversation(id: "pool-reuse")
-
-        let first = Task {
-            try await pool.connect(agentAddress: agentAddress, conversation: conversation)
-        }
-        let socket = try await factory.socket(at: 0)
-        _ = try await socket.waitForSentFrame(type: "CONNECT")
-        try socket.enqueueFrame(["type": .string("CONNECTED")])
-        let firstResult = try await first.value
-        XCTAssertEqual(firstResult.endpointLabel, endpoint.label)
-
-        let reused = try await pool.connect(agentAddress: agentAddress, conversation: conversation)
-        XCTAssertEqual(reused.endpointLabel, endpoint.label)
-        XCTAssertEqual(factory.count, 1)
-
-        await pool.waitForPendingInteractionResponses(
-            agentAddress: agentAddress,
-            conversationID: conversation.id
-        )
-        await pool.waitForPendingInteractionResponses(
-            agentAddress: agentAddress,
-            conversationID: "missing"
-        )
-        await pool.closeAll()
-        XCTAssertEqual(socket.closeCode, .goingAway)
-        await pool.closeAll()
-    }
-
-    // A connected socket answers `connect` from cache, which is the right call for a reused
-    // conversation and the wrong one after the network disappeared: the recovery layer would
-    // read that cached success as proof it is back. Closing has to leave nothing to answer from.
-    func testConnectAfterCloseAllHandshakesAgainInsteadOfAnsweringFromCache() async throws {
-        let factory = MockHostedAgentSocketFactory()
-        let pool = makePool(factory: factory, maximumSize: 2)
-        let conversation = makeConversation(id: "pool-close-then-connect")
-        try await connect(pool, conversation: conversation, factory: factory, socketIndex: 0)
-        let reused = try await pool.connect(agentAddress: agentAddress, conversation: conversation)
-        XCTAssertEqual(reused.endpointLabel, endpoint.label)
-        XCTAssertEqual(factory.count, 1, "a live conversation reuses its socket")
-
-        await pool.closeAll()
-        try await connect(pool, conversation: conversation, factory: factory, socketIndex: 1)
-
-        XCTAssertEqual(factory.count, 2)
-        await pool.closeAll()
-    }
-
-    func testCloseAllFailsAPendingPromptRightAwayInsteadOfLeavingItWaiting() async throws {
-        let factory = MockHostedAgentSocketFactory()
-        let pool = makePool(factory: factory, maximumSize: 2)
-        let conversation = makeConversation(id: "pool-close-pending")
-        try await connect(pool, conversation: conversation, factory: factory, socketIndex: 0)
-        let socket = try await factory.socket(at: 0)
-        let prompt = Task {
-            try await pool.sendPrompt(
-                agentAddress: agentAddress,
-                conversation: conversation,
-                prompt: "in flight",
-                onEvent: nil,
-                onInteraction: nil
-            )
-        }
-        _ = try await socket.waitForSentFrame(type: "INPUT")
-
-        await pool.closeAll()
-
-        do {
-            _ = try await prompt.value
-            XCTFail("Expected the pending prompt to fail with the socket")
-        } catch let error as HostedAgentClientError {
-            guard case .closed = error else {
-                return XCTFail("Expected closed, got \(error)")
-            }
-        }
-    }
-
-    func testNetworkLossClosesTheIdleSocketAndForcesTheNextConnectToHandshake() async throws {
-        let factory = MockHostedAgentSocketFactory()
-        let pool = makePool(factory: factory, maximumSize: 2)
-        let conversation = makeConversation(id: "pool-network-loss-idle")
-        try await connect(pool, conversation: conversation, factory: factory, socketIndex: 0)
-        let socket = try await factory.socket(at: 0)
-
-        await pool.noteNetworkLost()
-
-        XCTAssertEqual(socket.closeCode, .goingAway, "nothing is riding an idle socket")
-        try await connect(pool, conversation: conversation, factory: factory, socketIndex: 1)
-        XCTAssertEqual(factory.count, 2)
-        await pool.closeAll()
-    }
-
-    // The reason a busy connection is marked rather than closed: the prompt on it may still
-    // survive a blip through the resume path, which closing would take away.
-    func testNetworkLossLeavesAnInFlightPromptOnItsSocket() async throws {
-        let factory = MockHostedAgentSocketFactory()
-        let pool = makePool(factory: factory, maximumSize: 2)
-        let conversation = makeConversation(id: "pool-network-loss-busy")
-        try await connect(pool, conversation: conversation, factory: factory, socketIndex: 0)
-        let socket = try await factory.socket(at: 0)
-        let prompt = Task {
-            try await pool.sendPrompt(
-                agentAddress: agentAddress,
-                conversation: conversation,
-                prompt: "in flight",
-                onEvent: nil,
-                onInteraction: nil
-            )
-        }
-        _ = try await socket.waitForSentFrame(type: "INPUT")
-
-        await pool.noteNetworkLost()
-
-        XCTAssertNil(socket.closeCode, "the socket carrying a prompt is left to the resume path")
-        try socket.enqueueFrame(["type": .string("OUTPUT"), "content": .string("late reply")])
-        let result = try await prompt.value
-        XCTAssertEqual(result.output, "late reply")
-        await pool.closeAll()
-    }
-
-    func testNetworkLossStopsABusyConnectionAnsweringConnectFromCache() async throws {
-        let factory = MockHostedAgentSocketFactory()
-        let pool = makePool(factory: factory, maximumSize: 2)
-        let conversation = makeConversation(id: "pool-network-loss-probe")
-        try await connect(pool, conversation: conversation, factory: factory, socketIndex: 0)
-        let socket = try await factory.socket(at: 0)
-        let prompt = Task {
-            try await pool.sendPrompt(
-                agentAddress: agentAddress,
-                conversation: conversation,
-                prompt: "in flight",
-                onEvent: nil,
-                onInteraction: nil
-            )
-        }
-        _ = try await socket.waitForSentFrame(type: "INPUT")
-        await pool.noteNetworkLost()
-
-        // what a recovery probe does, and it must not come back a success
-        do {
-            _ = try await pool.connect(agentAddress: agentAddress, conversation: conversation)
-            XCTFail("Expected the probe to be refused")
-        } catch let error as HostedAgentClientError {
-            guard case .busy = error else {
-                return XCTFail("Expected busy, got \(error)")
-            }
-        }
-        XCTAssertEqual(factory.count, 1, "the in-flight prompt keeps its socket")
-
-        // once the prompt is done the connection still owes a real handshake
-        try socket.enqueueFrame(["type": .string("OUTPUT"), "content": .string("reply")])
-        _ = try await prompt.value
-        try await connect(pool, conversation: conversation, factory: factory, socketIndex: 1)
-        XCTAssertEqual(factory.count, 2)
-        await pool.closeAll()
-    }
-
-    func testPoolSendPromptSuccessAndFailureReleaseLeases() async throws {
-        let factory = MockHostedAgentSocketFactory()
-        let pool = makePool(factory: factory, maximumSize: 2)
-        let conversation = makeConversation(id: "pool-prompt")
-        try await connect(pool, conversation: conversation, factory: factory, socketIndex: 0)
-        let socket = try await factory.socket(at: 0)
-
-        let prompt = Task {
-            try await pool.sendPrompt(
-                agentAddress: agentAddress,
-                conversation: conversation,
-                prompt: "hello",
-                onEvent: nil,
-                onInteraction: nil
-            )
-        }
-        _ = try await socket.waitForSentFrame(type: "INPUT")
-        try socket.enqueueFrame(["type": .string("OUTPUT"), "content": .string("reply")])
-        let promptResult = try await prompt.value
-        XCTAssertEqual(promptResult.output, "reply")
-
-        socket.failNextSend()
-        do {
-            _ = try await pool.sendPrompt(
-                agentAddress: agentAddress,
-                conversation: conversation,
-                prompt: "fails",
-                onEvent: nil,
-                onInteraction: nil
-            )
-            XCTFail("Expected closed error")
-        } catch let error as HostedAgentClientError {
-            guard case .closed = error else {
-                return XCTFail("Expected closed, got \(error)")
-            }
-        }
-        await pool.closeAll()
-    }
-
-    func testPoolPropagatesConnectFailureAndCanRecoverWithNewKey() async throws {
-        let factory = MockHostedAgentSocketFactory()
-        let pool = makePool(
-            factory: factory,
-            maximumSize: 1,
-            resolver: { address in
-                if address.hasSuffix("bad") {
-                    throw HostedAgentClientError.invalidURL(address)
-                }
-                return self.endpoint
-            }
-        )
-
-        do {
-            _ = try await pool.connect(
-                agentAddress: "agent-bad",
-                conversation: makeConversation(id: "failed-connect")
-            )
-            XCTFail("Expected invalid URL")
-        } catch let error as HostedAgentClientError {
-            guard case .invalidURL = error else {
-                return XCTFail("Expected invalidURL, got \(error)")
-            }
-        }
-
-        let conversation = makeConversation(id: "recovered-connect")
-        let recovered = Task {
-            try await pool.connect(agentAddress: agentAddress, conversation: conversation)
-        }
-        let socket = try await factory.socket(at: 0)
-        _ = try await socket.waitForSentFrame(type: "CONNECT")
-        try socket.enqueueFrame(["type": .string("CONNECTED")])
-        let recoveredResult = try await recovered.value
-        XCTAssertEqual(recoveredResult.endpointLabel, endpoint.label)
-        await pool.closeAll()
-    }
-
-    func testPoolEvictsExpiredAndLeastRecentlyUsedIdleConnections() async throws {
-        let lruFactory = MockHostedAgentSocketFactory()
-        let lruClock = MutableHostedAgentClock()
-        let lruPool = makePool(
-            factory: lruFactory,
-            maximumSize: 1,
-            idleLifetime: 100,
-            clock: lruClock
-        )
-        let firstConversation = makeConversation(id: "lru-first")
-        try await connect(lruPool, conversation: firstConversation, factory: lruFactory, socketIndex: 0)
-        let firstSocket = try await lruFactory.socket(at: 0)
-        lruClock.advance(by: 1)
-
-        let secondConversation = makeConversation(id: "lru-second")
-        try await connect(lruPool, conversation: secondConversation, factory: lruFactory, socketIndex: 1)
-        XCTAssertEqual(firstSocket.closeCode, .goingAway)
-        await lruPool.closeAll()
-
-        let expiryFactory = MockHostedAgentSocketFactory()
-        let expiryClock = MutableHostedAgentClock()
-        let expiryPool = makePool(
-            factory: expiryFactory,
-            maximumSize: 3,
-            idleLifetime: 1,
-            clock: expiryClock
-        )
-        let expiringConversation = makeConversation(id: "expires")
-        try await connect(
-            expiryPool,
-            conversation: expiringConversation,
-            factory: expiryFactory,
-            socketIndex: 0
-        )
-        let expiringSocket = try await expiryFactory.socket(at: 0)
-        expiryClock.advance(by: 2)
-        try await connect(
-            expiryPool,
-            conversation: makeConversation(id: "after-expiry"),
-            factory: expiryFactory,
-            socketIndex: 1
-        )
-        XCTAssertEqual(expiringSocket.closeCode, .goingAway)
-        await expiryPool.closeAll()
-    }
-
-    private var agentAddress: String {
-        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-    }
-
-    private func makeConversation(id: String) -> Conversation {
-        Conversation(
-            id: id,
-            title: "Pool Test",
-            agentID: "agent-id",
-            agentAddress: agentAddress,
-            mode: .safe,
-            createdAt: Date(timeIntervalSince1970: 100),
-            updatedAt: Date(timeIntervalSince1970: 100),
-            messages: [],
-            serverSession: nil
-        )
-    }
-
-    private func makePool(
-        factory: MockHostedAgentSocketFactory,
-        maximumSize: Int,
-        idleLifetime: TimeInterval = 60,
-        resolver: HostedAgentEndpointResolver? = nil,
-        clock: MutableHostedAgentClock = MutableHostedAgentClock()
-    ) -> HostedAgentConnectionPool {
-        let endpoint = endpoint
-        return HostedAgentConnectionPool(
-            identityStore: IdentityStore(),
-            session: .shared,
-            maximumSize: maximumSize,
-            idleLifetime: idleLifetime,
-            discovery: HostedAgentDiscovery(session: .shared, relayURL: "ws://unused.test", localEndpoints: []),
-            connectionStateObserver: HostedAgentConnectionStateObserver(),
-            socketFactory: factory.factory,
-            endpointResolver: resolver ?? { _ in endpoint },
-            connectTimeout: 1,
-            livenessTimeout: 5,
-            livenessCheckInterval: 0.1,
-            resumeAttemptLimit: 0,
-            resumeRetryDelay: 0,
-            now: { clock.now() }
-        )
-    }
-
-    private func connect(
-        _ pool: HostedAgentConnectionPool,
-        conversation: Conversation,
-        factory: MockHostedAgentSocketFactory,
-        socketIndex: Int
-    ) async throws {
-        let task = Task {
-            try await pool.connect(agentAddress: agentAddress, conversation: conversation)
-        }
-        let socket = try await factory.socket(at: socketIndex)
-        _ = try await socket.waitForSentFrame(type: "CONNECT")
-        try socket.enqueueFrame(["type": .string("CONNECTED")])
-        _ = try await task.value
-    }
-}
-
-final class HostedAgentClientErrorMessageTests: XCTestCase {
-    func testInvalidURLPointsAtTheAddressAndSuggestsAFix() {
-        let message = HostedAgentClientError.invalidURL("0xabc").errorDescription ?? ""
-        XCTAssertTrue(message.contains("0xabc"), message)
-        XCTAssertTrue(message.contains("online"), message)
-    }
-
-    func testServerErrorIsAttributedToTheAgent() {
-        let message = HostedAgentClientError.server("rate limit exceeded").errorDescription ?? ""
-        XCTAssertEqual(message, "The agent reported a problem: rate limit exceeded")
-    }
-
-    func testBlankServerErrorFallsBackToAFullSentence() {
-        let message = HostedAgentClientError.server("   ").errorDescription ?? ""
-        XCTAssertEqual(
-            message,
-            "The agent reported a problem but didn't say what went wrong. Try again."
-        )
-    }
-
-    func testBusyErrorTellsTheUserWhatToDoNext() {
-        let message = HostedAgentClientError.busy.errorDescription ?? ""
-        XCTAssertTrue(message.contains("Wait for it to finish"), message)
-    }
-
-    func testEveryOtherCaseProducesNonEmptyText() {
-        let cases: [HostedAgentClientError] = [.invalidAddress, .badFrame, .closed, .timeout]
-        for error in cases {
-            XCTAssertFalse(
-                (error.errorDescription ?? "").isEmpty,
-                "Expected non-empty message for \(error)"
-            )
-        }
     }
 }

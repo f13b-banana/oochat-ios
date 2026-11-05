@@ -1,3 +1,4 @@
+import ConnectOnionKit
 import Foundation
 
 enum HostedAgentClientError: LocalizedError {
@@ -10,6 +11,8 @@ enum HostedAgentClientError: LocalizedError {
     case busy
     /// A message sent before the app closed has no recorded result on the host.
     case outcomeUnknown
+
+    case incompatibleProtocol(OIPHandshake.Incompatibility)
 
     var errorDescription: String? {
         switch self {
@@ -30,10 +33,20 @@ enum HostedAgentClientError: LocalizedError {
             return "The agent didn't reply in time. Try again."
         case .busy:
             return "The agent is still working on your previous message in this conversation. Wait for it to finish, then try again."
+        case.incompatibleProtocol(let incompatibility):
+            return incompatibility.message
         case .outcomeUnknown:
             return "The app closed before the agent replied, and the agent has no reply to this message. "
                 + "It may or may not have run, so check before you retry."
         }
+    }
+
+    // Set only for -32010. The view model shows the Incompatible screen when it is non-nil.
+    var incompatibility: OIPHandshake.Incompatibility? {
+        if case .incompatibleProtocol(let value) = self {
+            return value
+        }
+        return nil
     }
 
     static func isConnectivityFailure(_ error: Error) -> Bool {
@@ -43,7 +56,7 @@ enum HostedAgentClientError: LocalizedError {
         switch clientError {
         case .closed, .timeout, .invalidURL:
             return true
-        case .invalidAddress, .badFrame, .server, .busy, .outcomeUnknown:
+        case .invalidAddress, .badFrame, .server, .busy, .incompatibleProtocol, .outcomeUnknown:
             return false
         }
     }

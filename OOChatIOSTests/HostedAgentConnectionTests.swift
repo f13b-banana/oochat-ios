@@ -1,4 +1,6 @@
+import CryptoKit
 import Foundation
+import ConnectOnionKit
 import XCTest
 @testable import OOChatIOS
 
@@ -262,6 +264,7 @@ final class HostedAgentConnectionTests: XCTestCase {
         XCTAssertEqual(connectFrame["to"]?.stringValue, agentAddress)
         XCTAssertEqual(connectFrame["session_id"]?.stringValue, conversation.id)
         XCTAssertEqual(connectFrame["timestamp"]?.numberValue?.rounded(), connectFrame["timestamp"]?.numberValue)
+        XCTAssertEqual(connectFrame["protocol"], .object(OIP.descriptor))
         guard case .object(let session)? = connectFrame["session"] else {
             return XCTFail("CONNECT must carry a session object")
         }
@@ -274,7 +277,7 @@ final class HostedAgentConnectionTests: XCTestCase {
                 "type": .string("CONNECTED"),
                 "status": .string("ready"),
                 "session": .object(["mode": .string("plan"), "server": .bool(true)]),
-                "session_id": .string("server-session-id"),
+                "session_id": .string("server-session-id")
             ],
             asData: true
         )
@@ -424,7 +427,7 @@ final class HostedAgentConnectionTests: XCTestCase {
                     HostedAgentFilePayload(
                         name: "note.txt",
                         data: "data:text/plain;base64,SGk="
-                    ),
+                    )
                 ],
                 onEvent: { events.append($0) },
                 onInteraction: { interaction in
@@ -457,8 +460,8 @@ final class HostedAgentConnectionTests: XCTestCase {
             .array([
                 .object([
                     "name": .string("note.txt"),
-                    "data": .string("data:text/plain;base64,SGk="),
-                ]),
+                    "data": .string("data:text/plain;base64,SGk=")
+                ])
             ])
         )
 
@@ -482,7 +485,7 @@ final class HostedAgentConnectionTests: XCTestCase {
                 "type": .string("ulw_turns_reached"),
                 "id": .string("ulw-1"),
                 "turns_used": .number(10),
-                "max_turns": .number(10),
+                "max_turns": .number(10)
             ]
         )
         _ = try await socket.waitForSentFrame(type: "ULW_RESPONSE")
@@ -501,7 +504,7 @@ final class HostedAgentConnectionTests: XCTestCase {
             [
                 "type": .string("OUTPUT"),
                 "result": .string("final answer"),
-                "session_id": .string("updated-session"),
+                "session_id": .string("updated-session")
             ]
         )
         let result = try await promptTask.value
@@ -749,21 +752,21 @@ final class HostedAgentConnectionTests: XCTestCase {
                     .object([
                         "id": .string("msg-0"),
                         "type": .string("user"),
-                        "content": .string("long think"),
+                        "content": .string("long think")
                     ]),
                     .object([
                         "id": .string("tool-1"),
                         "type": .string("tool_call"),
                         "name": .string("shell"),
                         "status": .string("done"),
-                        "result": .string("ok"),
+                        "result": .string("ok")
                     ]),
                     .object([
                         "id": .string("msg-1"),
                         "type": .string("agent"),
-                        "content": .string("missed reply"),
-                    ]),
-                ]),
+                        "content": .string("missed reply")
+                    ])
+                ])
             ]
         )
 
@@ -876,6 +879,76 @@ final class HostedAgentConnectionTests: XCTestCase {
 
     private var agentAddress: String {
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+
+    /// Signed commands:
+
+    private func signedPayload(of frame: [String: JSONValue]) throws -> [String: JSONValue] {
+        guard case .object(let payload)? = frame["payload"] else {
+            throw HostedAgentTestError.failed
+        }
+        return payload
+    }
+
+    /// Host verifies signature against key in 'from', over canonical payload
+    private func assertSignatureVerifies(_ frame: [String: JSONValue]) throws {
+        let payload = try signedPayload(of: frame)
+        let address = try XCTUnwrap(frame["from"]?.stringValue)
+        let publicKey = try Curve25519.Signing.PublicKey(rawRepresentation: try XCTUnwrap(Hex.decode(String(address.dropFirst(2)))))
+        let signature = try XCTUnwrap(Hex.decode(try XCTUnwrap(frame["signature"]?.stringValue)))
+        XCTAssertTrue(publicKey.isValidSignature(signature, for: CanonicalJSON.data(from: payload)))
+    }
+
+    func testConnectFrameSignsToTimestampNonceAndSignedCommands() async throws {
+        let connection = makeConnection(factory: MockHostedAgentSocketFactory())
+        let frame = try await connection.buildConnectFrame(conversation: makeConversation(id: "c-1"))
+        let payload = try signedPayload(of: frame)
+
+        XCTAssertEqual(payload["to"], .string(agentAddress))
+        XCTAssertEqual(payload["signed_commands"], .number(1))
+        XCTAssertFalse(try XCTUnwrap(payload["nonce"]?.stringValue).isEmpty)
+        XCTAssertNotNil(payload["timestamp"]?.numberValue)
+        XCTAssertNil(payload["action"])
+        XCTAssertNil(payload["session_sha256"])
+        XCTAssertEqual(frame["session_id"], .string("c-1"))
+        XCTAssertNotNil(frame["session"])
+        try assertSignatureVerifies(frame)
+    }
+
+    func testInputFrameSignsEveryFieldTheHostReads() async throws {
+        let connection = makeConnection(factory: MockHostedAgentSocketFactory())
+        let frame = try await connection.buildInputFrame(
+            prompt: "ls /tmp",
+            images: ["data:image/png;base64,AA=="],
+            files: [HostedAgentFilePayload(name: "note.txt", data: "data:text/plain;base64,SGk=")],
+            conversation: makeConversation(id: "c-1", mode: .ulw),
+            inputID: "input-1"
+        )
+        let payload = try signedPayload(of: frame)
+
+        XCTAssertEqual(payload["type"], .string("INPUT"))
+        XCTAssertEqual(payload["to"], .string(agentAddress))
+        XCTAssertEqual(payload["prompt"], .string("ls /tmp"))
+        XCTAssertEqual(payload["input_id"], .string("input-1"))
+        XCTAssertEqual(payload["session_id"], .string("c-1"))
+        XCTAssertEqual(payload["mode"], .string("ulw"))
+        XCTAssertEqual(payload["images"], .array([.string("data:image/png;base64,AA==")]))
+        XCTAssertNotNil(payload["files"])
+        XCTAssertFalse(try XCTUnwrap(payload["nonce"]?.stringValue).isEmpty)
+        XCTAssertEqual(frame["prompt"], .string("ls /tmp"))   // copy at the top level for pre-v2 hosts
+        try assertSignatureVerifies(frame)
+    }
+
+    func testInteractionResponsesAreSignedAsCommands() async throws {
+        let connection = makeConnection(factory: MockHostedAgentSocketFactory())
+        let signed = try await connection.signedCommand(ApprovalDecision.allowOnce.responseFrame)
+        let payload = try signedPayload(of: signed)
+
+        XCTAssertEqual(payload["type"], .string("APPROVAL_RESPONSE"))
+        XCTAssertEqual(payload["approved"], .bool(true))
+        XCTAssertEqual(payload["to"], .string(agentAddress))
+        XCTAssertFalse(try XCTUnwrap(payload["nonce"]?.stringValue).isEmpty)
+        try assertSignatureVerifies(signed)
     }
 
     private func makeConversation(

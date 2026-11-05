@@ -1,4 +1,5 @@
 import Foundation
+import ConnectOnionKit
 
 // Owns one socket and one active prompt for a conversation.
 actor HostedAgentConnection {
@@ -24,6 +25,7 @@ actor HostedAgentConnection {
 
     let key: HostedAgentConnectionKey
     let identityStore: IdentityStore
+    let signer: OIPSigner
     let connectionStateObserver: HostedAgentConnectionStateObserver
     let socketFactory: HostedAgentWebSocketFactory
     let endpointResolver: HostedAgentEndpointResolver
@@ -68,6 +70,7 @@ actor HostedAgentConnection {
     ) {
         self.key = key
         self.identityStore = identityStore
+        self.signer = OIPSigner(keyStore: identityStore)
         self.connectionStateObserver = connectionStateObserver
         self.socketFactory = socketFactory ?? { session.webSocketTask(with: $0) }
         self.endpointResolver = endpointResolver ?? { agentAddress in

@@ -1,4 +1,5 @@
 import Foundation
+import ConnectOnionKit
 
 struct ToolApprovalBatchItem: Equatable {
     let tool: String

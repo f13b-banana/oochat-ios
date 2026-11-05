@@ -7,7 +7,7 @@ final class ComposerTests: XCTestCase {
         let transport = MockAgentTransport()
         transport.availableSkills = [
             AgentSkill(name: "deploy", description: "Ship the current build"),
-            AgentSkill(name: "review", description: ""),
+            AgentSkill(name: "review", description: "")
         ]
         return transport
     }
@@ -110,7 +110,7 @@ final class ComposerTests: XCTestCase {
                 HostedAgentFilePayload(
                     name: "notes.txt",
                     data: "data:text/plain;base64,\(data.base64EncodedString())"
-                ),
+                )
             ]
         )
         XCTAssertTrue(viewModel.pendingFiles.isEmpty)
@@ -397,7 +397,7 @@ final class ToolCallGroupViewTests: XCTestCase {
         let messages = [
             ViewFixtures.toolMessage(id: "t1", name: "read_file", state: .completed),
             ViewFixtures.toolMessage(id: "t2", name: "edit_file", state: .completed),
-            ViewFixtures.toolMessage(id: "t3", name: "bash", state: .failed, content: "boom"),
+            ViewFixtures.toolMessage(id: "t3", name: "bash", state: .failed, content: "boom")
         ]
         let window = ViewHost.host(ToolCallGroupView(messages: messages))
 
@@ -410,7 +410,7 @@ final class ToolCallGroupViewTests: XCTestCase {
     func testGroupWithRunningToolShowsRunningTitle() {
         let messages = [
             ViewFixtures.toolMessage(id: "t1", name: "read_file", state: .running),
-            ViewFixtures.toolMessage(id: "t2", name: "bash", state: .completed),
+            ViewFixtures.toolMessage(id: "t2", name: "bash", state: .completed)
         ]
         let window = ViewHost.host(ToolCallGroupView(messages: messages))
         XCTAssertNotNil(ViewHost.element(labelContains: "Running 2 tools", in: window))

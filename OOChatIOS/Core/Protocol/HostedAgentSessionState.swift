@@ -1,3 +1,5 @@
+import ConnectOnionKit
+
 enum HostedAgentSessionState {
     static func applying(
         _ mode: ChatMode,

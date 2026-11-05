@@ -1,0 +1,7 @@
+{
+  "type": "PROVIDER_PERMISSION_ACK",
+  "requestId": "permission-1",
+  "invocationId": "codex:call-7",
+  "accepted": false,
+  "reason": "stale_revision"
+}

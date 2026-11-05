@@ -1,0 +1,8 @@
+{
+  "type": "EXEC_RESULT",
+  "exec_id": "7c2a91d0",
+  "tool": "bash",
+  "status": "success",
+  "result": "ok",
+  "duration_ms": 42
+}

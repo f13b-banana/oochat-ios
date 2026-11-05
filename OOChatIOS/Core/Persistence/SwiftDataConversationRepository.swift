@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import ConnectOnionKit
 
 @MainActor
 final class SwiftDataConversationRepository: ConversationRepository {
@@ -8,7 +9,6 @@ final class SwiftDataConversationRepository: ConversationRepository {
     private let defaults: UserDefaults
     private let activeAgentKey = "connectonion.native-ios.swiftdata.activeAgent"
     private let activeConversationKey = "connectonion.native-ios.swiftdata.activeConversation"
-
 
     init(inMemory: Bool = false, storeURL: URL? = nil, defaults: UserDefaults = .standard) throws {
         self.defaults = defaults
@@ -241,8 +241,6 @@ final class SwiftDataConversationRepository: ConversationRepository {
         }
     }
 
-
-
     private func storedAgent(id: String) throws -> StoredAgent? {
         try context.fetch(FetchDescriptor<StoredAgent>(predicate: #Predicate { $0.id == id })).first
     }
@@ -281,8 +279,6 @@ final class SwiftDataConversationRepository: ConversationRepository {
             defaults.removeObject(forKey: key)
         }
     }
-
-
 
     private func apply(_ agent: SavedAgent, to stored: StoredAgent) {
         stored.name = agent.name
@@ -372,8 +368,6 @@ final class SwiftDataConversationRepository: ConversationRepository {
         stored.toolArgumentsData = encodeToolArguments(message.toolArguments)
         stored.toolStateRaw = message.toolState?.rawValue
     }
-
-
 
     private func toAgent(_ stored: StoredAgent) -> SavedAgent {
         SavedAgent(

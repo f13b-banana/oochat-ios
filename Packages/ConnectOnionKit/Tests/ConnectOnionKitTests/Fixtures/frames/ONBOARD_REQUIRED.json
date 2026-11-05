@@ -1,0 +1,10 @@
+{
+  "type": "ONBOARD_REQUIRED",
+  "identity": "0xc0ffee11c0ffee11c0ffee11c0ffee11c0ffee11c0ffee11c0ffee11c0ffee11",
+  "methods": [
+    "invite_code",
+    "payment"
+  ],
+  "payment_amount": 10,
+  "payment_address": "0x3d4017c3e843a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1"
+}

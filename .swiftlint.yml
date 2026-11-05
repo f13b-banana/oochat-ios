@@ -1,6 +1,8 @@
 included:
   - OOChatIOS
   - OOChatIOSTests
+  - Packages/ConnectOnionKit/Sources
+  - Packages/ConnectOnionKit/Tests
 
 excluded:
   - OOChatIOS/Core/Protocol/HostedAgentClient.bak.swift

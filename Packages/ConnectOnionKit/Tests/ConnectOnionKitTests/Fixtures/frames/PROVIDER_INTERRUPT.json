@@ -1,0 +1,5 @@
+{
+  "type": "PROVIDER_INTERRUPT",
+  "requestId": "interrupt-1",
+  "invocationId": "codex:call-7"
+}

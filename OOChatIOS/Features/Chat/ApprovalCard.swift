@@ -1,4 +1,6 @@
 import SwiftUI
+import ConnectOnionKit
+
 // Card view for pending approval requests.
 struct ApprovalCard: View {
     let approval: PendingApproval
@@ -148,7 +150,7 @@ struct ApprovalCard: View {
     @ViewBuilder
     private var argumentList: some View {
         let details = ToolActionSummary.argumentsDescription(displayArguments)
-        if (commandArgument == nil || isCommandExpanded), !details.isEmpty {
+        if commandArgument == nil || isCommandExpanded, !details.isEmpty {
             Text(details)
                 .font(.system(.footnote, design: .monospaced))
                 .textSelection(.enabled)

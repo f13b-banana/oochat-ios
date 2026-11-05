@@ -1,0 +1,9 @@
+{
+  "frame": {
+    "session": {
+      "session_id": "session-1"
+    },
+    "type": "SESSION_STATUS"
+  },
+  "signed": false
+}

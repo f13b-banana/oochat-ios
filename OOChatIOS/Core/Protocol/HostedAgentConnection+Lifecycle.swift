@@ -1,3 +1,4 @@
+import ConnectOnionKit
 import Foundation
 
 extension HostedAgentConnection {
@@ -482,6 +483,7 @@ extension HostedAgentConnection {
         frame["to"] = .string(key.agentAddress)
         frame["session_id"] = .string(conversation.id)
         frame["session"] = .object(session)
+        frame["protocol"] = .object(OIP.descriptor)
         return frame
     }
 

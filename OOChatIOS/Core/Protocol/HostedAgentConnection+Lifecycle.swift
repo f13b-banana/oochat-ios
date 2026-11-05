@@ -1,3 +1,4 @@
+import ConnectOnionKit
 import Foundation
 
 extension HostedAgentConnection {
@@ -6,6 +7,9 @@ extension HostedAgentConnection {
             return
         }
         lastNetworkActivityAt = Date()
+        guard recordEventIfNew(frame) else {
+            return
+        }
 
         switch frame["type"]?.stringValue {
         case "PING":
@@ -28,12 +32,41 @@ extension HostedAgentConnection {
         }
     }
 
+    static let interactionFrameTypes: Set<String> = [
+        "approval_needed", "APPROVAL_NEEDED", "ulw_turns_reached", "plan_review", "ask_user"
+    ]
+
+    /// Port of macOS recordEventIfNew
+    func recordEventIfNew(_ frame: [String: JSONValue]) -> Bool {
+        guard let eventID = frame["id"]?.stringValue, !eventID.isEmpty else {
+            return true
+        }
+        let type = frame["type"]?.stringValue ?? "unknown"
+        guard !Self.interactionFrameTypes.contains(type) else {
+            return true
+        }
+        let status = frame["status"]?.stringValue ?? "none"
+        let sequence = frame["seq"]?.numberValue.map { String(Int($0)) } ?? "none"
+        guard eventLedger.record(eventID: "\(type):\(eventID):\(status):\(sequence)") else {
+            return false
+        }
+        advanceBookmark(to: eventID)
+        return true
+    }
+
+    func advanceBookmark(to eventID: String) {
+        let fallbackID = lastConversation?.id ?? key.conversationID
+        var bookmark = bookmarkStore.load(conversationID: key.conversationID) ?? SessionBookmark(sessionID: fallbackID)
+        bookmark.lastMessageID = eventID
+        bookmarkStore.save(bookmark, conversationID: key.conversationID)
+    }
+
     private func handlePing(generation: Int) async {
         guard let socket else {
             return
         }
         do {
-            try await send(["type": .string("PONG")], over: socket)
+            try await send(OIPClientFrames.pong(), over: socket)
         } catch {
             failConnection(error, generation: generation)
         }
@@ -234,6 +267,7 @@ extension HostedAgentConnection {
                 return
             }
             try await send(frame, over: socket)
+            advanceBookmark(to: interaction.id)
         } catch {
             failConnection(error, generation: generation)
         }
@@ -257,6 +291,7 @@ extension HostedAgentConnection {
                 return
             }
             try await send(frame, over: socket)
+            advanceBookmark(to: interaction.id)
         } catch {
             failConnection(error, generation: generation)
         }
@@ -271,33 +306,16 @@ extension HostedAgentConnection {
         // superseded requests release the local gate without writing to the socket
         case (_, .superseded):
             return nil
-        case (.approval, .approval(let approval)):
-            return HostedAgentClient.approvalResponseFrame(
-                decision: approval,
-                agentAddress: key.agentAddress,
-                endpoint: endpoint
-            )
+        case (.approval(let request), .approval(let approval)):
+            return try frames.approvalResponse(requestID: request.id, decision: approval.decisionFields)
         case (.ulwCheckpoint, .ulwCheckpoint(let checkpoint)):
-            return HostedAgentClient.ulwResponseFrame(
-                decision: checkpoint,
-                agentAddress: key.agentAddress,
-                endpoint: endpoint
-            )
+            return try signedCommand(checkpoint.responseFrame)
         case (.planReview(let request), .planReview(let review)):
-            return HostedAgentClient.planReviewResponseFrame(
-                decision: review,
-                request: request,
-                agentAddress: key.agentAddress,
-                endpoint: endpoint
-            )
+            return try signedCommand(review.responseFrame(for: request))
         case (.askUser, .askUser(.cancel)):
             return nil
-        case (.askUser, .askUser(.answer(let answer))):
-            return HostedAgentClient.askUserResponseFrame(
-                answer: answer,
-                agentAddress: key.agentAddress,
-                endpoint: endpoint
-            )
+        case (.askUser(let request), .askUser(.answer(let answer))):
+            return try frames.askUserResponse(requestID: request.id, answer: answer)
         default:
             throw HostedAgentClientError.badFrame
         }
@@ -340,7 +358,9 @@ extension HostedAgentConnection {
         guard pendingPrompt != nil,
               connectWaiters.isEmpty,
               lastConversation != nil,
-              resumeAttemptsUsed < resumeAttemptLimit else {
+              case .connecting = reduce(
+                .connecting(attempt: resumeAttemptsUsed), .socketClosed, maxAttempts: reconnectPolicy.maxAttempts
+              ) else {
             return false
         }
         switch error {
@@ -380,7 +400,7 @@ extension HostedAgentConnection {
         endpoint = nil
         socket?.cancel(with: .goingAway, reason: nil)
 
-        let delay = resumeRetryDelay * pow(2, Double(resumeAttemptsUsed - 1))
+        let delay = reconnectPolicy.delay(for: resumeAttemptsUsed)
         resumeTask = Task { [weak self] in
             if delay > 0 {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -469,20 +489,14 @@ extension HostedAgentConnection {
         try await endpointResolver(agentAddress)
     }
 
+    /// iOS has always sent the top-levl 'to' direcgt or relay - host ignores it on a direct socket.
     func buildConnectFrame(conversation: Conversation) throws -> [String: JSONValue] {
-        let timestamp = Double(Int(Date().timeIntervalSince1970))
-        let session = sessionPayload(for: conversation)
-        let payload = HostedAgentClient.connectSignaturePayload(
-            agentAddress: key.agentAddress,
-            conversationID: conversation.id,
-            session: session,
-            timestamp: timestamp
+        try frames.connect(
+            direct: false,
+            sessionID: conversation.id,
+            session: .object(sessionPayload(for: conversation)),
+            lastMessageID: bookmarkStore.load(conversationID: key.conversationID)?.lastMessageID
         )
-        var frame = try identityStore.signedEnvelope(type: "CONNECT", payload: payload)
-        frame["to"] = .string(key.agentAddress)
-        frame["session_id"] = .string(conversation.id)
-        frame["session"] = .object(session)
-        return frame
     }
 
     func sessionPayload(for conversation: Conversation) -> [String: JSONValue] {
@@ -493,37 +507,16 @@ extension HostedAgentConnection {
         )
     }
 
-    func buildInputFrame(
-        prompt: String,
-        images: [String],
-        files: [HostedAgentFilePayload],
-        conversation: Conversation,
-        inputID: String
-    ) throws -> [String: JSONValue] {
-        let timestamp = Double(Int(Date().timeIntervalSince1970))
-        let payload = HostedAgentClient.inputSignaturePayload(
-            agentAddress: key.agentAddress,
-            conversationID: conversation.id,
-            inputID: inputID,
-            prompt: prompt,
-            mode: conversation.mode,
-            timestamp: timestamp,
-            images: images,
-            files: files
-        )
-        var frame = try identityStore.signedEnvelope(type: "INPUT", payload: payload)
-        frame["to"] = .string(key.agentAddress)
-        frame["session_id"] = .string(conversation.id)
-        frame["input_id"] = .string(inputID)
-        frame["prompt"] = .string(prompt)
-        frame["mode"] = .string(conversation.mode.rawValue)
-        if !images.isEmpty {
-            frame["images"] = .array(images.map(JSONValue.string))
+    /// ULW and plan review answers have no named builder in pkg, so they go through generic signed command.
+    /// WIth signed_commands flag set, the host eruns only teh signed payload
+    func signedCommand(_ frame: [String: JSONValue]) throws -> [String: JSONValue] {
+        guard case .string(let type)? = frame["type"] else {
+            throw HostedAgentClientError.badFrame
         }
-        if !files.isEmpty {
-            frame["files"] = .array(files.map(\.jsonValue))
-        }
-        return frame
+
+        var fields = frame
+        fields["type"] = nil
+        return try frames.command(type: type, fields: fields)
     }
 
     func send(_ frame: [String: JSONValue], over socket: any HostedAgentWebSocketTask) async throws {

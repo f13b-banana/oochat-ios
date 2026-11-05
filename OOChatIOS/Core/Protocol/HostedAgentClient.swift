@@ -1,5 +1,5 @@
-import CryptoKit
 import Foundation
+import ConnectOnionKit
 
 final class HostedAgentClient: HostedAgentTransport {
     private let connectionPool: HostedAgentConnectionPool
@@ -46,55 +46,6 @@ final class HostedAgentClient: HostedAgentTransport {
 
     static func isHostedAgentAddress(_ address: String) -> Bool {
         address.range(of: #"^0x[0-9a-fA-F]{64}$"#, options: .regularExpression) != nil
-    }
-
-    static func connectSignaturePayload(
-        agentAddress: String,
-        conversationID: String,
-        session: [String: JSONValue],
-        timestamp: Double
-    ) -> [String: JSONValue] {
-        [
-            "action": .string("session.connect"),
-            "to": .string(agentAddress),
-            "timestamp": .number(timestamp),
-            "session_id": .string(conversationID),
-            "session_sha256": .string(canonicalSHA256(.object(session))),
-        ]
-    }
-
-    static func inputSignaturePayload(
-        agentAddress: String,
-        conversationID: String,
-        inputID: String,
-        prompt: String,
-        mode: ChatMode,
-        timestamp: Double,
-        images: [String] = [],
-        files: [HostedAgentFilePayload] = []
-    ) -> [String: JSONValue] {
-        [
-            "action": .string("session.input"),
-            "to": .string(agentAddress),
-            "timestamp": .number(timestamp),
-            "session_id": .string(conversationID),
-            "input_id": .string(inputID),
-            "prompt": .string(prompt),
-            "mode": .string(mode.rawValue),
-            "attachments_sha256": .string(
-                canonicalSHA256(
-                    .object([
-                        "images": .array(images.map(JSONValue.string)),
-                        "files": .array(files.map(\.jsonValue)),
-                    ])
-                )
-            ),
-        ]
-    }
-
-    private static func canonicalSHA256(_ value: JSONValue) -> String {
-        let digest = SHA256.hash(data: Data(CanonicalJSON.string(from: value).utf8))
-        return Hex.encode(Data(digest))
     }
 
     func connect(agentAddress: String, conversation: Conversation) async throws -> HostedAgentResult {
@@ -171,67 +122,4 @@ final class HostedAgentClient: HostedAgentTransport {
             await connectionPool.noteApplicationBecameActive()
         }
     }
-
-    static func approvalResponseFrame(
-        decision: ApprovalDecision,
-        agentAddress: String,
-        endpoint: ResolvedEndpoint
-    ) -> [String: JSONValue] {
-        let recipient = endpoint.kind == .relay ? agentAddress : nil
-        return decision.responseFrame(to: recipient)
-    }
-
-    static func ulwResponseFrame(
-        decision: UlwCheckpointDecision,
-        agentAddress: String,
-        endpoint: ResolvedEndpoint
-    ) -> [String: JSONValue] {
-        routedInteractiveFrame(
-            decision.responseFrame,
-            agentAddress: agentAddress,
-            endpoint: endpoint
-        )
-    }
-
-    static func planReviewResponseFrame(
-        decision: PlanReviewDecision,
-        request: PlanReviewRequest,
-        agentAddress: String,
-        endpoint: ResolvedEndpoint
-    ) -> [String: JSONValue] {
-        routedInteractiveFrame(
-            decision.responseFrame(for: request),
-            agentAddress: agentAddress,
-            endpoint: endpoint
-        )
-    }
-
-    static func askUserResponseFrame(
-        answer: String,
-        agentAddress: String,
-        endpoint: ResolvedEndpoint
-    ) -> [String: JSONValue] {
-        routedInteractiveFrame(
-            [
-                "type": .string("ASK_USER_RESPONSE"),
-                "answer": .string(answer),
-            ],
-            agentAddress: agentAddress,
-            endpoint: endpoint
-        )
-    }
-
-    private static func routedInteractiveFrame(
-        _ frame: [String: JSONValue],
-        agentAddress: String,
-        endpoint: ResolvedEndpoint
-    ) -> [String: JSONValue] {
-        guard endpoint.kind == .relay else {
-            return frame
-        }
-        var routed = frame
-        routed["to"] = .string(agentAddress)
-        return routed
-    }
-
 }

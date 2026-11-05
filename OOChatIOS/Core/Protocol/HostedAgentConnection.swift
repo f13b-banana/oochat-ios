@@ -1,4 +1,5 @@
 import Foundation
+import ConnectOnionKit
 
 // Owns one socket and one active prompt for a conversation.
 actor HostedAgentConnection {
@@ -24,6 +25,7 @@ actor HostedAgentConnection {
 
     let key: HostedAgentConnectionKey
     let identityStore: IdentityStore
+    let frames: OIPClientFrames
     let connectionStateObserver: HostedAgentConnectionStateObserver
     let socketFactory: HostedAgentWebSocketFactory
     let endpointResolver: HostedAgentEndpointResolver
@@ -32,7 +34,10 @@ actor HostedAgentConnection {
     let livenessCheckInterval: TimeInterval
     let resumeAttemptLimit: Int
     let resumeRetryDelay: TimeInterval
+    let bookmarkStore: HostedAgentBookmarkStore
+    let reconnectPolicy: ReconnectPolicy
 
+    var eventLedger = EventLedger()
     var state: State = .disconnected
     var socket: (any HostedAgentWebSocketTask)?
     var endpoint: ResolvedEndpoint?
@@ -64,10 +69,12 @@ actor HostedAgentConnection {
         livenessTimeout: TimeInterval = 75,
         livenessCheckInterval: TimeInterval = 10,
         resumeAttemptLimit: Int = 3,
-        resumeRetryDelay: TimeInterval = 1
+        resumeRetryDelay: TimeInterval = 1,
+        bookmarkStore: HostedAgentBookmarkStore = HostedAgentBookmarkStore()
     ) {
         self.key = key
         self.identityStore = identityStore
+        self.frames = OIPClientFrames(keyStore: identityStore, to: key.agentAddress)
         self.connectionStateObserver = connectionStateObserver
         self.socketFactory = socketFactory ?? { session.webSocketTask(with: $0) }
         self.endpointResolver = endpointResolver ?? { agentAddress in
@@ -78,6 +85,8 @@ actor HostedAgentConnection {
         self.livenessCheckInterval = livenessCheckInterval
         self.resumeAttemptLimit = resumeAttemptLimit
         self.resumeRetryDelay = resumeRetryDelay
+        self.bookmarkStore = bookmarkStore
+        self.reconnectPolicy = ReconnectPolicy(maxAttempts: resumeAttemptLimit + 1, baseDelay: resumeRetryDelay)
     }
 
     // Share one connection attempt across callers for this conversation.
@@ -300,12 +309,11 @@ actor HostedAgentConnection {
             return
         }
         do {
-            let inputFrame = try buildInputFrame(
+            let inputFrame = try frames.input(
+                inputID: pending.inputID,
                 prompt: prompt,
                 images: images,
-                files: files,
-                conversation: conversation,
-                inputID: pending.inputID
+                files: files.map(\.jsonValue)
             )
             try await send(inputFrame, over: socket)
             if pendingPrompt?.id == promptID {

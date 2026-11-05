@@ -79,11 +79,19 @@ final class NetworkRecoveryTests: XCTestCase {
 
         XCTAssertEqual(transport.sentPrompts, ["first"])
         XCTAssertTrue(viewModel.isProcessing)
+        // "first" has gone to the host, so it is .transmitted, never .queued (which would resend it).
+        func firstState() -> MessageDeliveryState? {
+            viewModel.activeConversation?.messages.first { $0.content == "first" }?.deliveryState
+        }
+        for _ in 0..<100 where firstState() != .transmitted {
+            await Task.yield()
+        }
+        XCTAssertEqual(firstState(), .transmitted)
         XCTAssertEqual(
             viewModel.activeConversation?.messages.filter {
                 $0.role == .user && $0.deliveryState == .queued
             }.map(\.content),
-            ["first", "second"]
+            ["second"]
         )
 
         await firstGate.open()

@@ -143,26 +143,41 @@ extension HostedAgentConnection {
         guard frame["status"]?.stringValue != "running" else {
             return
         }
+        if pending.inputDelivered {
+            await settleFromChatItems(pending, frame: frame)
+        } else {
+            await resendUndeliveredPrompt(pending, generation: generation)
+        }
+    }
 
-        if !pending.inputDelivered {
-            guard var conversation = lastConversation else {
-                failConnection(HostedAgentClientError.closed, generation: generation)
-                return
-            }
-            if let serverSession {
-                conversation.serverSession = serverSession
-            }
-            await transmitPrompt(
-                pending.prompt,
-                images: pending.images,
-                files: pending.files,
-                conversation: conversation,
-                promptID: pending.id
-            )
+    // The INPUT never started the run, so send it again on this socket.
+    private func resendUndeliveredPrompt(_ pending: PendingPrompt, generation: Int) async {
+        guard var conversation = lastConversation else {
+            failConnection(HostedAgentClientError.closed, generation: generation)
             return
         }
+        if let serverSession {
+            conversation.serverSession = serverSession
+        }
+        await transmitPrompt(
+            pending.prompt,
+            images: pending.images,
+            files: pending.files,
+            conversation: conversation,
+            promptID: pending.id
+        )
+    }
 
-        let missedItems = Self.itemsAfterLastUserMessage(in: frame)
+    // The run finished while we were away: replay its tool results, then answer with its reply.
+    private func settleFromChatItems(_ pending: PendingPrompt, frame: [String: JSONValue]) async {
+        let missedItems: [[String: JSONValue]]
+        if pending.requiresMatchingUserTurn {
+            // After a relaunch the host's last turn may be an older one (our INPUT never
+            // arrived), so its reply must not be taken as the answer to this prompt.
+            missedItems = Self.itemsAfterUserMessage(matching: pending.prompt, in: frame) ?? []
+        } else {
+            missedItems = Self.itemsAfterLastUserMessage(in: frame)
+        }
         for item in missedItems {
             guard let event = Self.replayedToolResult(item) else {
                 continue
@@ -185,8 +200,42 @@ extension HostedAgentConnection {
             )
         } else {
             // the server no longer has the run or its reply, so let the user retry
-            pending.continuation.resume(throwing: HostedAgentClientError.closed)
+            pending.continuation.resume(
+                throwing: pending.requiresMatchingUserTurn
+                    ? HostedAgentClientError.outcomeUnknown
+                    : HostedAgentClientError.closed
+            )
         }
+    }
+
+    // The items of the last turn, but only when that turn's user message is `prompt`.
+    // nil when there are no chat_items or the last turn belongs to another message.
+    private static func itemsAfterUserMessage(
+        matching prompt: String,
+        in frame: [String: JSONValue]
+    ) -> [[String: JSONValue]]? {
+        guard case .array(let values)? = frame["chat_items"] else {
+            return nil
+        }
+        var lastUserContent: String?
+        var turn: [[String: JSONValue]] = []
+        for value in values {
+            guard case .object(let item) = value else {
+                continue
+            }
+            if item["type"]?.stringValue == "user" {
+                lastUserContent = item["content"]?.stringValue
+                turn.removeAll()
+            } else {
+                turn.append(item)
+            }
+        }
+        let expected = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let lastUserContent,
+              lastUserContent.trimmingCharacters(in: .whitespacesAndNewlines) == expected else {
+            return nil
+        }
+        return turn
     }
 
     private static func itemsAfterLastUserMessage(in frame: [String: JSONValue]) -> [[String: JSONValue]] {

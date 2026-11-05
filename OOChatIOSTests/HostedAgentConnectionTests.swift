@@ -4,257 +4,6 @@ import ConnectOnionKit
 import XCTest
 @testable import OOChatIOS
 
-private enum HostedAgentTestError: Error {
-    case failed
-    case cancelled
-    case timedOut
-}
-
-private final class MockHostedAgentWebSocket: HostedAgentWebSocketTask, @unchecked Sendable {
-    typealias Message = URLSessionWebSocketTask.Message
-
-    private let lock = NSLock()
-    private var queuedReceives: [Result<Message, Error>] = []
-    private var receiveContinuation: CheckedContinuation<Message, Error>?
-    private var storedSentMessages: [Message] = []
-    private var storedNextSendError: Error?
-    private var storedRecordsFailedSend = false
-    private var storedIsResumed = false
-    private var storedCloseCode: URLSessionWebSocketTask.CloseCode?
-
-    var isResumed: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return storedIsResumed
-    }
-
-    var closeCode: URLSessionWebSocketTask.CloseCode? {
-        lock.lock()
-        defer { lock.unlock() }
-        return storedCloseCode
-    }
-
-    func resume() {
-        lock.lock()
-        storedIsResumed = true
-        lock.unlock()
-    }
-
-    func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
-        let continuation: CheckedContinuation<Message, Error>?
-        lock.lock()
-        storedCloseCode = closeCode
-        continuation = receiveContinuation
-        receiveContinuation = nil
-        lock.unlock()
-        continuation?.resume(throwing: HostedAgentTestError.cancelled)
-    }
-
-    func send(_ message: Message) async throws {
-        if let error = recordSend(message) {
-            throw error
-        }
-    }
-
-    private func recordSend(_ message: Message) -> Error? {
-        lock.lock()
-        if let error = storedNextSendError {
-            storedNextSendError = nil
-            if storedRecordsFailedSend {
-                storedRecordsFailedSend = false
-                storedSentMessages.append(message)
-            }
-            lock.unlock()
-            return error
-        }
-        storedSentMessages.append(message)
-        lock.unlock()
-        return nil
-    }
-
-    func receive() async throws -> Message {
-        try await withCheckedThrowingContinuation { continuation in
-            lock.lock()
-            if let result = queuedReceives.first {
-                queuedReceives.removeFirst()
-                lock.unlock()
-                continuation.resume(with: result)
-                return
-            }
-            if storedCloseCode != nil {
-                lock.unlock()
-                continuation.resume(throwing: HostedAgentTestError.cancelled)
-                return
-            }
-            receiveContinuation = continuation
-            lock.unlock()
-        }
-    }
-
-    func failNextSend(with error: Error = HostedAgentTestError.failed, afterRecording: Bool = false) {
-        lock.lock()
-        storedNextSendError = error
-        storedRecordsFailedSend = afterRecording
-        lock.unlock()
-    }
-
-    func enqueueFrame(_ frame: [String: JSONValue], asData: Bool = false) throws {
-        let data = try JSONEncoder().encode(frame)
-        let message: Message
-        if asData {
-            message = .data(data)
-        } else {
-            message = .string(try XCTUnwrap(String(data: data, encoding: .utf8)))
-        }
-        enqueue(.success(message))
-    }
-
-    func enqueueText(_ text: String) {
-        enqueue(.success(.string(text)))
-    }
-
-    func enqueueError(_ error: Error = HostedAgentTestError.failed) {
-        enqueue(.failure(error))
-    }
-
-    func sentFrames() throws -> [[String: JSONValue]] {
-        let messages: [Message]
-        lock.lock()
-        messages = storedSentMessages
-        lock.unlock()
-
-        return try messages.map { message in
-            let data: Data
-            switch message {
-            case .string(let text):
-                data = try XCTUnwrap(text.data(using: .utf8))
-            case .data(let value):
-                data = value
-            @unknown default:
-                throw HostedAgentTestError.failed
-            }
-            return try JSONDecoder().decode([String: JSONValue].self, from: data)
-        }
-    }
-
-    func waitForSentFrame(
-        type: String,
-        occurrence: Int = 1,
-        timeout: TimeInterval = 1
-    ) async throws -> [String: JSONValue] {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            let matching = try sentFrames().filter { $0["type"]?.stringValue == type }
-            if matching.count >= occurrence {
-                return matching[occurrence - 1]
-            }
-            try await Task.sleep(nanoseconds: 2_000_000)
-        }
-        throw HostedAgentTestError.timedOut
-    }
-
-    private func enqueue(_ result: Result<Message, Error>) {
-        let continuation: CheckedContinuation<Message, Error>?
-        lock.lock()
-        continuation = receiveContinuation
-        receiveContinuation = nil
-        if continuation == nil {
-            queuedReceives.append(result)
-        }
-        lock.unlock()
-        continuation?.resume(with: result)
-    }
-}
-
-private final class MockHostedAgentSocketFactory: @unchecked Sendable {
-    private let lock = NSLock()
-    private let configureSocket: @Sendable (MockHostedAgentWebSocket) -> Void
-    private var storedSockets: [MockHostedAgentWebSocket] = []
-    private var storedURLs: [URL] = []
-
-    init(configureSocket: @escaping @Sendable (MockHostedAgentWebSocket) -> Void = { _ in }) {
-        self.configureSocket = configureSocket
-    }
-
-    var factory: HostedAgentWebSocketFactory {
-        { [weak self] url in
-            guard let self else {
-                return MockHostedAgentWebSocket()
-            }
-            let socket = MockHostedAgentWebSocket()
-            self.configureSocket(socket)
-            self.lock.lock()
-            self.storedURLs.append(url)
-            self.storedSockets.append(socket)
-            self.lock.unlock()
-            return socket
-        }
-    }
-
-    var count: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return storedSockets.count
-    }
-
-    func url(at index: Int) -> URL? {
-        lock.lock()
-        defer { lock.unlock() }
-        return storedURLs.indices.contains(index) ? storedURLs[index] : nil
-    }
-
-    func socket(at index: Int, timeout: TimeInterval = 1) async throws -> MockHostedAgentWebSocket {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            let socket = storedSocket(at: index)
-            if let socket {
-                return socket
-            }
-            try await Task.sleep(nanoseconds: 2_000_000)
-        }
-        throw HostedAgentTestError.timedOut
-    }
-
-    private func storedSocket(at index: Int) -> MockHostedAgentWebSocket? {
-        lock.lock()
-        defer { lock.unlock() }
-        return storedSockets.indices.contains(index) ? storedSockets[index] : nil
-    }
-}
-
-private final class MutableHostedAgentClock: @unchecked Sendable {
-    private let lock = NSLock()
-    private var date: Date
-
-    init(date: Date = Date(timeIntervalSince1970: 1_000)) {
-        self.date = date
-    }
-
-    func now() -> Date {
-        lock.lock()
-        defer { lock.unlock() }
-        return date
-    }
-
-    func advance(by interval: TimeInterval) {
-        lock.lock()
-        date = date.addingTimeInterval(interval)
-        lock.unlock()
-    }
-}
-
-private actor EndpointSequence {
-    private var queue: [ResolvedEndpoint]
-
-    init(_ endpoints: [ResolvedEndpoint]) {
-        queue = endpoints
-    }
-
-    func next() -> ResolvedEndpoint {
-        queue.count > 1 ? queue.removeFirst() : queue[0]
-    }
-}
-
 @MainActor
 final class HostedAgentConnectionTests: XCTestCase {
     private let endpoint = ResolvedEndpoint(
@@ -798,6 +547,181 @@ final class HostedAgentConnectionTests: XCTestCase {
             [.toolResult(id: "tool-1", name: "shell", output: "ok", state: .completed)]
         )
         await connection.close()
+    }
+
+    // MARK: Prompts sent before a relaunch
+
+    func testSendPromptReportsDispatchBeforeTheInputLeaves() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let conversation = makeConversation(id: "dispatch-order")
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+        let socket = try await factory.socket(at: 0)
+        var inputFramesAtDispatch: Int?
+
+        let promptTask = Task {
+            try await connection.sendPrompt(
+                conversation: conversation,
+                prompt: "make a file",
+                onEvent: nil,
+                onInteraction: nil,
+                onInputDispatched: {
+                    inputFramesAtDispatch = (try? socket.sentFrames())?
+                        .filter { $0["type"]?.stringValue == "INPUT" }.count
+                }
+            )
+        }
+        _ = try await socket.waitForSentFrame(type: "INPUT")
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("done")])
+
+        let result = try await promptTask.value
+        XCTAssertEqual(result.output, "done")
+        XCTAssertEqual(inputFramesAtDispatch, 0, "the app must save the mark before INPUT is written")
+        await connection.close()
+    }
+
+    func testResumeReadsAFinishedTurnWithoutSendingInput() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let conversation = makeConversation(
+            id: "resume-finished-turn",
+            serverSession: ["turn": .number(1), "session_id": .string("resume-finished-turn")]
+        )
+
+        let resumeTask = Task {
+            try await connection.resumePrompt(
+                conversation: conversation,
+                prompt: "Make him a text file",
+                onEvent: nil,
+                onInteraction: nil
+            )
+        }
+        let socket = try await factory.socket(at: 0)
+        let connectFrame = try await socket.waitForSentFrame(type: "CONNECT")
+        // No turn history goes up, so the host's copy always wins and chat_items come back.
+        guard case .object(let session)? = connectFrame["session"] else {
+            return XCTFail("CONNECT must carry a session object")
+        }
+        XCTAssertEqual(Set(session.keys), ["session_id", "mode"])
+
+        try socket.enqueueFrame(
+            [
+                "type": .string("CONNECTED"),
+                "status": .string("connected"),
+                "server_newer": .bool(true),
+                "session": .object(["turn": .number(2)]),
+                "chat_items": .array([
+                    .object(["id": .string("msg-0"), "type": .string("user"), "content": .string("earlier")]),
+                    .object(["id": .string("msg-1"), "type": .string("agent"), "content": .string("earlier reply")]),
+                    .object(["id": .string("msg-2"), "type": .string("user"), "content": .string("Make him a text file")]),
+                    .object(["id": .string("msg-3"), "type": .string("agent"), "content": .string("Created smiley.txt")])
+                ])
+            ]
+        )
+
+        let result = try await resumeTask.value
+        XCTAssertEqual(result.output, "Created smiley.txt")
+        XCTAssertEqual(try socket.sentFrames().compactMap { $0["type"]?.stringValue }, ["CONNECT"])
+        await connection.close()
+    }
+
+    func testResumeRejectsAnOlderTurnsReply() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let conversation = makeConversation(id: "resume-older-turn")
+
+        let resumeTask = Task {
+            try await connection.resumePrompt(
+                conversation: conversation,
+                prompt: "Delete the temp folder",
+                onEvent: nil,
+                onInteraction: nil
+            )
+        }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        // The INPUT never arrived: the host's last turn is an older message.
+        try socket.enqueueFrame(
+            [
+                "type": .string("CONNECTED"),
+                "status": .string("connected"),
+                "server_newer": .bool(true),
+                "chat_items": .array([
+                    .object(["id": .string("msg-0"), "type": .string("user"), "content": .string("earlier")]),
+                    .object(["id": .string("msg-1"), "type": .string("agent"), "content": .string("earlier reply")])
+                ])
+            ]
+        )
+
+        await assertOutcomeUnknown(from: resumeTask)
+        XCTAssertEqual(try socket.sentFrames().compactMap { $0["type"]?.stringValue }, ["CONNECT"])
+        await connection.close()
+    }
+
+    func testResumeWithNoHostRecordFailsWithoutSendingInput() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let conversation = makeConversation(id: "resume-no-record")
+
+        let resumeTask = Task {
+            try await connection.resumePrompt(
+                conversation: conversation,
+                prompt: "Make him a text file",
+                onEvent: nil,
+                onInteraction: nil
+            )
+        }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        try socket.enqueueFrame(["type": .string("CONNECTED"), "status": .string("new")])
+
+        await assertOutcomeUnknown(from: resumeTask)
+        XCTAssertEqual(try socket.sentFrames().compactMap { $0["type"]?.stringValue }, ["CONNECT"])
+        await connection.close()
+    }
+
+    func testResumeFollowsATurnThatIsStillRunning() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let conversation = makeConversation(id: "resume-running")
+        var events: [HostedAgentEvent] = []
+
+        let resumeTask = Task {
+            try await connection.resumePrompt(
+                conversation: conversation,
+                prompt: "long task",
+                onEvent: { events.append($0) },
+                onInteraction: nil
+            )
+        }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        try socket.enqueueFrame(["type": .string("CONNECTED"), "status": .string("running")])
+        try socket.enqueueFrame(
+            ["type": .string("tool_result"), "id": .string("tool-1"), "name": .string("write"), "result": .string("ok")]
+        )
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("finished")])
+
+        let result = try await resumeTask.value
+        XCTAssertEqual(result.output, "finished")
+        XCTAssertEqual(events, [.toolResult(id: "tool-1", name: "write", output: "ok", state: .completed)])
+        XCTAssertEqual(try socket.sentFrames().compactMap { $0["type"]?.stringValue }, ["CONNECT"])
+        await connection.close()
+    }
+
+    private func assertOutcomeUnknown(
+        from task: Task<HostedAgentResult, Error>,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        do {
+            _ = try await task.value
+            XCTFail("Expected outcomeUnknown", file: file, line: line)
+        } catch HostedAgentClientError.outcomeUnknown {
+            return
+        } catch {
+            XCTFail("Expected outcomeUnknown, got \(error)", file: file, line: line)
+        }
     }
 
     func testPromptResendsInputThatNeverReachedTheAgent() async throws {

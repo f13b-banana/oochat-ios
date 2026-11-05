@@ -141,7 +141,7 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
                 role: .user,
                 content: "ConnectOnion native iOS session is ready.",
                 createdAt: seconds(1003)
-            ),
+            )
         ]
         repository.upsertConversation(conversation)
 
@@ -167,7 +167,7 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
             ChatMessage(id: "asked", role: .user, content: "hi", createdAt: seconds(1001)),
             ChatMessage(id: "stale", role: .thinking, content: "Waiting…", createdAt: seconds(1002)),
             ChatMessage(id: "tool-run", role: .tool, content: "", createdAt: seconds(1003)),
-            ChatMessage(id: "replied", role: .agent, content: "hello", createdAt: seconds(1004)),
+            ChatMessage(id: "replied", role: .agent, content: "hello", createdAt: seconds(1004))
         ]
         repository.upsertConversation(conversation)
 
@@ -189,7 +189,7 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
                 messages: [
                     LegacyStoredModels.StoredMessage(
                         id: "m1", roleRaw: "user", content: "attached", createdAt: seconds(1001)
-                    ),
+                    )
                 ]
             ))
             // No conversation assigned: an orphan left behind by an older delete path.
@@ -232,9 +232,9 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
             "plugin_state": .object([
                 "ulw": .object([
                     "turns": .number(100),
-                    "turns_used": .number(7),
-                ]),
-            ]),
+                    "turns_used": .number(7)
+                ])
+            ])
         ]
         repository.upsertConversation(conversation)
 
@@ -369,7 +369,7 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
         )
         conversation.messages = [
             ChatMessage(id: "tool-1", role: .tool, content: "", toolName: "read", toolState: .running),
-            ChatMessage(id: "user-1", role: .user, content: "Keep me"),
+            ChatMessage(id: "user-1", role: .user, content: "Keep me")
         ]
         repository.upsertConversation(conversation)
 
@@ -597,7 +597,7 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
             ChatMessage(role: .user, content: "u", createdAt: seconds(1000)),
             ChatMessage(role: .agent, content: "a", createdAt: seconds(1001)),
             ChatMessage(role: .thinking, content: "t", createdAt: seconds(1002)),
-            ChatMessage(role: .error, content: "e", createdAt: seconds(1003)),
+            ChatMessage(role: .error, content: "e", createdAt: seconds(1003))
         ]
         repository.upsertConversation(conversation)
 
@@ -638,7 +638,7 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
             mimeType: "image/png"
         )
         conversation.messages = [
-            ChatMessage(id: "m1", role: .user, content: "Look", images: [image]),
+            ChatMessage(id: "m1", role: .user, content: "Look", images: [image])
         ]
 
         repository.upsertConversation(conversation)
@@ -663,7 +663,7 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
             mimeType: "text/plain"
         )
         conversation.messages = [
-            ChatMessage(id: "m1", role: .user, content: "Read this", files: [file]),
+            ChatMessage(id: "m1", role: .user, content: "Read this", files: [file])
         ]
 
         repository.upsertConversation(conversation)
@@ -700,7 +700,7 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
                         roleRaw: "user",
                         content: "hello",
                         createdAt: seconds(1001)
-                    ),
+                    )
                 ]
             )
             context.insert(seededV1)
@@ -753,7 +753,7 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
                         content: "look",
                         createdAt: seconds(1001),
                         imageAttachmentsData: try JSONEncoder().encode([image])
-                    ),
+                    )
                 ]
             )
             context.insert(seededV2)
@@ -803,7 +803,7 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
             ("12", "x"),
             ("1", "2#x"),
             ("Café", "résumé"),
-            ("Caf", "é#résumé"),
+            ("Caf", "é#résumé")
         ]
 
         let ids = pairs.map { StoredMessage.compositeID(conversationID: $0.conversation, messageID: $0.message) }
@@ -947,7 +947,7 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
             updatedAt: seconds(1000)
         )
         conversation.messages = [
-            ChatMessage(id: "m1", role: .user, content: "café", createdAt: seconds(1001)),
+            ChatMessage(id: "m1", role: .user, content: "café", createdAt: seconds(1001))
         ]
         repository.upsertAgent(SavedAgent(id: "a1", address: "0xabc"))
         repository.upsertConversation(conversation)
@@ -976,7 +976,7 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
         let schema = Schema([
             LegacyStoredModels.StoredAgent.self,
             LegacyStoredModels.StoredConversation.self,
-            LegacyStoredModels.StoredMessage.self,
+            LegacyStoredModels.StoredMessage.self
         ])
         let container = try ModelContainer(for: schema, configurations: ModelConfiguration(url: storeURL))
         let context = ModelContext(container)
@@ -1004,14 +1004,14 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
                 createdAt: seconds(1000), updatedAt: seconds(2000), serverSessionData: nil,
                 messages: [
                     LegacyStoredModels.StoredMessage(id: "m1", roleRaw: "user", content: "hello", createdAt: seconds(1001)),
-                    LegacyStoredModels.StoredMessage(id: "m2", roleRaw: "agent", content: "world", createdAt: seconds(1002)),
+                    LegacyStoredModels.StoredMessage(id: "m2", roleRaw: "agent", content: "world", createdAt: seconds(1002))
                 ]
             ))
             context.insert(LegacyStoredModels.StoredConversation(
                 id: "c2", title: "second", agentID: "a1", agentAddress: "0xaaa", modeRaw: "plan",
                 createdAt: seconds(3000), updatedAt: seconds(3000), serverSessionData: nil,
                 messages: [
-                    LegacyStoredModels.StoredMessage(id: "m3", roleRaw: "tool", content: "tool ran", createdAt: seconds(3001)),
+                    LegacyStoredModels.StoredMessage(id: "m3", roleRaw: "tool", content: "tool ran", createdAt: seconds(3001))
                 ]
             ))
         }
@@ -1042,7 +1042,7 @@ final class ConversationRepositoryErrorMessageTests: XCTestCase {
             .deleteConversation: "It may reappear when you reopen the app.",
             .saveAgent: "This agent may be missing when you reopen the app.",
             .deleteAgent: "It may reappear when you reopen the app.",
-            .search: "Some results may be missing.",
+            .search: "Some results may be missing."
         ]
 
         for (operation, consequence) in expectedConsequences {

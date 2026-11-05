@@ -28,12 +28,12 @@ enum IdentityStoreError: LocalizedError {
     }
 }
 
-final class IdentityStore {
+final class IdentityStore: Sendable {
     private let service = "connectonion.native-ios.identity.ed25519"
     private let account = "default"
 
     func loadOrCreateIdentity() throws -> StoredIdentity {
-        let key = try loadOrCreatePrivateKey()
+        let key: Curve25519.Signing.PrivateKey = try loadOrCreateSigningKey()
         let publicKeyHex = Hex.encode(key.publicKey.rawRepresentation)
         let createdAtKey = "connectonion.native-ios.identity.createdAt"
         let createdAt: Date
@@ -47,21 +47,10 @@ final class IdentityStore {
     }
 
     func signedEnvelope(type: String, payload: [String: JSONValue]) throws -> [String: JSONValue] {
-        let key = try loadOrCreatePrivateKey()
-        let signature = try key.signature(for: CanonicalJSON.data(from: payload))
-        var envelope: [String: JSONValue] = [
-            "type": .string(type),
-            "payload": .object(payload),
-            "from": .string("0x\(Hex.encode(key.publicKey.rawRepresentation))"),
-            "signature": .string(Hex.encode(signature)),
-        ]
-        if let timestamp = payload["timestamp"] {
-            envelope["timestamp"] = timestamp
-        }
-        return envelope
+        try OIPSigner(keyStore: self).envelope(type: type, payload: payload)
     }
 
-    private func loadOrCreatePrivateKey() throws -> Curve25519.Signing.PrivateKey {
+    func loadOrCreateSigningKey() throws -> Curve25519.Signing.PrivateKey {
         if let data = try readPrivateKeyData() {
             return try Curve25519.Signing.PrivateKey(rawRepresentation: data)
         }
@@ -88,7 +77,7 @@ final class IdentityStore {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecMatchLimit as String: kSecMatchLimitOne
         ]
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -112,7 +101,7 @@ final class IdentityStore {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-            kSecValueData as String: data,
+            kSecValueData as String: data
         ]
         let status = SecItemAdd(attributes as CFDictionary, nil)
         if status == errSecDuplicateItem {

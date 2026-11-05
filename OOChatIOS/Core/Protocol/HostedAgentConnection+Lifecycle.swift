@@ -10,7 +10,10 @@ extension HostedAgentConnection {
         guard recordEventIfNew(frame) else {
             return
         }
+        await dispatch(frame, generation: generation)
+    }
 
+    private func dispatch(_ frame: [String: JSONValue], generation: Int) async {
         switch frame["type"]?.stringValue {
         case "PING":
             await handlePing(generation: generation)
@@ -20,8 +23,10 @@ extension HostedAgentConnection {
             handleOutput(frame)
         case "EXEC_RESULT":
             handleExecResult(frame)
-        case "tool_call", "tool_result", "mode_changed":
+        case "tool_call", "tool_result":
             await handleEvent(frame)
+        case "mode_changed":
+            await handleModeChanged(frame)
         case "approval_needed", "APPROVAL_NEEDED", "ulw_turns_reached", "plan_review", "ask_user":
             await handleInteraction(frame, generation: generation)
         case "ERROR":
@@ -78,6 +83,7 @@ extension HostedAgentConnection {
             return
         }
         updateServerSession(from: frame)
+        sessionModes = connected.sessionModes
         connectionStatus = connected.status
         setState(.connected)
         connectTimeoutTask?.cancel()
@@ -85,7 +91,8 @@ extension HostedAgentConnection {
         let result = HostedAgentResult(
             output: nil,
             endpointLabel: endpoint?.label ?? key.agentAddress,
-            serverSession: serverSession
+            serverSession: serverSession,
+            sessionModes: sessionModes
         )
         let waiters = Array(connectWaiters.values)
         connectWaiters.removeAll()
@@ -108,7 +115,8 @@ extension HostedAgentConnection {
             returning: HostedAgentResult(
                 output: messageText(frame),
                 endpointLabel: endpoint?.label ?? key.agentAddress,
-                serverSession: serverSession
+                serverSession: serverSession,
+                sessionModes: sessionModes
             )
         )
     }
@@ -136,6 +144,21 @@ extension HostedAgentConnection {
             return
         }
         await pending.onEvent?(event)
+    }
+
+    private func handleModeChanged(_ frame: [String: JSONValue]) async {
+        guard let event = HostedAgentEvent.from(frame) else {
+            return
+        }
+
+        if let handler = pendingModeChangeHandler {
+            pendingModeChangeHandler = nil
+            modeChangeTimeoutTask?.cancel()
+            modeChangeTimeoutTask = nil
+            await handler(event)
+        } else {
+            await pendingPrompt?.onEvent?(event)
+        }
     }
 
     private func handleInteraction(_ frame: [String: JSONValue], generation: Int) async {
@@ -217,7 +240,8 @@ extension HostedAgentConnection {
                 returning: HostedAgentResult(
                     output: reply,
                     endpointLabel: endpoint?.label ?? key.agentAddress,
-                    serverSession: serverSession
+                    serverSession: serverSession,
+                    sessionModes: sessionModes
                 )
             )
         } else {
@@ -524,11 +548,18 @@ extension HostedAgentConnection {
         connectWaiters.removeAll()
         let pending = pendingPrompt
         pendingPrompt = nil
+        let modeChangeHandler = pendingModeChangeHandler
+        pendingModeChangeHandler = nil
+        modeChangeTimeoutTask?.cancel()
+        modeChangeTimeoutTask = nil
 
         for waiter in waiters {
             waiter.resume(throwing: error)
         }
         pending?.continuation.resume(throwing: error)
+        if let modeChangeHandler {
+            Task { @MainActor in modeChangeHandler(.modeChangeFailed(error.localizedDescription)) }
+        }
         failPendingExecs(error)
     }
 

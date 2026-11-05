@@ -81,6 +81,10 @@ final class MockAgentTransport: HostedAgentTransport {
     // What the host says about a prompt sent before a relaunch. Fails by default, so a test
     // that never expects a resume notices one.
     var resumeBehavior: Behavior = .fail(HostedAgentClientError.outcomeUnknown)
+    // How the host answers a mode_change. nil confirms the requested mode.
+    var modeChangeReply: HostedAgentEvent?
+    var modeChangeError: Error?
+    var connectSessionModes: OIPSessionModes?
 
     private(set) var networkLossNotices = 0
     private(set) var connectedAddresses: [String] = []
@@ -96,6 +100,7 @@ final class MockAgentTransport: HostedAgentTransport {
     private(set) var fetchedNameAddresses: [String] = []
     private(set) var checkedAvailabilityAddresses: [String] = []
     private(set) var interactionResponseWaits: [(agentAddress: String, conversationID: String)] = []
+    private(set) var requestedModes: [OIPPermissionMode] = []
 
     func connect(agentAddress: String, conversation: Conversation) async throws -> HostedAgentResult {
         connectedAddresses.append(agentAddress)
@@ -104,7 +109,8 @@ final class MockAgentTransport: HostedAgentTransport {
             return HostedAgentResult(
                 output: nil,
                 endpointLabel: "mock",
-                serverSession: ["session_id": .string(conversation.id)]
+                serverSession: ["session_id": .string(conversation.id)],
+                sessionModes: connectSessionModes
             )
         case .fail(let error):
             throw error
@@ -113,7 +119,8 @@ final class MockAgentTransport: HostedAgentTransport {
             return HostedAgentResult(
                 output: nil,
                 endpointLabel: "mock",
-                serverSession: ["session_id": .string(conversation.id)]
+                serverSession: ["session_id": .string(conversation.id)],
+                sessionModes: connectSessionModes
             )
         case .waitThenFail(let gate, let error):
             await gate.wait()
@@ -268,6 +275,19 @@ final class MockAgentTransport: HostedAgentTransport {
 
     func noteNetworkLost() async {
         networkLossNotices += 1
+    }
+
+    func requestModeChange(
+        agentAddress: String,
+        conversation: Conversation,
+        mode: OIPPermissionMode,
+        onEvent: @escaping @MainActor (HostedAgentEvent) -> Void
+    ) async throws {
+        requestedModes.append(mode)
+        if let modeChangeError {
+            throw modeChangeError
+        }
+        await onEvent(modeChangeReply ?? .modeChanged(mode: mode, turnsLeft: nil))
     }
 
     func waitForPendingInteractionResponses(agentAddress: String, conversationID: String) async {
@@ -546,5 +566,31 @@ actor EndpointSequence {
 
     func next() -> ResolvedEndpoint {
         queue.count > 1 ? queue.removeFirst() : queue[0]
+    }
+}
+
+extension ChatViewModel {
+    // setMode asks the host from a Task. Lets that Task reach its answer.
+    func settleModeChange() async {
+        for _ in 0..<100 where activePendingMode != nil {
+            await Task.yield()
+        }
+    }
+}
+
+// The kit's shared OIP fixtures, read from the source tree (they live in the kit's test bundle).
+enum KitFixtures {
+    static func frame(_ name: String, folder: String = "frames") throws -> [String: JSONValue] {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("../Packages/ConnectOnionKit/Tests/ConnectOnionKitTests/Fixtures/\(folder)/\(name).json")
+        return try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: url))
+    }
+
+    static func sessionModes(_ name: String, folder: String = "frames") throws -> OIPSessionModes? {
+        guard case .connected(let connected) = OIPServerFrame.decode(try frame(name, folder: folder)) else {
+            return nil
+        }
+        return connected.sessionModes
     }
 }

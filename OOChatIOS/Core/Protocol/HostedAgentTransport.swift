@@ -44,6 +44,12 @@ protocol HostedAgentConversationTransport: AnyObject {
         prompt: HostedAgentPrompt,
         handlers: HostedAgentPromptHandlers
     ) async throws -> HostedAgentResult
+    func requestModeChange(
+        agentAddress: String,
+        conversation: Conversation,
+        mode: OIPPermissionMode,
+        onEvent: @escaping @MainActor (HostedAgentEvent) -> Void
+    ) async throws
     func waitForPendingInteractionResponses(agentAddress: String, conversationID: String) async
     func noteNetworkLost() async
     func applicationDidBecomeActive()
@@ -58,6 +64,16 @@ protocol HostedAgentConversationTransport: AnyObject {
 
 extension HostedAgentConversationTransport {
     func applicationDidBecomeActive() {}
+
+    // Default for test doubles that don't support mode control.
+    func requestModeChange(
+        agentAddress: String,
+        conversation: Conversation,
+        mode: OIPPermissionMode,
+        onEvent: @escaping @MainActor (HostedAgentEvent) -> Void
+    ) async throws {
+        throw HostedAgentClientError.server("This transport does not support mode changes.")
+    }
 
     func execTool(
         agentAddress: String,

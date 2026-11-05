@@ -31,6 +31,7 @@ extension ChatViewModel {
 
         do {
             let result = try await client.connect(agentAddress: address, conversation: conversation)
+            deliveryCoordinator.noteSessionModes(result.sessionModes, agentAddress: address)
             if let session = result.serverSession {
                 conversation.mode = HostedAgentSessionState.mode(from: session, fallback: conversation.mode)
                 conversation.serverSession = HostedAgentSessionState.applying(

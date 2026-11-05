@@ -123,6 +123,23 @@ final class HostedAgentClient: HostedAgentTransport {
         )
     }
 
+    func requestModeChange(
+        agentAddress: String,
+        conversation: Conversation,
+        mode: OIPPermissionMode,
+        onEvent: @escaping @MainActor (HostedAgentEvent) -> Void
+    ) async throws {
+        guard Self.isHostedAgentAddress(agentAddress)
+        else {
+            throw HostedAgentClientError.invalidAddress
+        }
+        try await connectionPool.requestModeChange(
+            agentAddress: agentAddress,
+            conversation: conversation,
+            mode: mode,
+            onEvent: onEvent)
+    }
+
     func execTool(
         agentAddress: String,
         conversation: Conversation,

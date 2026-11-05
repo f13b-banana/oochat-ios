@@ -69,7 +69,7 @@ final class ChatViewTests: XCTestCase {
         let window = ViewHost.host(ChatView(viewModel: viewModel))
 
         XCTAssertNotNil(ViewHost.element(labelContains: "Send message", in: window))
-        XCTAssertNotNil(ViewHost.element(labelContains: "Chat mode: Safe", in: window))
+        XCTAssertNotNil(ViewHost.element(labelContains: "Chat mode: Auto", in: window))
     }
 
     func testToolbarPresenceMatchesSidebarWithoutConversationSocket() async {

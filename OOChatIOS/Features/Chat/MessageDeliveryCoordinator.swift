@@ -16,11 +16,13 @@ final class MessageDeliveryCoordinator: ObservableObject {
     }
 
     @Published private var processingConversationIDs: Set<String> = []
-
+    @Published private(set) var availableModesByAgentAddress: [String: [OIPPermissionMode]] = [:]
     var onConnectionStateChange: ((String, ConversationConnectionState) -> Void)?
     var connectionState: ((String) -> ConversationConnectionState)?
     var onDeliveryError: ((String, Error) -> Void)?
     var onDeliveriesIdle: (() -> Void)?
+    // conversationID, the confirmed mode, and turns_left (full access only)
+    var onModeChanged: ((String, OIPPermissionMode, Int?) -> Void)?
 
     var hasActiveDeliveries: Bool {
         !deliveryTasksByConversationID.isEmpty
@@ -425,6 +427,7 @@ final class MessageDeliveryCoordinator: ObservableObject {
         if let index = updated.messages.firstIndex(where: { $0.id == messageID }) {
             updated.messages[index].deliveryState = .sent
         }
+        noteSessionModes(result.sessionModes, agentAddress: updated.agentAddress)
         if let session = result.serverSession {
             updated.mode = HostedAgentSessionState.mode(from: session, fallback: updated.mode)
             updated.serverSession = HostedAgentSessionState.applying(
@@ -473,7 +476,15 @@ final class MessageDeliveryCoordinator: ObservableObject {
         conversationState.upsert(updated)
     }
 
-    private func apply(_ event: HostedAgentEvent, toConversationID conversationID: String) {
+    func noteSessionModes(_ sessionModes: OIPSessionModes?, agentAddress: String) {
+        guard let sessionModes else {
+            return
+        }
+
+        availableModesByAgentAddress[agentAddress] = sessionModes.availableModes.map(\.id)
+    }
+
+    func apply(_ event: HostedAgentEvent, toConversationID conversationID: String) {
         guard var conversation = conversationState.conversation(withID: conversationID) else {
             return
         }
@@ -512,14 +523,17 @@ final class MessageDeliveryCoordinator: ObservableObject {
                 )
             }
             persistence = .message(id: id)
-        case .modeChanged(let mode):
-            conversation.mode = mode
+        case .modeChanged(let protocolMode, let turnsLeft):
+            conversation.mode = ChatMode(permissionMode: protocolMode)
             conversation.serverSession = HostedAgentSessionState.applying(
-                mode,
+                conversation.mode,
                 to: conversation.serverSession,
                 conversationID: conversationID
             )
+            onModeChanged?(conversationID, protocolMode, turnsLeft)
             persistence = .metadata
+        case .modeChangeFailed, .modeChangeTimedOut:
+            return
         }
 
         conversationState.upsert(conversation, persistence: persistence)

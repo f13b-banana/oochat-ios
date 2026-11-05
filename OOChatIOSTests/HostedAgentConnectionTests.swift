@@ -1,4 +1,5 @@
 import Foundation
+import ConnectOnionKit
 import XCTest
 @testable import OOChatIOS
 
@@ -262,6 +263,7 @@ final class HostedAgentConnectionTests: XCTestCase {
         XCTAssertEqual(connectFrame["to"]?.stringValue, agentAddress)
         XCTAssertEqual(connectFrame["session_id"]?.stringValue, conversation.id)
         XCTAssertEqual(connectFrame["timestamp"]?.numberValue?.rounded(), connectFrame["timestamp"]?.numberValue)
+        XCTAssertEqual(connectFrame["protocol"], .object(OIP.descriptor))
         guard case .object(let session)? = connectFrame["session"] else {
             return XCTFail("CONNECT must carry a session object")
         }

@@ -1,4 +1,5 @@
 import Foundation
+import ConnectOnionKit
 
 enum ConversationConnectionState: String, Codable {
     case disconnected

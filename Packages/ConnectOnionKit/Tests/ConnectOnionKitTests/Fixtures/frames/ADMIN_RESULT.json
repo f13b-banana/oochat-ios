@@ -1,0 +1,6 @@
+{
+  "type": "ADMIN_RESULT",
+  "action": "promote",
+  "ok": true,
+  "level": "whitelisted"
+}

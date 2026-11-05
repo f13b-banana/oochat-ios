@@ -8,6 +8,8 @@ enum HostedAgentClientError: LocalizedError {
     case closed
     case timeout
     case busy
+    /// A message sent before the app closed has no recorded result on the host.
+    case outcomeUnknown
 
     var errorDescription: String? {
         switch self {
@@ -28,6 +30,9 @@ enum HostedAgentClientError: LocalizedError {
             return "The agent didn't reply in time. Try again."
         case .busy:
             return "The agent is still working on your previous message in this conversation. Wait for it to finish, then try again."
+        case .outcomeUnknown:
+            return "The app closed before the agent replied, and the agent has no reply to this message. "
+                + "It may or may not have run, so check before you retry."
         }
     }
 
@@ -38,7 +43,7 @@ enum HostedAgentClientError: LocalizedError {
         switch clientError {
         case .closed, .timeout, .invalidURL:
             return true
-        case .invalidAddress, .badFrame, .server, .busy:
+        case .invalidAddress, .badFrame, .server, .busy, .outcomeUnknown:
             return false
         }
     }

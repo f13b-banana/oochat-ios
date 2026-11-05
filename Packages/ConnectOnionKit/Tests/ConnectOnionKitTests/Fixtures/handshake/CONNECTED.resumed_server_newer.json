@@ -1,0 +1,45 @@
+{
+  "chat_items": [
+    {
+      "content": "hi",
+      "id": "msg-0",
+      "type": "user"
+    },
+    {
+      "content": "hello",
+      "id": "msg-1",
+      "type": "agent"
+    }
+  ],
+  "protocol": {
+    "max_version": "0.1",
+    "min_version": "0.1",
+    "name": "oip",
+    "version": "0.1",
+    "websocket_path": "/ws"
+  },
+  "server_newer": true,
+  "session": {
+    "iteration": 1,
+    "messages": [
+      {
+        "content": "hi",
+        "role": "user"
+      },
+      {
+        "content": "hello",
+        "role": "assistant"
+      }
+    ],
+    "requester": {
+      "address": "0x03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8"
+    },
+    "session_id": "11111111-2222-3333-4444-555555555555",
+    "trace": [],
+    "turn": 5,
+    "updated": 1700000100
+  },
+  "session_id": "11111111-2222-3333-4444-555555555555",
+  "status": "connected",
+  "type": "CONNECTED"
+}

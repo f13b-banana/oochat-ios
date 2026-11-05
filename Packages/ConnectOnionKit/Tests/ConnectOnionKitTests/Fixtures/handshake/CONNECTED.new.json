@@ -1,0 +1,12 @@
+{
+  "protocol": {
+    "max_version": "0.1",
+    "min_version": "0.1",
+    "name": "oip",
+    "version": "0.1",
+    "websocket_path": "/ws"
+  },
+  "session_id": "66666666-7777-8888-9999-000000000000",
+  "status": "new",
+  "type": "CONNECTED"
+}

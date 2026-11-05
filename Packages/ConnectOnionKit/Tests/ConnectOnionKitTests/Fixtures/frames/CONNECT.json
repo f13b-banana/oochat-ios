@@ -1,0 +1,22 @@
+{
+  "type": "CONNECT",
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "session": {
+    "messages": [],
+    "mode": "default"
+  },
+  "last_msg_id": "ev-9f12",
+  "payload": {
+    "to": "0x3d4017c3e843a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1",
+    "timestamp": 1702234567,
+    "nonce": "36d78b9c-7a1e-4c55-9d3b-0f1f6a2e8b10",
+    "signed_commands": 1,
+    "extensions": {
+      "session-sync": [
+        "0.1"
+      ]
+    }
+  },
+  "from": "0xc0ffee11c0ffee11c0ffee11c0ffee11c0ffee11c0ffee11c0ffee11c0ffee11",
+  "signature": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+}

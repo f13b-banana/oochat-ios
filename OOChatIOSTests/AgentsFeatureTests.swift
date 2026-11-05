@@ -49,7 +49,7 @@ final class AgentsFeatureTests: XCTestCase {
                 conversations: [
                     firstCon,
                     oldSecondCon,
-                    newSecondCon,
+                    newSecondCon
                 ],
                 activeAgentID: first.id,
                 activeConversationID: firstCon.id

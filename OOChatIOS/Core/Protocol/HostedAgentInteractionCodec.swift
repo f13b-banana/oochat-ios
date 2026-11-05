@@ -1,4 +1,5 @@
 import Foundation
+import ConnectOnionKit
 
 extension ToolApprovalRequest {
     static func from(_ frame: [String: JSONValue]) -> ToolApprovalRequest? {
@@ -63,47 +64,38 @@ extension ToolApprovalRequest {
 }
 
 extension ApprovalDecision {
-    var responseFrame: [String: JSONValue] {
-        responseFrame(to: nil)
-    }
 
-    func responseFrame(to recipient: String?) -> [String: JSONValue] {
-        var frame: [String: JSONValue] = [
-            "type": .string("APPROVAL_RESPONSE"),
-            "scope": .string("once")
-        ]
+    /// The Decisions own fields, the package adds the type, request_id and signature
+    var decisionFields: [String: JSONValue] {
+        var fields: [String: JSONValue] = ["scope": .string("once")]
 
         switch self {
         case .allowOnce:
-            frame["approved"] = .bool(true)
+            fields["approved"] = .bool(true)
         case .allowSession:
-            frame["approved"] = .bool(true)
-            frame["scope"] = .string("session")
+            fields["approved"] = .bool(true)
+            fields["scope"] = .string("session")
         case .rejectSoft(let feedback):
-            frame["approved"] = .bool(false)
-            frame["mode"] = .string("reject_soft")
+            fields["approved"] = .bool(false)
+            fields["mode"] = .string("reject_soft")
             if let feedback, !feedback.isEmpty {
-                frame["feedback"] = .string(feedback)
+                fields["feedback"] = .string(feedback)
             }
         case .rejectHard(let feedback):
-            frame["approved"] = .bool(false)
-            frame["mode"] = .string("reject_hard")
+            fields["approved"] = .bool(false)
+            fields["mode"] = .string("reject_hard")
             if let feedback, !feedback.isEmpty {
-                frame["feedback"] = .string(feedback)
+                fields["feedback"] = .string(feedback)
             }
         case .rejectExplain(let feedback):
-            frame["approved"] = .bool(false)
-            frame["mode"] = .string("reject_explain")
+            fields["approved"] = .bool(false)
+            fields["mode"] = .string("reject_explain")
             if let feedback, !feedback.isEmpty {
-                frame["feedback"] = .string(feedback)
+                fields["feedback"] = .string(feedback)
             }
         }
 
-        if let recipient, !recipient.isEmpty {
-            frame["to"] = .string(recipient)
-        }
-
-        return frame
+        return fields
     }
 }
 

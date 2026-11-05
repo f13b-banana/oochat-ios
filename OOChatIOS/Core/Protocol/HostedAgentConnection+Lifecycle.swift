@@ -7,6 +7,9 @@ extension HostedAgentConnection {
             return
         }
         lastNetworkActivityAt = Date()
+        guard recordEventIfNew(frame) else {
+            return
+        }
 
         switch frame["type"]?.stringValue {
         case "PING":
@@ -27,6 +30,35 @@ extension HostedAgentConnection {
         default:
             break
         }
+    }
+
+    static let interactionFrameTypes: Set<String> = [
+        "approval_needed", "APPROVAL_NEEDED", "ulw_turns_reached", "plan_review", "ask_user"
+    ]
+
+    /// Port of macOS recordEventIfNew
+    func recordEventIfNew(_ frame: [String: JSONValue]) -> Bool {
+        guard let eventID = frame["id"]?.stringValue, !eventID.isEmpty else {
+            return true
+        }
+        let type = frame["type"]?.stringValue ?? "unknown"
+        guard !Self.interactionFrameTypes.contains(type) else {
+            return true
+        }
+        let status = frame["status"]?.stringValue ?? "none"
+        let sequence = frame["seq"]?.numberValue.map { String(Int($0)) } ?? "none"
+        guard eventLedger.record(eventID: "\(type):\(eventID):\(status):\(sequence)") else {
+            return false
+        }
+        advanceBookmark(to: eventID)
+        return true
+    }
+
+    func advanceBookmark(to eventID: String) {
+        let fallbackID = lastConversation?.id ?? key.conversationID
+        var bookmark = bookmarkStore.load(conversationID: key.conversationID) ?? SessionBookmark(sessionID: fallbackID)
+        bookmark.lastMessageID = eventID
+        bookmarkStore.save(bookmark, conversationID: key.conversationID)
     }
 
     private func handlePing(generation: Int) async {
@@ -235,6 +267,7 @@ extension HostedAgentConnection {
                 return
             }
             try await send(frame, over: socket)
+            advanceBookmark(to: interaction.id)
         } catch {
             failConnection(error, generation: generation)
         }
@@ -258,6 +291,7 @@ extension HostedAgentConnection {
                 return
             }
             try await send(frame, over: socket)
+            advanceBookmark(to: interaction.id)
         } catch {
             failConnection(error, generation: generation)
         }
@@ -324,7 +358,9 @@ extension HostedAgentConnection {
         guard pendingPrompt != nil,
               connectWaiters.isEmpty,
               lastConversation != nil,
-              resumeAttemptsUsed < resumeAttemptLimit else {
+              case .connecting = reduce(
+                .connecting(attempt: resumeAttemptsUsed), .socketClosed, maxAttempts: reconnectPolicy.maxAttempts
+              ) else {
             return false
         }
         switch error {
@@ -364,7 +400,7 @@ extension HostedAgentConnection {
         endpoint = nil
         socket?.cancel(with: .goingAway, reason: nil)
 
-        let delay = resumeRetryDelay * pow(2, Double(resumeAttemptsUsed - 1))
+        let delay = reconnectPolicy.delay(for: resumeAttemptsUsed)
         resumeTask = Task { [weak self] in
             if delay > 0 {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -459,7 +495,7 @@ extension HostedAgentConnection {
             direct: false,
             sessionID: conversation.id,
             session: .object(sessionPayload(for: conversation)),
-            lastMessageID: nil
+            lastMessageID: bookmarkStore.load(conversationID: key.conversationID)?.lastMessageID
         )
     }
 

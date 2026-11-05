@@ -197,6 +197,12 @@ private final class MockHostedAgentSocketFactory: @unchecked Sendable {
         return storedSockets.count
     }
 
+    func url(at index: Int) -> URL? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedURLs.indices.contains(index) ? storedURLs[index] : nil
+    }
+
     func socket(at index: Int, timeout: TimeInterval = 1) async throws -> MockHostedAgentWebSocket {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -234,6 +240,18 @@ private final class MutableHostedAgentClock: @unchecked Sendable {
         lock.lock()
         date = date.addingTimeInterval(interval)
         lock.unlock()
+    }
+}
+
+private actor EndpointSequence {
+    private var queue: [ResolvedEndpoint]
+
+    init(_ endpoints: [ResolvedEndpoint]) {
+        queue = endpoints
+    }
+
+    func next() -> ResolvedEndpoint {
+        queue.count > 1 ? queue.removeFirst() : queue[0]
     }
 }
 
@@ -880,6 +898,226 @@ final class HostedAgentConnectionTests: XCTestCase {
         XCTAssertEqual(factory.count, 2)
     }
 
+    func testResumeSendsLastMessageIDAndDropsReplayedEvents() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory, resumeAttemptLimit: 3)
+        let conversation = makeConversation(id: "resume-bookmark")
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+        let socket = try await factory.socket(at: 0)
+        var events: [HostedAgentEvent] = []
+
+        let promptTask = Task {
+            try await connection.sendPrompt(
+                conversation: conversation,
+                prompt: "long job",
+                onEvent: { events.append($0) },
+                onInteraction: nil
+            )
+        }
+
+        _ = try await socket.waitForSentFrame(type: "INPUT")
+        try socket.enqueueFrame(["type": .string("tool_call"), "id": .string("t1"), "name": .string("shell")])
+        try socket.enqueueFrame(["type": .string("tool_result"), "id": .string("t1"), "name": .string("ok")])
+
+        try await waitUntil { events.count == 2 }
+        socket.enqueueError()
+
+        let resumedSocket = try await factory.socket(at: 1)
+        let reconnect = try await resumedSocket.waitForSentFrame(type: "CONNECT")
+
+        XCTAssertEqual(reconnect["session_id"]?.stringValue, conversation.id)
+        XCTAssertEqual(reconnect["last_msg_id"]?.stringValue, "t1")
+
+        try resumedSocket.enqueueFrame(["type": .string("CONNECTED"), "status": .string("running")])
+
+        // the host does not know that the client has rendered tool_result, thus resends it
+        try resumedSocket.enqueueFrame(["type": .string("tool_result"), "id": .string("t1"), "name": .string("ok")])
+        try resumedSocket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("done")])
+
+        let result = try await promptTask.value
+
+        XCTAssertEqual(result.output, "done")
+        XCTAssertEqual(events.count, 2, "a replayed event must not reach the UI twice")
+        await connection.close()
+    }
+
+    func testUnasnweredApprovalIsNotBookmarkedSoTheHostReplaysIt() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory, resumeAttemptLimit: 3)
+        let conversation = makeConversation(id: "resume-approval")
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+
+        let socket = try await factory.socket(at: 0)
+        let asked = expectation(description: "approval shown")
+
+        let promptTask = Task {
+            try await connection.sendPrompt(
+                conversation: conversation,
+                prompt: "edit the file",
+                onEvent: nil,
+                onInteraction: { _ in
+                    asked.fulfill()
+                    // user has not answered when the network drops
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    return .approval(.allowOnce)
+                }
+            )
+        }
+
+        _ = try await socket.waitForSentFrame(type: "INPUT")
+        try socket.enqueueFrame(["type": .string("approval_needed"), "id": .string("approval-9"), "tool": .string("shell")])
+        await fulfillment(of: [asked], timeout: 1)
+        socket.enqueueError()
+
+        let resumedSocket = try await factory.socket(at: 1)
+        let reconnect = try await resumedSocket.waitForSentFrame(type: "CONNECT")
+
+        XCTAssertNil(reconnect["last_msg_id"], "an unanswered approval must be replayed")
+
+        promptTask.cancel()
+        await connection.close()
+    }
+
+    func testBookmarksAreKeptPerConversation() {
+        let store = HostedAgentBookmarkStore(suiteName: "test.bookmarks.\(UUID().uuidString)")
+        store.save(SessionBookmark(sessionID: "a", lastMessageID: "evt-a"), conversationID: "a")
+        store.save(SessionBookmark(sessionID: "b", lastMessageID: "evt-b"), conversationID: "b")
+
+        XCTAssertEqual(store.load(conversationID: "a")?.lastMessageID, "evt-a")
+        XCTAssertEqual(store.load(conversationID: "b")?.lastMessageID, "evt-b")
+
+        store.remove(conversationID: "a")
+
+        XCTAssertNil(store.load(conversationID: "a"))
+        XCTAssertEqual(store.load(conversationID: "b")?.lastMessageID, "evt-b")
+    }
+
+    func testRelaunchedConnectionResumesTheSameSessionFromTheBookmark() async throws {
+        let store = HostedAgentBookmarkStore(suiteName: "test.bookmarks.\(UUID().uuidString)")
+        let conversation = makeConversation(id: "relaunch")
+
+        // app is killed mid run
+        let firstFactory = MockHostedAgentSocketFactory()
+        let first = makeConnection(factory: firstFactory, resumeAttemptLimit: 3, bookmarkStore: store)
+
+        _ = try await establish(first, conversation: conversation, factory: firstFactory)
+
+        let socket = try await firstFactory.socket(at: 0)
+        let promptTask = Task {
+            try await first.sendPrompt(
+                conversation: conversation,
+                prompt: "long job",
+                onEvent: nil,
+                onInteraction: nil
+            )
+        }
+
+        _ = try await socket.waitForSentFrame(type: "INPUT")
+
+        try socket.enqueueFrame(
+            ["type": .string("tool_call"), "id": .string("evt-1"), "name": .string("shell")]
+        )
+
+        try await waitUntil {
+            store.load(conversationID: "test-conversation")?.lastMessageID == "evt-1"
+        }
+
+        promptTask.cancel()
+
+        _ = try? await promptTask.value
+        await first.close()
+
+        // new connection only reads saved
+        let secondFactory = MockHostedAgentSocketFactory()
+        let second = makeConnection(factory: secondFactory, bookmarkStore: store)
+        let connectTask = Task { try await second.ensureConnected(conversation: conversation) }
+        let relaunchSocket = try await secondFactory.socket(at: 0)
+        let connect = try await relaunchSocket.waitForSentFrame(type: "CONNECT")
+
+        XCTAssertEqual(connect["session_id"]?.stringValue, "relaunch")
+        XCTAssertEqual(connect["last_msg_id"]?.stringValue, "evt-1")
+
+        try relaunchSocket.enqueueFrame(
+            [
+                "type": .string("CONNECTED"),
+                "status": .string("running"),
+                "session_id": .string("relaunch")
+            ]
+        )
+
+        let result = try await connectTask.value
+
+        XCTAssertEqual(
+            result.serverSession?["session_id"]?.stringValue,
+            "relaunch",
+            "a resume must not create a new session"
+        )
+
+        await second.close()
+    }
+
+    func testResumeFailsOverToTheRelayWhenTheDirectEndpointDies() async throws {
+        let relay = ResolvedEndpoint(
+            wsURL: URL(string: "wss://relay.unit.test/ws/input")!,
+            kind: .relay,
+            label: "Relay"
+        )
+        let endpoints = EndpointSequence([endpoint, relay])
+        let store = HostedAgentBookmarkStore(suiteName: "test.bookmarks.\(UUID().uuidString)")
+        let factory = MockHostedAgentSocketFactory()
+
+        let connection = makeConnection(
+            factory: factory,
+            resolver: { _ in await endpoints.next() },
+            resumeAttemptLimit: 3,
+            bookmarkStore: store
+        )
+        let conversation = makeConversation(id: "failover")
+
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+        let directSocket = try await factory.socket(at: 0)
+
+        let promptTask = Task {
+            try await connection.sendPrompt(
+                conversation: conversation,
+                prompt: "keep going",
+                onEvent: nil,
+                onInteraction: nil
+            )
+        }
+
+        _ = try await directSocket.waitForSentFrame(type: "INPUT")
+
+        try directSocket.enqueueFrame(
+            ["type": .string("thinking"), "id": .string("t1"), "status": .string("done")]
+        )
+        try await waitUntil { store.load(conversationID: "test-conversation")?.lastMessageID == "t1" }
+
+        // route dies
+        directSocket.enqueueError()
+
+        let relaySocket = try await factory.socket(at: 1)
+        let reconnect = try await relaySocket.waitForSentFrame(type: "CONNECT")
+
+        XCTAssertEqual(factory.url(at: 0), endpoint.wsURL)
+        XCTAssertEqual(factory.url(at: 1), relay.wsURL)
+        XCTAssertEqual(reconnect["session_id"]?.stringValue, "failover")
+        XCTAssertEqual(reconnect["last_msg_id"]?.stringValue, "t1")
+
+        try relaySocket.enqueueFrame(["type": .string("CONNECTED"), "status": .string("running")])
+        try relaySocket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("finished over the relay")])
+
+        let result = try await promptTask.value
+
+        XCTAssertEqual(result.output, "finished over the relay")
+        XCTAssertTrue(
+            try relaySocket.sentFrames().filter { $0["type"]?.stringValue == "INPUT" }.isEmpty,
+            "a delivered INPUT must not be resent after failover"
+        )
+
+        await connection.close()
+    }
+
     private var agentAddress: String {
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }
@@ -984,7 +1222,8 @@ final class HostedAgentConnectionTests: XCTestCase {
         livenessTimeout: TimeInterval = 5,
         livenessCheckInterval: TimeInterval = 0.1,
         resumeAttemptLimit: Int = 0,
-        resumeRetryDelay: TimeInterval = 0
+        resumeRetryDelay: TimeInterval = 0,
+        bookmarkStore: HostedAgentBookmarkStore = HostedAgentBookmarkStore(suiteName: "test.bookmarks.\(UUID().uuidString)")
     ) -> HostedAgentConnection {
         let endpoint = endpoint
         return HostedAgentConnection(
@@ -999,7 +1238,8 @@ final class HostedAgentConnectionTests: XCTestCase {
             livenessTimeout: livenessTimeout,
             livenessCheckInterval: livenessCheckInterval,
             resumeAttemptLimit: resumeAttemptLimit,
-            resumeRetryDelay: resumeRetryDelay
+            resumeRetryDelay: resumeRetryDelay,
+            bookmarkStore: bookmarkStore
         )
     }
 

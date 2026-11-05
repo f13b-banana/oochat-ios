@@ -1,0 +1,15 @@
+{
+  "type": "ADMIN_BLOCK",
+  "client_id": "0xc0ffee11c0ffee11c0ffee11c0ffee11c0ffee11c0ffee11c0ffee11c0ffee11",
+  "reason": "spam",
+  "payload": {
+    "type": "ADMIN_BLOCK",
+    "client_id": "0xc0ffee11c0ffee11c0ffee11c0ffee11c0ffee11c0ffee11c0ffee11c0ffee11",
+    "reason": "spam",
+    "to": "0x3d4017c3e843a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1b2c3d4e5a1",
+    "timestamp": 1702234567,
+    "nonce": "36d78b9c-7a1e-4c55-9d3b-0f1f6a2e8b10"
+  },
+  "from": "0xc0ffee11c0ffee11c0ffee11c0ffee11c0ffee11c0ffee11c0ffee11c0ffee11",
+  "signature": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+}

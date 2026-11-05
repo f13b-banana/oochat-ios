@@ -79,11 +79,19 @@ final class NetworkRecoveryTests: XCTestCase {
 
         XCTAssertEqual(transport.sentPrompts, ["first"])
         XCTAssertTrue(viewModel.isProcessing)
+        // "first" has gone to the host, so it is .transmitted, never .queued (which would resend it).
+        func firstState() -> MessageDeliveryState? {
+            viewModel.activeConversation?.messages.first { $0.content == "first" }?.deliveryState
+        }
+        for _ in 0..<100 where firstState() != .transmitted {
+            await Task.yield()
+        }
+        XCTAssertEqual(firstState(), .transmitted)
         XCTAssertEqual(
             viewModel.activeConversation?.messages.filter {
                 $0.role == .user && $0.deliveryState == .queued
             }.map(\.content),
-            ["first", "second"]
+            ["second"]
         )
 
         await firstGate.open()
@@ -103,7 +111,7 @@ final class NetworkRecoveryTests: XCTestCase {
         let secondGate = PromptGate()
         transport.sendBehaviorsByPrompt = [
             "first": .wait(gate: firstGate, output: "first reply"),
-            "second": .wait(gate: secondGate, output: "second reply"),
+            "second": .wait(gate: secondGate, output: "second reply")
         ]
 
         viewModel.prompt = "first"
@@ -218,7 +226,7 @@ final class NetworkRecoveryTests: XCTestCase {
         let backgroundGate = PromptGate()
         transport.sendBehaviorsByPrompt = [
             "background": .wait(gate: backgroundGate, output: "background reply"),
-            "active": .waitUntilCancelled,
+            "active": .waitUntilCancelled
         ]
 
         viewModel.prompt = "background"
@@ -590,7 +598,7 @@ final class NetworkRecoveryTests: XCTestCase {
                 name: "read_file",
                 output: "# Project notes",
                 state: .completed
-            ),
+            )
         ]
         transport.sendBehavior = .succeed(output: "I found the project notes.")
 
@@ -623,7 +631,7 @@ final class NetworkRecoveryTests: XCTestCase {
                 name: "read_file",
                 output: "Background output",
                 state: .completed
-            ),
+            )
         ]
 
         viewModel.prompt = "Run in the background"
@@ -890,7 +898,7 @@ final class NetworkRecoveryTests: XCTestCase {
                 id: "question-1",
                 question: "Which environment?",
                 options: ["Staging", "Production"]
-            ),
+            )
         ]
 
         viewModel.prompt = "Deploy the app"
@@ -912,7 +920,7 @@ final class NetworkRecoveryTests: XCTestCase {
         let (viewModel, transport, _) = makeEnvironment()
         setUpAgentAndConversation(viewModel)
         transport.askUserRequests = [
-            AskUserRequest(id: "question-1", question: "Continue?", options: ["Yes", "No"]),
+            AskUserRequest(id: "question-1", question: "Continue?", options: ["Yes", "No"])
         ]
         transport.waitAfterInteractionsUntilCancelled = true
 
@@ -935,7 +943,7 @@ final class NetworkRecoveryTests: XCTestCase {
         setUpAgentAndConversation(viewModel)
         let conversation = viewModel.activeConversation!
         transport.askUserRequests = [
-            AskUserRequest(id: "question-1", question: "Continue?", options: ["Yes", "No"]),
+            AskUserRequest(id: "question-1", question: "Continue?", options: ["Yes", "No"])
         ]
         transport.waitAfterInteractionsUntilCancelled = true
 
@@ -958,7 +966,7 @@ final class NetworkRecoveryTests: XCTestCase {
         let agent = setUpAgentAndConversation(viewModel)
         let questionConversation = viewModel.activeConversation!
         transport.askUserRequests = [
-            AskUserRequest(id: "question-1", question: "Continue?", options: ["Yes", "No"]),
+            AskUserRequest(id: "question-1", question: "Continue?", options: ["Yes", "No"])
         ]
 
         viewModel.prompt = "Start task"
@@ -1094,7 +1102,7 @@ final class NetworkRecoveryTests: XCTestCase {
     func testApprovalSupportsStopAndExplain() async {
         for expected in [
             ApprovalDecision.rejectHard(feedback: nil),
-            ApprovalDecision.rejectExplain(feedback: nil),
+            ApprovalDecision.rejectExplain(feedback: nil)
         ] {
             let (viewModel, transport, _) = makeEnvironment()
             setUpAgentAndConversation(viewModel)
@@ -1548,7 +1556,7 @@ final class NetworkRecoveryTests: XCTestCase {
         transport.availableSkills = [
             AgentSkill(name: "Review", description: "Review current changes"),
             AgentSkill(name: "commit", description: "Create a commit"),
-            AgentSkill(name: "release", description: "Prepare a release"),
+            AgentSkill(name: "release", description: "Prepare a release")
         ]
 
         viewModel.prompt = "/"
@@ -1624,7 +1632,7 @@ final class NetworkRecoveryTests: XCTestCase {
         _ = viewModel.createConversation(for: second)
         transport.skillsByAddress = [
             first.address: [AgentSkill(name: "first")],
-            second.address: [AgentSkill(name: "second")],
+            second.address: [AgentSkill(name: "second")]
         ]
 
         viewModel.prompt = "/"

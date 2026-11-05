@@ -1,4 +1,6 @@
 import Combine
+import ConnectOnionKit
+import Foundation
 
 enum MessageEnqueueResult {
     case queued
@@ -28,6 +30,8 @@ final class MessageDeliveryCoordinator: ObservableObject {
     private var activeMessageIDsByConversationID: [String: String] = [:]
     private var pausedConversationIDs: Set<String> = []
     private var isDeliveryEnabled = true
+    /// The most recent `/exec` run, kept so tests can wait for it.
+    private(set) var lastExecTask: Task<Void, Never>?
 
     private let conversationState: ConversationState
     private let interactionCoordinator: InteractionCoordinator
@@ -172,14 +176,71 @@ final class MessageDeliveryCoordinator: ObservableObject {
         pausedConversationIDs.remove(conversationID)
     }
 
+    /// `/exec`: run one tool on the host without the LLM. It appears as a tool card that goes
+    /// Running, then Completed or Failed. It is not a delivery: no queued user message,
+    /// no "waiting" row, no call to `onDeliveryError` or `onConnectionStateChange`.
+    /// Tool that fails leaves the session exactly as it was.
+    func runExec(_ command: OIPExecCommand) -> MessageEnqueueResult {
+        guard var conversation = conversationState.activeConversation,
+              let agent = conversationState.agent(for: conversation),
+              HostedAgentClient.isHostedAgentAddress(agent.address) else {
+            return .rejected("Connect to an agent before running a tool.")
+        }
+        let execID = UUID().uuidString
+        let cardID = ChatMessage.directExecIDPrefix + execID
+        conversation.messages.append(
+            ChatMessage(
+                id: cardID,
+                role: .tool,
+                content: "",
+                toolName: command.tool,
+                toolArguments: command.args,
+                toolState: .running
+            )
+        )
+        conversationState.upsert(conversation, persistence: .message(id: cardID))
+
+        let snapshot = conversation
+        let transport = transport
+        lastExecTask = Task { [weak self, transport] in
+            let event: HostedAgentEvent
+            do {
+                let reply = try await transport.execTool(
+                    agentAddress: agent.address,
+                    conversation: snapshot,
+                    execID: execID,
+                    tool: command.tool,
+                    args: command.args
+                )
+                event = .toolResult(
+                    id: cardID,
+                    name: command.tool,
+                    output: reply.displayText,
+                    state: reply.isSuccess ? .completed : .failed
+                )
+            } catch {
+                event = .toolResult(
+                    id: cardID,
+                    name: command.tool,
+                    output: error.localizedDescription,
+                    state: .failed
+                )
+            }
+            self?.apply(event, toConversationID: snapshot.id)
+        }
+        return .queued
+    }
+
     @discardableResult
     private func startNextQueuedMessage(in conversationID: String) -> Bool {
         guard isDeliveryEnabled,
               !pausedConversationIDs.contains(conversationID),
               deliveryTasksByConversationID[conversationID] == nil,
               let conversation = conversationState.conversation(withID: conversationID),
+              // A .transmitted message comes first: it was sent before the app last closed and
+              // must be settled (never resent) before anything queued after it goes out.
               let message = conversation.messages.first(where: {
-                  $0.role == .user && $0.deliveryState == .queued
+                  $0.role == .user && ($0.deliveryState == .transmitted || $0.deliveryState == .queued)
               }) else {
             return false
         }
@@ -214,9 +275,8 @@ final class MessageDeliveryCoordinator: ObservableObject {
         }
 
         let transport = transport
-        let interactionCoordinator = interactionCoordinator
-        let conversationState = conversationState
-        return Task { [weak self, transport, interactionCoordinator, conversationState] in
+        let handlers = promptHandlers(messageID: messageID, conversationID: conversationID)
+        return Task { [weak self, transport] in
             defer {
                 self?.deliveryDidFinish(
                     messageID: messageID,
@@ -224,22 +284,7 @@ final class MessageDeliveryCoordinator: ObservableObject {
                 )
             }
             do {
-                let result = try await transport.sendPrompt(
-                    agentAddress: delivery.agent.address,
-                    conversation: delivery.conversation,
-                    prompt: Self.transportPrompt(for: delivery.message),
-                    onEvent: { [weak self] event in
-                        self?.apply(event, toConversationID: conversationID)
-                    },
-                    onInteraction: { [interactionCoordinator, conversationState] interaction in
-                        await Self.handleInteraction(
-                            interaction,
-                            conversationID: conversationID,
-                            coordinator: interactionCoordinator,
-                            conversationState: conversationState
-                        )
-                    }
-                )
+                let result = try await Self.deliver(delivery, over: transport, handlers: handlers)
                 try Task.checkCancellation()
                 self?.completeDelivery(
                     result,
@@ -256,6 +301,51 @@ final class MessageDeliveryCoordinator: ObservableObject {
                 )
             }
         }
+    }
+
+    // An earlier run of the app may already have sent a .transmitted message, so ask the host
+    // what happened to it instead of sending it again.
+    private static func deliver(
+        _ delivery: PreparedDelivery,
+        over transport: HostedAgentConversationTransport,
+        handlers: HostedAgentPromptHandlers
+    ) async throws -> HostedAgentResult {
+        let prompt = transportPrompt(for: delivery.message)
+        if delivery.message.deliveryState == .transmitted {
+            return try await transport.resumePrompt(
+                agentAddress: delivery.agent.address,
+                conversation: delivery.conversation,
+                prompt: prompt,
+                handlers: handlers
+            )
+        }
+        return try await transport.sendPrompt(
+            agentAddress: delivery.agent.address,
+            conversation: delivery.conversation,
+            prompt: prompt,
+            handlers: handlers
+        )
+    }
+
+    private func promptHandlers(messageID: String, conversationID: String) -> HostedAgentPromptHandlers {
+        let interactionCoordinator = interactionCoordinator
+        let conversationState = conversationState
+        return HostedAgentPromptHandlers(
+            onEvent: { [weak self] event in
+                self?.apply(event, toConversationID: conversationID)
+            },
+            onInteraction: { interaction in
+                await Self.handleInteraction(
+                    interaction,
+                    conversationID: conversationID,
+                    coordinator: interactionCoordinator,
+                    conversationState: conversationState
+                )
+            },
+            onInputDispatched: { [weak self] in
+                self?.markTransmitted(messageID: messageID, conversationID: conversationID)
+            }
+        )
     }
 
     private func prepareDelivery(
@@ -308,6 +398,19 @@ final class MessageDeliveryCoordinator: ObservableObject {
         if deliveryTasksByConversationID.isEmpty {
             onDeliveriesIdle?()
         }
+    }
+
+    // Saved before the INPUT bytes leave. If the app dies before the reply, the relaunch sees
+    // .transmitted and settles the message with resumePrompt instead of sending it twice.
+    private func markTransmitted(messageID: String, conversationID: String) {
+        guard activeMessageIDsByConversationID[conversationID] == messageID,
+              var updated = conversationState.conversation(withID: conversationID),
+              let index = updated.messages.firstIndex(where: { $0.id == messageID }),
+              updated.messages[index].deliveryState == .queued else {
+            return
+        }
+        updated.messages[index].deliveryState = .transmitted
+        conversationState.upsert(updated, persistence: .message(id: messageID))
     }
 
     private func completeDelivery(

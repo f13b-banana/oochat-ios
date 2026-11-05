@@ -1,0 +1,7 @@
+{
+  "type": "SESSION_SYNC",
+  "request_id": "sync-1",
+  "cursor": "opaque",
+  "limit": 50,
+  "include_archived": false
+}

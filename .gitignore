@@ -21,3 +21,4 @@ Pods/
 # Local configuration files
 .xcode.env.local
 *.env
+.build/

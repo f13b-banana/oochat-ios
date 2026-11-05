@@ -1,4 +1,5 @@
 import Foundation
+import ConnectOnionKit
 
 enum ConversationConnectionState: String, Codable {
     case disconnected
@@ -41,6 +42,9 @@ enum ChatMode: String, CaseIterable, Codable, Identifiable, Equatable {
 enum MessageDeliveryState: String, Codable, Equatable {
     case sent
     case queued
+    /// The INPUT may have reached the host but no reply was recorded. The app never sends
+    /// it again on its own; it reconnects and asks the host what happened to it.
+    case transmitted
     case failed
     case cancelled
 }
@@ -134,6 +138,16 @@ struct ChatMessage: Identifiable, Equatable {
         self.toolName = toolName
         self.toolArguments = toolArguments
         self.toolState = toolState
+    }
+}
+
+extension ChatMessage {
+    /// Tool cards made by `/exec` carry this id prefix, so they can be told apart from the agent's
+    /// own tool calls without a new stored field.
+    static let directExecIDPrefix = "exec-"
+
+    var isDirectExec: Bool {
+        role == .tool && id.hasPrefix(Self.directExecIDPrefix)
     }
 }
 

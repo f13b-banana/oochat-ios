@@ -1,3 +1,4 @@
+import ConnectOnionKit
 import Foundation
 
 extension HostedAgentConnection {
@@ -6,6 +7,9 @@ extension HostedAgentConnection {
             return
         }
         lastNetworkActivityAt = Date()
+        guard recordEventIfNew(frame) else {
+            return
+        }
 
         switch frame["type"]?.stringValue {
         case "PING":
@@ -14,18 +18,46 @@ extension HostedAgentConnection {
             await handleConnected(frame, generation: generation)
         case "OUTPUT":
             handleOutput(frame)
+        case "EXEC_RESULT":
+            handleExecResult(frame)
         case "tool_call", "tool_result", "mode_changed":
             await handleEvent(frame)
         case "approval_needed", "APPROVAL_NEEDED", "ulw_turns_reached", "plan_review", "ask_user":
             await handleInteraction(frame, generation: generation)
         case "ERROR":
-            failConnection(
-                HostedAgentClientError.server(messageText(frame)),
-                generation: generation
-            )
+            failConnection(connectError(for: frame), generation: generation)
         default:
             break
         }
+    }
+
+    static let interactionFrameTypes: Set<String> = [
+        "approval_needed", "APPROVAL_NEEDED", "ulw_turns_reached", "plan_review", "ask_user"
+    ]
+
+    /// Port of macOS recordEventIfNew
+    func recordEventIfNew(_ frame: [String: JSONValue]) -> Bool {
+        guard let eventID = frame["id"]?.stringValue, !eventID.isEmpty else {
+            return true
+        }
+        let type = frame["type"]?.stringValue ?? "unknown"
+        guard !Self.interactionFrameTypes.contains(type) else {
+            return true
+        }
+        let status = frame["status"]?.stringValue ?? "none"
+        let sequence = frame["seq"]?.numberValue.map { String(Int($0)) } ?? "none"
+        guard eventLedger.record(eventID: "\(type):\(eventID):\(status):\(sequence)") else {
+            return false
+        }
+        advanceBookmark(to: eventID)
+        return true
+    }
+
+    func advanceBookmark(to eventID: String) {
+        let fallbackID = lastConversation?.id ?? key.conversationID
+        var bookmark = bookmarkStore.load(conversationID: key.conversationID) ?? SessionBookmark(sessionID: fallbackID)
+        bookmark.lastMessageID = eventID
+        bookmarkStore.save(bookmark, conversationID: key.conversationID)
     }
 
     private func handlePing(generation: Int) async {
@@ -33,15 +65,20 @@ extension HostedAgentConnection {
             return
         }
         do {
-            try await send(["type": .string("PONG")], over: socket)
+            try await send(OIPClientFrames.pong(), over: socket)
         } catch {
             failConnection(error, generation: generation)
         }
     }
 
     private func handleConnected(_ frame: [String: JSONValue], generation: Int) async {
+        // The kit reads CONNECTED and refuses a session index. A frame it cannot use ends the attempt.
+        guard case .established(let connected)? = try? OIPHandshake.interpret(frame) else {
+            failConnection(HostedAgentClientError.badFrame, generation: generation)
+            return
+        }
         updateServerSession(from: frame)
-        connectionStatus = frame["status"]?.stringValue
+        connectionStatus = connected.status
         setState(.connected)
         connectTimeoutTask?.cancel()
         connectTimeoutTask = nil
@@ -55,7 +92,7 @@ extension HostedAgentConnection {
         for waiter in waiters {
             waiter.resume(returning: result)
         }
-        await resumePendingPrompt(from: frame, generation: generation)
+        await resumePendingPrompt(from: frame, isRunning: connected.isRunning, generation: generation)
     }
 
     private func handleOutput(_ frame: [String: JSONValue]) {
@@ -74,6 +111,24 @@ extension HostedAgentConnection {
                 serverSession: serverSession
             )
         )
+    }
+
+    /// Hands an EXEC_RESULT to the caller waiting under its exec_id. 
+    /// Never fails the connection: `status: error` is taken as a tool response.
+    private func handleExecResult(_ frame: [String: JSONValue]) {
+        guard case .execResult(let result) = OIPServerFrame.decode(frame),
+              let continuation = pendingExecs.removeValue(forKey: result.execID) else {
+            return
+        }
+        continuation.resume(returning: result)
+    }
+
+    func failPendingExecs(_ error: Error) {
+        let execs = pendingExecs
+        pendingExecs.removeAll()
+        for continuation in execs.values {
+            continuation.resume(throwing: error)
+        }
     }
 
     private func handleEvent(_ frame: [String: JSONValue]) async {
@@ -103,33 +158,48 @@ extension HostedAgentConnection {
     // `status` says where the run stands: "running" means events and the OUTPUT will stream
     // on this socket; anything else means the run finished while we were away (the reply is
     // the trailing agent entry in `chat_items`) or the INPUT never started it (resend it).
-    private func resumePendingPrompt(from frame: [String: JSONValue], generation: Int) async {
+    private func resumePendingPrompt(from frame: [String: JSONValue], isRunning: Bool, generation: Int) async {
         guard let pending = pendingPrompt else {
             return
         }
-        guard frame["status"]?.stringValue != "running" else {
+        guard !isRunning else {
             return
         }
+        if pending.inputDelivered {
+            await settleFromChatItems(pending, frame: frame)
+        } else {
+            await resendUndeliveredPrompt(pending, generation: generation)
+        }
+    }
 
-        if !pending.inputDelivered {
-            guard var conversation = lastConversation else {
-                failConnection(HostedAgentClientError.closed, generation: generation)
-                return
-            }
-            if let serverSession {
-                conversation.serverSession = serverSession
-            }
-            await transmitPrompt(
-                pending.prompt,
-                images: pending.images,
-                files: pending.files,
-                conversation: conversation,
-                promptID: pending.id
-            )
+    // The INPUT never started the run, so send it again on this socket.
+    private func resendUndeliveredPrompt(_ pending: PendingPrompt, generation: Int) async {
+        guard var conversation = lastConversation else {
+            failConnection(HostedAgentClientError.closed, generation: generation)
             return
         }
+        if let serverSession {
+            conversation.serverSession = serverSession
+        }
+        await transmitPrompt(
+            pending.prompt,
+            images: pending.images,
+            files: pending.files,
+            conversation: conversation,
+            promptID: pending.id
+        )
+    }
 
-        let missedItems = Self.itemsAfterLastUserMessage(in: frame)
+    // The run finished while we were away: replay its tool results, then answer with its reply.
+    private func settleFromChatItems(_ pending: PendingPrompt, frame: [String: JSONValue]) async {
+        let missedItems: [[String: JSONValue]]
+        if pending.requiresMatchingUserTurn {
+            // After a relaunch the host's last turn may be an older one (our INPUT never
+            // arrived), so its reply must not be taken as the answer to this prompt.
+            missedItems = Self.itemsAfterUserMessage(matching: pending.prompt, in: frame) ?? []
+        } else {
+            missedItems = Self.itemsAfterLastUserMessage(in: frame)
+        }
         for item in missedItems {
             guard let event = Self.replayedToolResult(item) else {
                 continue
@@ -152,8 +222,42 @@ extension HostedAgentConnection {
             )
         } else {
             // the server no longer has the run or its reply, so let the user retry
-            pending.continuation.resume(throwing: HostedAgentClientError.closed)
+            pending.continuation.resume(
+                throwing: pending.requiresMatchingUserTurn
+                    ? HostedAgentClientError.outcomeUnknown
+                    : HostedAgentClientError.closed
+            )
         }
+    }
+
+    // The items of the last turn, but only when that turn's user message is `prompt`.
+    // nil when there are no chat_items or the last turn belongs to another message.
+    private static func itemsAfterUserMessage(
+        matching prompt: String,
+        in frame: [String: JSONValue]
+    ) -> [[String: JSONValue]]? {
+        guard case .array(let values)? = frame["chat_items"] else {
+            return nil
+        }
+        var lastUserContent: String?
+        var turn: [[String: JSONValue]] = []
+        for value in values {
+            guard case .object(let item) = value else {
+                continue
+            }
+            if item["type"]?.stringValue == "user" {
+                lastUserContent = item["content"]?.stringValue
+                turn.removeAll()
+            } else {
+                turn.append(item)
+            }
+        }
+        let expected = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let lastUserContent,
+              lastUserContent.trimmingCharacters(in: .whitespacesAndNewlines) == expected else {
+            return nil
+        }
+        return turn
     }
 
     private static func itemsAfterLastUserMessage(in frame: [String: JSONValue]) -> [[String: JSONValue]] {
@@ -234,6 +338,7 @@ extension HostedAgentConnection {
                 return
             }
             try await send(frame, over: socket)
+            advanceBookmark(to: interaction.id)
         } catch {
             failConnection(error, generation: generation)
         }
@@ -257,6 +362,7 @@ extension HostedAgentConnection {
                 return
             }
             try await send(frame, over: socket)
+            advanceBookmark(to: interaction.id)
         } catch {
             failConnection(error, generation: generation)
         }
@@ -271,33 +377,16 @@ extension HostedAgentConnection {
         // superseded requests release the local gate without writing to the socket
         case (_, .superseded):
             return nil
-        case (.approval, .approval(let approval)):
-            return HostedAgentClient.approvalResponseFrame(
-                decision: approval,
-                agentAddress: key.agentAddress,
-                endpoint: endpoint
-            )
+        case (.approval(let request), .approval(let approval)):
+            return try frames.approvalResponse(requestID: request.id, decision: approval.decisionFields)
         case (.ulwCheckpoint, .ulwCheckpoint(let checkpoint)):
-            return HostedAgentClient.ulwResponseFrame(
-                decision: checkpoint,
-                agentAddress: key.agentAddress,
-                endpoint: endpoint
-            )
+            return try signedCommand(checkpoint.responseFrame)
         case (.planReview(let request), .planReview(let review)):
-            return HostedAgentClient.planReviewResponseFrame(
-                decision: review,
-                request: request,
-                agentAddress: key.agentAddress,
-                endpoint: endpoint
-            )
+            return try signedCommand(review.responseFrame(for: request))
         case (.askUser, .askUser(.cancel)):
             return nil
-        case (.askUser, .askUser(.answer(let answer))):
-            return HostedAgentClient.askUserResponseFrame(
-                answer: answer,
-                agentAddress: key.agentAddress,
-                endpoint: endpoint
-            )
+        case (.askUser(let request), .askUser(.answer(let answer))):
+            return try frames.askUserResponse(requestID: request.id, answer: answer)
         default:
             throw HostedAgentClientError.badFrame
         }
@@ -340,7 +429,9 @@ extension HostedAgentConnection {
         guard pendingPrompt != nil,
               connectWaiters.isEmpty,
               lastConversation != nil,
-              resumeAttemptsUsed < resumeAttemptLimit else {
+              case .connecting = reduce(
+                .connecting(attempt: resumeAttemptsUsed), .socketClosed, maxAttempts: reconnectPolicy.maxAttempts
+              ) else {
             return false
         }
         switch error {
@@ -374,13 +465,15 @@ extension HostedAgentConnection {
         // gates from the dead socket unblock here; the server replays any interaction
         // request that is still waiting once the new socket attaches
         cancelInteractionTasks()
+        // an EXEC sent on the dead socket will never be answered, and is never resent
+        failPendingExecs(HostedAgentClientError.closed)
 
         let socket = socket
         self.socket = nil
         endpoint = nil
         socket?.cancel(with: .goingAway, reason: nil)
 
-        let delay = resumeRetryDelay * pow(2, Double(resumeAttemptsUsed - 1))
+        let delay = reconnectPolicy.delay(for: resumeAttemptsUsed)
         resumeTask = Task { [weak self] in
             if delay > 0 {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -436,6 +529,7 @@ extension HostedAgentConnection {
             waiter.resume(throwing: error)
         }
         pending?.continuation.resume(throwing: error)
+        failPendingExecs(error)
     }
 
     func setState(_ newState: State) {
@@ -469,22 +563,6 @@ extension HostedAgentConnection {
         try await endpointResolver(agentAddress)
     }
 
-    func buildConnectFrame(conversation: Conversation) throws -> [String: JSONValue] {
-        let timestamp = Double(Int(Date().timeIntervalSince1970))
-        let session = sessionPayload(for: conversation)
-        let payload = HostedAgentClient.connectSignaturePayload(
-            agentAddress: key.agentAddress,
-            conversationID: conversation.id,
-            session: session,
-            timestamp: timestamp
-        )
-        var frame = try identityStore.signedEnvelope(type: "CONNECT", payload: payload)
-        frame["to"] = .string(key.agentAddress)
-        frame["session_id"] = .string(conversation.id)
-        frame["session"] = .object(session)
-        return frame
-    }
-
     func sessionPayload(for conversation: Conversation) -> [String: JSONValue] {
         HostedAgentSessionState.applying(
             conversation.mode,
@@ -493,37 +571,16 @@ extension HostedAgentConnection {
         )
     }
 
-    func buildInputFrame(
-        prompt: String,
-        images: [String],
-        files: [HostedAgentFilePayload],
-        conversation: Conversation,
-        inputID: String
-    ) throws -> [String: JSONValue] {
-        let timestamp = Double(Int(Date().timeIntervalSince1970))
-        let payload = HostedAgentClient.inputSignaturePayload(
-            agentAddress: key.agentAddress,
-            conversationID: conversation.id,
-            inputID: inputID,
-            prompt: prompt,
-            mode: conversation.mode,
-            timestamp: timestamp,
-            images: images,
-            files: files
-        )
-        var frame = try identityStore.signedEnvelope(type: "INPUT", payload: payload)
-        frame["to"] = .string(key.agentAddress)
-        frame["session_id"] = .string(conversation.id)
-        frame["input_id"] = .string(inputID)
-        frame["prompt"] = .string(prompt)
-        frame["mode"] = .string(conversation.mode.rawValue)
-        if !images.isEmpty {
-            frame["images"] = .array(images.map(JSONValue.string))
+    /// ULW and plan review answers have no named builder in pkg, so they go through generic signed command.
+    /// WIth signed_commands flag set, the host eruns only teh signed payload
+    func signedCommand(_ frame: [String: JSONValue]) throws -> [String: JSONValue] {
+        guard case .string(let type)? = frame["type"] else {
+            throw HostedAgentClientError.badFrame
         }
-        if !files.isEmpty {
-            frame["files"] = .array(files.map(\.jsonValue))
-        }
-        return frame
+
+        var fields = frame
+        fields["type"] = nil
+        return try frames.command(type: type, fields: fields)
     }
 
     func send(_ frame: [String: JSONValue], over socket: any HostedAgentWebSocketTask) async throws {
@@ -558,5 +615,15 @@ extension HostedAgentConnection {
 
     private func messageText(_ frame: [String: JSONValue]) -> String {
         HostedAgentEvent.messageText(frame)
+    }
+
+    // -32010 means the host speaks another OIP version. canResume(after:) already treats every
+    // client error except .closed and .timeout as final, so this ends the attempt with no retry.
+    // Every other ERROR keeps its old meaning: the host's own text.
+    private func connectError(for frame: [String: JSONValue]) -> HostedAgentClientError {
+        if case .incompatible(let incompatibility)? = try? OIPHandshake.interpret(frame) {
+            return .incompatibleProtocol(incompatibility)
+        }
+        return .server(messageText(frame))
     }
 }

@@ -141,6 +141,16 @@ struct ChatMessage: Identifiable, Equatable {
     }
 }
 
+extension ChatMessage {
+    /// Tool cards made by `/exec` carry this id prefix, so they can be told apart from the agent's
+    /// own tool calls without a new stored field.
+    static let directExecIDPrefix = "exec-"
+
+    var isDirectExec: Bool {
+        role == .tool && id.hasPrefix(Self.directExecIDPrefix)
+    }
+}
+
 struct Conversation: Identifiable, Equatable {
     let id: String
     var title: String

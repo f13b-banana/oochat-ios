@@ -41,7 +41,7 @@ actor HostedAgentConnection {
     let resumeRetryDelay: TimeInterval
     let bookmarkStore: HostedAgentBookmarkStore
     let reconnectPolicy: ReconnectPolicy
-
+    let execTimeout: TimeInterval
     var eventLedger = EventLedger()
     var state: State = .disconnected
     var socket: (any HostedAgentWebSocketTask)?
@@ -61,6 +61,7 @@ actor HostedAgentConnection {
     var resumeAttemptsUsed = 0
     var lastConversation: Conversation?
     var requiresRevalidation = false
+    var pendingExecs: [String: CheckedContinuation<OIPExecResult, Error>] = [:]
 
     init(
         key: HostedAgentConnectionKey,
@@ -75,7 +76,8 @@ actor HostedAgentConnection {
         livenessCheckInterval: TimeInterval = 10,
         resumeAttemptLimit: Int = 3,
         resumeRetryDelay: TimeInterval = 1,
-        bookmarkStore: HostedAgentBookmarkStore = HostedAgentBookmarkStore()
+        bookmarkStore: HostedAgentBookmarkStore = HostedAgentBookmarkStore(),
+        execTimeout: TimeInterval = 30
     ) {
         self.key = key
         self.identityStore = identityStore
@@ -92,6 +94,7 @@ actor HostedAgentConnection {
         self.resumeRetryDelay = resumeRetryDelay
         self.bookmarkStore = bookmarkStore
         self.reconnectPolicy = ReconnectPolicy(maxAttempts: resumeAttemptLimit + 1, baseDelay: resumeRetryDelay)
+        self.execTimeout = execTimeout
     }
 
     // Share one connection attempt across callers for this conversation.
@@ -243,6 +246,63 @@ actor HostedAgentConnection {
                 await self?.cancelPrompt(promptID)
             }
         }
+    }
+
+    /// Runs tool on the host without the LLM (EXEC); each reply is matched to its request by `exec_id`. 
+    /// A tool that fails still returns as a result. Throws only when the round trip itself fails.
+    func exec(
+        conversation: Conversation,
+        execID: String,
+        tool: String,
+        args: [String: JSONValue]
+    ) async throws -> OIPExecResult {
+        try Task.checkCancellation()
+        _ = try await ensureConnected(conversation: conversation)
+        try Task.checkCancellation()
+        guard pendingExecs[execID] == nil else {
+            throw HostedAgentClientError.busy
+        }
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                pendingExecs[execID] = continuation
+                Task { [weak self] in
+                    await self?.transmitExec(execID: execID, tool: tool, args: args)
+                }
+                Task { [weak self, execTimeout] in
+                    try? await Task.sleep(nanoseconds: UInt64(execTimeout * 1_000_000_000))
+                    await self?.failExec(execID, with: HostedAgentClientError.timeout)
+                }
+            }
+        } onCancel: {
+            Task { [weak self] in
+                await self?.failExec(execID, with: CancellationError())
+            }
+        }
+    }
+
+    private func transmitExec(execID: String, tool: String, args: [String: JSONValue]) async {
+        let generation = socketGeneration
+        guard pendingExecs[execID] != nil else {
+            return
+        }
+        guard let socket else {
+            failExec(execID, with: HostedAgentClientError.closed)
+            return
+        }
+        do {
+            try await send(try frames.exec(execID: execID, tool: tool, args: args), over: socket)
+        } catch {
+            failExec(execID, with: error)
+            failConnection(error, generation: generation)
+        }
+    }
+
+    private func failExec(_ execID: String, with error: Error) {
+        pendingExecs.removeValue(forKey: execID)?.resume(throwing: error)
     }
 
     func close() {

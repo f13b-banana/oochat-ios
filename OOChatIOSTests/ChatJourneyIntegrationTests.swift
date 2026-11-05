@@ -1,4 +1,5 @@
 import XCTest
+import ConnectOnionKit
 @testable import OOChatIOS
 
 // end to end integration tests for chat
@@ -336,6 +337,102 @@ final class ChatJourneyIntegrationTests: XCTestCase {
         XCTAssertEqual(restored.serverSession?["session_id"], .string(conversation.id))
         XCTAssertNil(restored.serverSession?["skip_tool_approval"])
         XCTAssertNil(restored.serverSession?["ulw_turns"])
+    }
+
+    // /exec: one tool runs on the host with no LLM turn, and the card shows the answer
+    func testExecCommandShowsASuccessCardWithoutStartingATurn() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        let viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Ops", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+        app.transport.execBehavior = .reply(status: "success", text: "max")
+
+        viewModel.prompt = "/exec bash command=whoami"
+        viewModel.sendPrompt()
+        await viewModel.deliveryCoordinator.lastExecTask?.value
+
+        XCTAssertEqual(app.transport.executedTools, ["bash"])
+        XCTAssertEqual(app.transport.executedArguments, [["command": .string("whoami")]])
+        XCTAssertTrue(app.transport.sentPrompts.isEmpty, "an EXEC never starts an LLM turn")
+        XCTAssertEqual(viewModel.prompt, "")
+        XCTAssertNil(viewModel.errorMessage)
+        let messages = try XCTUnwrap(viewModel.conversation(withID: conversation.id)).messages
+        XCTAssertEqual(messages.map(\.role), [.tool], "no user message is added")
+        let card = try XCTUnwrap(messages.first)
+        XCTAssertTrue(card.isDirectExec)
+        XCTAssertEqual(card.toolName, "bash")
+        XCTAssertEqual(card.toolState, .completed)
+        XCTAssertEqual(card.content, "max")
+    }
+
+    // a refused tool is an answer: the card says why, and the session keeps working
+    func testFailedExecShowsAFailedCardAndTheSessionKeepsWorking() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        let viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Ops", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+        let stateBefore = viewModel.connectionState
+        app.transport.execBehavior = .reply(status: "error", text: "blocked: bash is not allowed")
+
+        viewModel.prompt = "/exec bash command=whoami"
+        viewModel.sendPrompt()
+        await viewModel.deliveryCoordinator.lastExecTask?.value
+
+        let failed = try XCTUnwrap(viewModel.conversation(withID: conversation.id)).messages
+        XCTAssertEqual(failed.first?.toolState, .failed)
+        XCTAssertEqual(failed.first?.content, "blocked: bash is not allowed")
+        XCTAssertNil(viewModel.errorMessage, "a refused tool is not a banner-level error")
+        XCTAssertEqual(viewModel.connectionState, stateBefore, "a refused tool does not touch the connection state")
+        XCTAssertFalse(viewModel.hasFailedDelivery(forConversationID: conversation.id))
+
+        app.transport.sendBehavior = .succeed(output: "Still here.")
+        viewModel.prompt = "Are you still there?"
+        viewModel.sendPrompt()
+        await viewModel.sendTask?.value
+
+        XCTAssertEqual(app.transport.sentPrompts, ["Are you still there?"])
+        let messages = try XCTUnwrap(viewModel.conversation(withID: conversation.id)).messages
+        XCTAssertEqual(messages.map(\.role), [.tool, .user, .agent])
+        XCTAssertEqual(messages.last?.content, "Still here.")
+    }
+
+    // no answer at all (socket lost, timeout) also ends as a failed card, not a stuck Running one
+    func testExecThatGetsNoAnswerEndsAsAFailedCard() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        let viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Ops", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+        app.transport.execBehavior = .fail(HostedAgentClientError.closed)
+
+        viewModel.prompt = "/exec bash command=whoami"
+        viewModel.sendPrompt()
+        await viewModel.deliveryCoordinator.lastExecTask?.value
+
+        let card = try XCTUnwrap(viewModel.conversation(withID: conversation.id)).messages.first
+        XCTAssertEqual(card?.toolState, .failed)
+        XCTAssertEqual(card?.content, HostedAgentClientError.closed.errorDescription)
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    // a malformed /exec shows the usage line and sends nothing anywhere
+    func testMalformedExecCommandShowsTheUsageAndRunsNothing() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        let viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Ops", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+
+        viewModel.prompt = "/exec"
+        viewModel.sendPrompt()
+
+        XCTAssertEqual(viewModel.errorMessage, OIPExecCommand.usage)
+        XCTAssertEqual(viewModel.prompt, "/exec", "the text stays so it can be fixed")
+        XCTAssertTrue(app.transport.executedTools.isEmpty)
+        XCTAssertTrue(app.transport.sentPrompts.isEmpty)
+        XCTAssertEqual(try XCTUnwrap(viewModel.conversation(withID: conversation.id)).messages.count, 0)
     }
 
     // assertions

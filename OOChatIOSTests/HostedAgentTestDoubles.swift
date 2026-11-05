@@ -69,6 +69,15 @@ final class MockAgentTransport: HostedAgentTransport {
     var skillFetchError: Error?
     var onSend: (@MainActor () -> Void)?
     var waitAfterInteractionsUntilCancelled = false
+
+    enum ExecBehavior {
+        case reply(status: String, text: String)
+        case fail(Error)
+    }
+    var execBehavior: ExecBehavior = .reply(status: "success", text: "ok")
+    private(set) var executedTools: [String] = []
+    private(set) var executedArguments: [[String: JSONValue]] = []
+
     // What the host says about a prompt sent before a relaunch. Fails by default, so a test
     // that never expects a resume notices one.
     var resumeBehavior: Behavior = .fail(HostedAgentClientError.outcomeUnknown)
@@ -227,6 +236,33 @@ final class MockAgentTransport: HostedAgentTransport {
                 throw HostedAgentClientError.badFrame
             }
             askUserDecisions.append(decision)
+        }
+    }
+
+    func execTool(
+        agentAddress: String,
+        conversation: Conversation,
+        execID: String,
+        tool: String,
+        args: [String: JSONValue]
+    ) async throws -> OIPExecResult {
+        executedTools.append(tool)
+        executedArguments.append(args)
+        switch execBehavior {
+        case .fail(let error):
+            throw error
+        case .reply(let status, let text):
+            var frame: [String: JSONValue] = [
+                "type": .string("EXEC_RESULT"),
+                "exec_id": .string(execID),
+                "tool": .string(tool),
+                "status": .string(status)
+            ]
+            frame[status == "success" ? "result" : "error"] = .string(text)
+            guard case .execResult(let result) = OIPServerFrame.decode(frame) else {
+                throw HostedAgentClientError.badFrame
+            }
+            return result
         }
     }
 

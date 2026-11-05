@@ -47,10 +47,27 @@ protocol HostedAgentConversationTransport: AnyObject {
     func waitForPendingInteractionResponses(agentAddress: String, conversationID: String) async
     func noteNetworkLost() async
     func applicationDidBecomeActive()
+    func execTool(
+        agentAddress: String,
+        conversation: Conversation,
+        execID: String,
+        tool: String,
+        args: [String: JSONValue]
+    ) async throws -> OIPExecResult
 }
 
 extension HostedAgentConversationTransport {
     func applicationDidBecomeActive() {}
+
+    func execTool(
+        agentAddress: String,
+        conversation: Conversation,
+        execID: String,
+        tool: String,
+        args: [String: JSONValue]
+    ) async throws -> OIPExecResult {
+        throw HostedAgentClientError.server("This connection cannot run tools directly.")
+    }
 }
 
 protocol AgentAvailabilityChecking: AnyObject {

@@ -1290,6 +1290,191 @@ final class HostedAgentConnectionTests: XCTestCase {
         ]
     }
 
+    private func execResultFrame(
+        _ execID: String,
+        status: String = "success",
+        extra: [String: JSONValue] = [:]
+    ) -> [String: JSONValue] {
+        var frame: [String: JSONValue] = [
+            "type": .string("EXEC_RESULT"),
+            "exec_id": .string(execID),
+            "tool": .string("bash"),
+            "status": .string(status),
+            "duration_ms": .number(7)
+        ]
+        frame.merge(extra) { _, new in new }
+        return frame
+    }
+
+    private func assertExecError(
+        _ expected: HostedAgentClientError,
+        from task: Task<OIPExecResult, Error>
+    ) async {
+        do {
+            _ = try await task.value
+            XCTFail("Expected \(expected)")
+        } catch let error as HostedAgentClientError {
+            XCTAssertTrue(sameErrorCase(error, expected), "Expected \(expected), got \(error)")
+        } catch {
+            XCTFail("Expected HostedAgentClientError, got \(error)")
+        }
+    }
+
+    func testExecSendsASignedFrameAndReturnsTheMatchingResult() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let conversation = makeConversation(id: "exec-success")
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+        let socket = try await factory.socket(at: 0)
+
+        let task = Task {
+            try await connection.exec(
+                conversation: conversation,
+                execID: "e-1",
+                tool: "bash",
+                args: ["command": .string("whoami")]
+            )
+        }
+        let frame = try await socket.waitForSentFrame(type: "EXEC")
+        let payload = try signedPayload(of: frame)
+        XCTAssertEqual(payload["exec_id"], .string("e-1"))
+        XCTAssertEqual(payload["tool"], .string("bash"))
+        XCTAssertEqual(payload["args"], .object(["command": .string("whoami")]))
+        XCTAssertEqual(payload["to"], .string(agentAddress))
+        XCTAssertEqual(frame["exec_id"], .string("e-1"), "copied top level for pre-v2 hosts")
+        try assertSignatureVerifies(frame)
+
+        try socket.enqueueFrame(execResultFrame("e-1", extra: ["result": .string("max")]))
+        let result = try await task.value
+
+        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(result.result, "max")
+        XCTAssertEqual(result.durationMS, 7)
+        await connection.close()
+    }
+
+    func testAFailedToolIsAResultAndTheSocketAndNextPromptStillWork() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let conversation = makeConversation(id: "exec-failure")
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+        let socket = try await factory.socket(at: 0)
+
+        let task = Task {
+            try await connection.exec(conversation: conversation, execID: "e-1", tool: "bash", args: [:])
+        }
+        _ = try await socket.waitForSentFrame(type: "EXEC")
+        try socket.enqueueFrame(
+            execResultFrame("e-1", status: "error", extra: ["error": .string("blocked: cat is not allowed")])
+        )
+        let result = try await task.value
+
+        XCTAssertFalse(result.isSuccess)
+        XCTAssertEqual(result.error, "blocked: cat is not allowed")
+        XCTAssertNil(socket.closeCode, "a failed tool must not close the socket")
+
+        let prompt = Task {
+            try await connection.sendPrompt(
+                conversation: conversation,
+                prompt: "still there?",
+                onEvent: nil,
+                onInteraction: nil
+            )
+        }
+        _ = try await socket.waitForSentFrame(type: "INPUT")
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("yes")])
+        let reply = try await prompt.value
+        XCTAssertEqual(reply.output, "yes")
+        XCTAssertEqual(factory.count, 1, "the same socket served both")
+        await connection.close()
+    }
+
+    func testPipelinedExecsAreMatchedByExecIDNotArrivalOrder() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let conversation = makeConversation(id: "exec-pipelined")
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+        let socket = try await factory.socket(at: 0)
+
+        let first = Task {
+            try await connection.exec(conversation: conversation, execID: "e-1", tool: "bash", args: [:])
+        }
+        let second = Task {
+            try await connection.exec(conversation: conversation, execID: "e-2", tool: "bash", args: [:])
+        }
+        _ = try await socket.waitForSentFrame(type: "EXEC", occurrence: 2)
+
+        try socket.enqueueFrame(execResultFrame("e-2", extra: ["result": .string("second")]))
+        try socket.enqueueFrame(execResultFrame("e-1", extra: ["result": .string("first")]))
+
+        let firstResult = try await first.value
+        let secondResult = try await second.value
+        XCTAssertEqual(firstResult.result, "first")
+        XCTAssertEqual(secondResult.result, "second")
+        await connection.close()
+    }
+
+    func testUnknownAndMalformedExecResultsAreIgnored() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let conversation = makeConversation(id: "exec-strays")
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+        let socket = try await factory.socket(at: 0)
+
+        let task = Task {
+            try await connection.exec(conversation: conversation, execID: "e-1", tool: "bash", args: [:])
+        }
+        _ = try await socket.waitForSentFrame(type: "EXEC")
+        try socket.enqueueFrame(execResultFrame("someone-else", extra: ["result": .string("not mine")]))
+        try socket.enqueueFrame(["type": .string("EXEC_RESULT"), "status": .string("success")])
+        try socket.enqueueFrame(execResultFrame("e-1", extra: ["result": .string("mine")]))
+
+        let result = try await task.value
+        XCTAssertEqual(result.result, "mine")
+        XCTAssertNil(socket.closeCode, "stray and malformed results must not fail the connection")
+        await connection.close()
+    }
+
+    func testExecTimeoutFailsOnlyThatExecAndLeavesTheSocketOpen() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory, execTimeout: 0.05)
+        let conversation = makeConversation(id: "exec-timeout")
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+        let socket = try await factory.socket(at: 0)
+
+        let slow = Task {
+            try await connection.exec(conversation: conversation, execID: "e-1", tool: "bash", args: [:])
+        }
+        await assertExecError(.timeout, from: slow)
+        XCTAssertNil(socket.closeCode, "one slow tool must not end the session")
+
+        let next = Task {
+            try await connection.exec(conversation: conversation, execID: "e-2", tool: "bash", args: [:])
+        }
+        _ = try await socket.waitForSentFrame(type: "EXEC", occurrence: 2)
+        try socket.enqueueFrame(execResultFrame("e-1", extra: ["result": .string("late")]))
+        try socket.enqueueFrame(execResultFrame("e-2", extra: ["result": .string("on time")]))
+        let result = try await next.value
+        XCTAssertEqual(result.result, "on time")
+        await connection.close()
+    }
+
+    func testClosingTheConnectionFailsAWaitingExecAtOnce() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let conversation = makeConversation(id: "exec-close")
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+        let socket = try await factory.socket(at: 0)
+
+        let task = Task {
+            try await connection.exec(conversation: conversation, execID: "e-1", tool: "bash", args: [:])
+        }
+        _ = try await socket.waitForSentFrame(type: "EXEC")
+        await connection.close()
+
+        await assertExecError(.closed, from: task)
+    }
+
     private func makeConnection(
         factory: MockHostedAgentSocketFactory,
         resolver: HostedAgentEndpointResolver? = nil,
@@ -1299,7 +1484,8 @@ final class HostedAgentConnectionTests: XCTestCase {
         livenessCheckInterval: TimeInterval = 0.1,
         resumeAttemptLimit: Int = 0,
         resumeRetryDelay: TimeInterval = 0,
-        bookmarkStore: HostedAgentBookmarkStore = HostedAgentBookmarkStore(suiteName: "test.bookmarks.\(UUID().uuidString)")
+        bookmarkStore: HostedAgentBookmarkStore = HostedAgentBookmarkStore(suiteName: "test.bookmarks.\(UUID().uuidString)"),
+        execTimeout: TimeInterval = 30
     ) -> HostedAgentConnection {
         let endpoint = endpoint
         return HostedAgentConnection(
@@ -1315,7 +1501,8 @@ final class HostedAgentConnectionTests: XCTestCase {
             livenessCheckInterval: livenessCheckInterval,
             resumeAttemptLimit: resumeAttemptLimit,
             resumeRetryDelay: resumeRetryDelay,
-            bookmarkStore: bookmarkStore
+            bookmarkStore: bookmarkStore,
+            execTimeout: execTimeout
         )
     }
 

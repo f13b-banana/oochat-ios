@@ -18,6 +18,8 @@ extension HostedAgentConnection {
             await handleConnected(frame, generation: generation)
         case "OUTPUT":
             handleOutput(frame)
+        case "EXEC_RESULT":
+            handleExecResult(frame)
         case "tool_call", "tool_result", "mode_changed":
             await handleEvent(frame)
         case "approval_needed", "APPROVAL_NEEDED", "ulw_turns_reached", "plan_review", "ask_user":
@@ -109,6 +111,24 @@ extension HostedAgentConnection {
                 serverSession: serverSession
             )
         )
+    }
+
+    /// Hands an EXEC_RESULT to the caller waiting under its exec_id. 
+    /// Never fails the connection: `status: error` is taken as a tool response.
+    private func handleExecResult(_ frame: [String: JSONValue]) {
+        guard case .execResult(let result) = OIPServerFrame.decode(frame),
+              let continuation = pendingExecs.removeValue(forKey: result.execID) else {
+            return
+        }
+        continuation.resume(returning: result)
+    }
+
+    func failPendingExecs(_ error: Error) {
+        let execs = pendingExecs
+        pendingExecs.removeAll()
+        for continuation in execs.values {
+            continuation.resume(throwing: error)
+        }
     }
 
     private func handleEvent(_ frame: [String: JSONValue]) async {
@@ -445,6 +465,8 @@ extension HostedAgentConnection {
         // gates from the dead socket unblock here; the server replays any interaction
         // request that is still waiting once the new socket attaches
         cancelInteractionTasks()
+        // an EXEC sent on the dead socket will never be answered, and is never resent
+        failPendingExecs(HostedAgentClientError.closed)
 
         let socket = socket
         self.socket = nil
@@ -507,6 +529,7 @@ extension HostedAgentConnection {
             waiter.resume(throwing: error)
         }
         pending?.continuation.resume(throwing: error)
+        failPendingExecs(error)
     }
 
     func setState(_ newState: State) {

@@ -123,6 +123,25 @@ final class HostedAgentClient: HostedAgentTransport {
         )
     }
 
+    func execTool(
+        agentAddress: String,
+        conversation: Conversation,
+        execID: String,
+        tool: String,
+        args: [String: JSONValue]
+    ) async throws -> OIPExecResult {
+        guard Self.isHostedAgentAddress(agentAddress) else {
+            throw HostedAgentClientError.invalidAddress
+        }
+        return try await connectionPool.exec(
+            agentAddress: agentAddress,
+            conversation: conversation,
+            execID: execID,
+            tool: tool,
+            args: args
+        )
+    }
+
     func waitForPendingInteractionResponses(agentAddress: String, conversationID: String) async {
         await connectionPool.waitForPendingInteractionResponses(
             agentAddress: agentAddress,

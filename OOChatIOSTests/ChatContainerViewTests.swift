@@ -39,7 +39,7 @@ final class ChatViewTests: XCTestCase {
                     toolArguments: ["cmd": .string("swift test")],
                     toolState: .completed
                 ),
-                ChatMessage(id: "agent1", role: .agent, content: "Here is the summary."),
+                ChatMessage(id: "agent1", role: .agent, content: "Here is the summary.")
             ]
         )
         let viewModel = makeContainerViewModel(

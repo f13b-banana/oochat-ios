@@ -1,0 +1,15 @@
+{
+  "type": "plan",
+  "entries": [
+    {
+      "content": "Run tests",
+      "priority": "high",
+      "status": "in_progress"
+    },
+    {
+      "content": "Update docs",
+      "priority": "medium",
+      "status": "pending"
+    }
+  ]
+}

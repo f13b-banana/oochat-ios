@@ -1,0 +1,6 @@
+{
+  "type": "SESSION_WATCH",
+  "request_id": "watch-1",
+  "cursor": "opaque",
+  "include_archived": false
+}

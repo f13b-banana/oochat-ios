@@ -1,0 +1,8 @@
+{
+  "type": "approval_needed",
+  "id": "ev-appr-1",
+  "tool": "bash",
+  "arguments": {
+    "command": "rm -rf build"
+  }
+}

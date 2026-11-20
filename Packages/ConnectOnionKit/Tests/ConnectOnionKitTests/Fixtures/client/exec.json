@@ -1,0 +1,26 @@
+{
+  "frame": {
+    "args": {
+      "path": "README.md"
+    },
+    "exec_id": "exec-1",
+    "from": "0x03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+    "nonce": "nonce-1",
+    "payload": {
+      "args": {
+        "path": "README.md"
+      },
+      "exec_id": "exec-1",
+      "nonce": "nonce-1",
+      "timestamp": 1700000000,
+      "to": "0xabababababababababababababababababababababababababababababababab",
+      "tool": "read_file",
+      "type": "EXEC"
+    },
+    "timestamp": 1700000000,
+    "to": "0xabababababababababababababababababababababababababababababababab",
+    "tool": "read_file",
+    "type": "EXEC"
+  },
+  "signed": true
+}

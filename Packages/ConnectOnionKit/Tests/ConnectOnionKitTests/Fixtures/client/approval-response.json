@@ -1,0 +1,24 @@
+{
+  "frame": {
+    "approved": false,
+    "feedback": "Use another file",
+    "from": "0x03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+    "mode": "reject_soft",
+    "nonce": "nonce-1",
+    "payload": {
+      "approved": false,
+      "feedback": "Use another file",
+      "mode": "reject_soft",
+      "nonce": "nonce-1",
+      "request_id": "approval-1",
+      "timestamp": 1700000000,
+      "to": "0xabababababababababababababababababababababababababababababababab",
+      "type": "APPROVAL_RESPONSE"
+    },
+    "request_id": "approval-1",
+    "timestamp": 1700000000,
+    "to": "0xabababababababababababababababababababababababababababababababab",
+    "type": "APPROVAL_RESPONSE"
+  },
+  "signed": true
+}

@@ -1,0 +1,6 @@
+{
+  "type": "APPROVAL_RESPONSE",
+  "request_id": "ev-appr-1",
+  "approved": true,
+  "scope": "once"
+}

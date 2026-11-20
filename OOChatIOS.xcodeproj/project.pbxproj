@@ -302,7 +302,6 @@
 				100000000000000000000319 /* Network */,
 				100000000000000000000311 /* Persistence */,
 				100000000000000000000312 /* Models */,
-				100000000000000000000313 /* Utilities */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -413,13 +412,6 @@
 				100000000000000000000354 /* HostedAgentModels.swift */,
 			);
 			path = Models;
-			sourceTree = "<group>";
-		};
-		100000000000000000000313 /* Utilities */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Utilities;
 			sourceTree = "<group>";
 		};
 		100000000000000000000314 /* OOChatIOSTests */ = {
@@ -856,7 +848,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = ai.openonion.app;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.openoniontest.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -882,7 +874,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = ai.openonion.app;
+				PRODUCT_BUNDLE_IDENTIFIER = ai.openoniontest.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;

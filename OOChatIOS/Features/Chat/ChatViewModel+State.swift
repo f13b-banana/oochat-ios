@@ -57,6 +57,8 @@ extension ChatViewModel {
                 return
             }
             dashboards[conversationID] = dashboard
+        case .modeChanged(let mode, let turnsLeft):
+            deliveryCoordinator.apply(.modeChanged(mode: mode, turnsLeft: turnsLeft), toConversationID: conversationID)
         }
     }
 

@@ -5,12 +5,16 @@ enum HostedAgentSessionUpdate: Equatable {
     case hostStatus(String)
     case dashboard(OIPDashboard)
 
+    // the host changed the mode on its own: a Full access turn finished, or the budget ran out.
+    case modeChanged(mode: OIPPermissionMode, turnsLeft: Int?)
     var kind: String {
         switch self {
         case .hostStatus:
             return "status"
         case.dashboard:
             return "dashboard"
+        case.modeChanged:
+            return "mode"
         }
     }
 }

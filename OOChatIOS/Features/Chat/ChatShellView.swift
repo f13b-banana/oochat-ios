@@ -79,7 +79,7 @@ struct ChatShellView: View {
             }
         }
         .frame(width: proxy.size.width, height: proxy.size.height)
-        .background(Color(.systemBackground))
+        .background(OOColor.paper)
     }
 
     private func drawerLayout(proxy: GeometryProxy, safeAreaInsets: EdgeInsets) -> some View {
@@ -101,7 +101,7 @@ struct ChatShellView: View {
 
                 contentView(for: activeContent, controlCenter: controlCenter(for: viewModel.activeDashboard, paneWidth: nil))
                 .frame(width: proxy.size.width, height: proxy.size.height)
-                .background(Color(.systemBackground))
+                .background(OOColor.paper)
                 .ignoresSafeArea(contentKeyboardSafeAreaRegions, edges: .bottom)
                 .allowsHitTesting(progress == 0)
                 .clipShape(contentMask(cornerRadius: cornerRadius))
@@ -133,7 +133,7 @@ struct ChatShellView: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .simultaneousGesture(sidebarDrag(openOffset: openOffset))
-            .background(Color(.systemBackground))
+            .background(OOColor.paper)
             .clipped()
     }
 

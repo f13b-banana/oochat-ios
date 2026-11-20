@@ -262,6 +262,7 @@ final class ApprovalCardTests: XCTestCase {
 
         XCTAssertTrue(ViewHost.activate(identifier: "approval.allowOnce.appr1", in: window))
         XCTAssertTrue(ViewHost.activate(identifier: "approval.trustSession.appr1", in: window))
+        XCTAssertTrue(ViewHost.activate(identifier: "approval.trustConfirm.appr1", in: window))
         XCTAssertTrue(ViewHost.activate(identifier: "approval.skip.appr1", in: window))
         XCTAssertTrue(ViewHost.activate(identifier: "approval.stop.appr1", in: window))
         XCTAssertTrue(ViewHost.activate(identifier: "approval.explain.appr1", in: window))

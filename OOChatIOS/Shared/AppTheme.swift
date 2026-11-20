@@ -1,3 +1,4 @@
+import ConnectOnionKit
 import SwiftUI
 
 // Liquid Glass surface to match the system tab bar; falls back to a solid
@@ -41,13 +42,13 @@ private struct GlassBackgroundModifier<S: Shape>: ViewModifier {
             content.glassEffect(glassStyle(interactive: interactive, tint: tint), in: shape)
         } else {
             content.background(
-                fallback ?? tint ?? Color(.secondarySystemBackground),
+                fallback ?? tint ?? OOColor.paper,
                 in: shape
             )
         }
         #else
         content.background(
-            fallback ?? tint ?? Color(.secondarySystemBackground),
+            fallback ?? tint ?? OOColor.paper,
             in: shape
         )
         #endif
@@ -69,32 +70,14 @@ private func glassStyle(interactive: Bool, tint: Color?) -> Glass {
 #endif
 
 enum AppTheme {
-    /// The ConnectOnion accent, adaptive: `brand-600` in light mode for contrast
-    /// against white, `brand-400` in dark mode so it stays visible against dark
-    /// backgrounds. Same ramp as the web client's `--color-brand-*`, so a user who
-    /// moves between the two sees one product rather than two.
-    ///
-    /// Green is the only colour in the palette. Everything else is neutral, and
-    /// red is reserved for destructive actions.
-    static let primary = Color(uiColor: UIColor { traits in
-        if traits.userInterfaceStyle == .dark {
-            // brand-400 #4ADE80
-            return UIColor(red: 74.0 / 255.0, green: 222.0 / 255.0, blue: 128.0 / 255.0, alpha: 1)
-        } else {
-            // brand-600 #16A34A
-            return UIColor(red: 22.0 / 255.0, green: 163.0 / 255.0, blue: 74.0 / 255.0, alpha: 1)
-        }
-    })
+    /// O Chat v12's one green: the primary action's fill, focus rings and the
+    /// logo. Values live in ConnectOnionKit's OOColor
+    static let primary = OOColor.primary
 
-    static let outgoingMessageBackground = Color(uiColor: UIColor { traits in
-        if traits.userInterfaceStyle == .dark {
-            return .tertiarySystemBackground
-        } else {
-            return .secondarySystemBackground
-        }
-    })
+    /// O chat's user msg sits on neutral-100
+    static let outgoingMessageBackground = OOColor.hover
 
-    static let destructive = Color(uiColor: .systemRed)
+    static let destructive = OOColor.failureText
 }
 
 // A small, shared motion vocabulary keeps the chat workflow cohesive. Springs

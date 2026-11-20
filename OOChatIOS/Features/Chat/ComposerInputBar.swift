@@ -1,4 +1,5 @@
 import SwiftUI
+import ConnectOnionKit
 
 extension Composer {
     var inputBar: some View {
@@ -7,6 +8,7 @@ extension Composer {
 
             TextField("Message the agent", text: $viewModel.prompt, axis: .vertical)
                 .font(.body)
+                .foregroundStyle(OOColor.inkSecondary)
                 .lineLimit(1...4)
                 .focused($isPromptFocused)
                 .tint(AppTheme.primary)

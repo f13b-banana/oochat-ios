@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>OpenOnion</string>
+	<string>oo-chat</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -41,13 +41,13 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>OpenOnion uses the camera only when you scan an agent QR code.</string>
+	<string>oo-chat uses the camera only when you scan an agent QR code.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>OpenOnion looks for your hosted agents running on the local network.</string>
+	<string>oo-chat looks for your hosted agents running on the local network.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>OpenOnion uses the microphone only when you dictate a message.</string>
+	<string>oo-chat uses the microphone only when you dictate a message.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>OpenOnion uses speech recognition only when you dictate a message.</string>
+	<string>oo-chat uses speech recognition only when you dictate a message.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UIRequiresFullScreen</key>

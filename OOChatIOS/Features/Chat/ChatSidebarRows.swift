@@ -1,3 +1,4 @@
+import ConnectOnionKit
 import SwiftUI
 
 struct SidebarAgentRow: View {
@@ -68,26 +69,18 @@ struct SidebarAgentRow: View {
                     .rotationEffect(.degrees(isExpanded ? 90 : 0))
 
                 HStack(spacing: SidebarMetrics.agentAvatarSpacing) {
-                    Text(agentInitial(for: agent))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color(.label))
-                        .frame(width: SidebarMetrics.avatarSize, height: SidebarMetrics.avatarSize)
-                        .background(Color(.quaternarySystemFill), in: Circle())
+                    // The tile carries the live dot on its corner, as in O Chat's sidebar.
+                    OOAvatarTile(name: avatarName, address: agent.address, isOnline: isOnline)
 
-                    HStack(spacing: SidebarMetrics.agentNameSpacing) {
-                        Text(sidebarAgentName(for: agent))
-                            .font(.body)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-
-                        if isOnline {
-                            Circle()
-                                .fill(Color(.systemGreen))
-                                .frame(width: SidebarMetrics.statusDotSize, height: SidebarMetrics.statusDotSize)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(sidebarAgentName(for: agent))
+                        .font(.body)
+                        .foregroundStyle(OOColor.ink)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityValue(isOnline ? "Online" : "")
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .contentShape(Rectangle())
@@ -111,11 +104,9 @@ struct SidebarAgentRow: View {
         .accessibilityLabel("Add Chat")
     }
 
-    private func agentInitial(for agent: SavedAgent) -> String {
-        guard let first = agent.name.trimmingCharacters(in: .whitespacesAndNewlines).first else {
-            return "A"
-        }
-        return String(first).uppercased()
+    private var avatarName: String {
+        let trimmedName = agent.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedName == SavedAgent.defaultName(for: agent.address) ? "" : trimmedName
     }
 
     private func sidebarAgentName(for agent: SavedAgent) -> String {

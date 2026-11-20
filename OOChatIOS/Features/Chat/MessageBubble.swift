@@ -1,4 +1,5 @@
 import SwiftUI
+import ConnectOnionKit
 import UIKit
 import UniformTypeIdentifiers
 
@@ -191,7 +192,7 @@ struct MessageBubble: View {
         case .queued:
             Label("Queued", systemImage: "clock")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(OOColor.inkSecondary)
         case .failed:
             HStack(spacing: 8) {
                 Label("Failed", systemImage: "exclamationmark.triangle.fill")
@@ -207,7 +208,7 @@ struct MessageBubble: View {
             HStack(spacing: 8) {
                 Label("Cancelled", systemImage: "stop.circle")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(OOColor.inkSecondary)
                 Button("Retry") {
                     onRetry?()
                 }

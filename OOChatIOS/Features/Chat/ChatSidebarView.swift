@@ -1,3 +1,4 @@
+import ConnectOnionKit
 import SwiftUI
 
 struct ChatSidebarView: View {
@@ -42,7 +43,7 @@ struct ChatSidebarView: View {
             footer
         }
         .background {
-            Color(.systemBackground)
+            OOColor.surface
                 .ignoresSafeArea()
         }
         .onAppear {

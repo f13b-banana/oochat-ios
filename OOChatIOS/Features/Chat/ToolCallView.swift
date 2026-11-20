@@ -1,6 +1,24 @@
 import SwiftUI
 import ConnectOnionKit
 
+private struct ToolAwaitingApprovalKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
+
+extension EnvironmentValues {
+    /// The tool the open approval card asks about. Its row shows Awaiting approval, not Running.
+    var toolAwaitingApprovalID: String? {
+        get { self[ToolAwaitingApprovalKey.self] }
+        set { self[ToolAwaitingApprovalKey.self] = newValue }
+    }
+}
+
+private extension ToolCallState {
+    func rowState(isAwaitingApproval: Bool) -> ToolRowState {
+        self == .running && isAwaitingApproval ? .awaitingApproval : rowState
+    }
+}
+
 enum ToolCallPresentation {
     case standalone
     case grouped
@@ -10,6 +28,7 @@ struct ToolCallView: View {
     let message: ChatMessage
     var presentation: ToolCallPresentation = .standalone
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.toolAwaitingApprovalID) private var awaitingApprovalID
     @State private var isExpanded = false
 
     var body: some View {
@@ -24,7 +43,12 @@ struct ToolCallView: View {
                         detail(label: "Input", value: argumentsDescription)
                     }
 
-                    if !message.content.isEmpty {
+                    if let note = settledNote {
+                        // The host's "User rejected…" text is written for the agent, not you.
+                        Text(note)
+                            .font(.caption)
+                            .foregroundStyle(OOColor.inkSecondary)
+                    } else if !message.content.isEmpty {
                         detail(
                             label: toolState == .failed ? "Error" : "Result",
                             value: message.content,
@@ -144,34 +168,35 @@ struct ToolCallView: View {
         message.toolState ?? .running
     }
 
+    private var rowState: ToolRowState {
+        toolState.rowState(isAwaitingApproval: message.id == awaitingApprovalID)
+    }
+
+    private var settledNote: String? {
+        switch toolState {
+        case .skipped:
+            return "You skipped this tool."
+        case .interrupted where message.content.isEmpty:
+            return "Stopped before it finished."
+        default:
+            return nil
+        }
+    }
+
     private var statusIcon: some View {
         ToolCallStatusIcon(
-            state: toolState,
+            state: rowState,
             completedSystemName: ToolCallIconography.systemName(for: message),
             size: iconSize
         )
     }
 
     private var statusLabel: String {
-        switch toolState {
-        case .running:
-            return "Running"
-        case .completed:
-            return "Completed"
-        case .failed:
-            return "Failed"
-        }
+        rowState.label
     }
 
     private var statusTint: Color {
-        switch toolState {
-        case .running:
-            return OOColor.primary
-        case .completed:
-            return OOColor.inkSecondary
-        case .failed:
-            return AppTheme.destructive
-        }
+        toolState == .failed ? AppTheme.destructive : rowState.tint
     }
 
     private var borderColor: Color {
@@ -206,6 +231,7 @@ struct ToolCallView: View {
 struct ToolCallGroupView: View {
     let messages: [ChatMessage]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.toolAwaitingApprovalID) private var awaitingApprovalID
 
     // Open while a tool is still running so the person can watch it, then folded to one
     // line when the last result arrives. Once the person opens or closes the group
@@ -277,7 +303,7 @@ struct ToolCallGroupView: View {
         } label: {
             HStack(spacing: ToolCallGroupMetrics.headerSpacing) {
                 groupStatusIcon
-                Text(ToolCallGroupSummary.title(for: messages))
+                Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(OOColor.ink)
                     .lineLimit(2)
@@ -297,7 +323,7 @@ struct ToolCallGroupView: View {
             .padding(.vertical, ToolCallGroupMetrics.headerVerticalPadding)
         }
         .buttonStyle(AppPressButtonStyle(pressedScale: 0.99, pressedOpacity: 0.90))
-        .accessibilityLabel(ToolCallGroupSummary.title(for: messages))
+        .accessibilityLabel(title)
         .accessibilityValue(isExpanded ? "expanded" : "collapsed")
         .accessibilityHint(isExpanded ? "Collapses tool activity" : "Shows each tool call")
     }
@@ -310,14 +336,20 @@ struct ToolCallGroupView: View {
         )
     }
 
-    private var aggregateState: ToolCallState {
-        if messages.contains(where: { ($0.toolState ?? .running) == .running }) {
-            return .running
+    private var rowStates: [ToolRowState] {
+        messages.map {
+            ($0.toolState ?? .running).rowState(isAwaitingApproval: $0.id == awaitingApprovalID)
         }
-        if messages.contains(where: { $0.toolState == .failed }) {
-            return .failed
-        }
-        return .completed
+    }
+
+    /// The most urgent state among the rows (shared order, ToolRowState.summary).
+    private var aggregateState: ToolRowState {
+        ToolRowState.summary(of: rowStates) ?? .completed
+    }
+
+    /// "Waiting for your approval" or "Running N tools" while open, else what the tools did.
+    private var title: String {
+        ToolRowState.groupTitle(for: rowStates) ?? ToolCallGroupSummary.title(for: messages)
     }
 
     private var groupBorderColor: Color {
@@ -327,12 +359,12 @@ struct ToolCallGroupView: View {
     }
 
     private var statusSignature: String {
-        messages.map { $0.toolState?.rawValue ?? "running" }.joined(separator: "|")
+        rowStates.map(\.rawValue).joined(separator: "|")
     }
 }
 
 private struct ToolCallStatusIcon: View {
-    let state: ToolCallState
+    let state: ToolRowState
     let completedSystemName: String
     let size: CGFloat
     var body: some View {
@@ -361,6 +393,10 @@ private struct ToolCallStatusIcon: View {
             Image(systemName: "exclamationmark.circle.fill")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(AppTheme.destructive)
+        case .awaitingApproval, .interrupted, .skipped:
+            Image(systemName: state.systemImage ?? "circle")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(state.tint)
         }
     }
 }

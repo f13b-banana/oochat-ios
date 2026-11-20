@@ -69,15 +69,11 @@ extension ChatScreen {
         return "pendingAskUser"
     }
 
-    func shouldShowMessage(_ message: ChatMessage, in conversationID: String) -> Bool {
-        !viewModel.isToolCallCoveredByPendingApproval(message, in: conversationID)
-    }
-
+    // The tool the approval card asks about stays in the timeline, marked Awaiting approval:
+    // the card is where you decide, the row is the record of what's happening.
     func timelineEntries(for conversation: Conversation) -> [ChatTimelineEntry] {
         ChatTimelineBuilder.entries(
-            from: conversation.messages.filter {
-                shouldShowMessage($0, in: conversation.id)
-            },
+            from: conversation.messages,
             workRooms: viewModel.conversationState.workRoomStore(for: conversation.id)
         )
     }

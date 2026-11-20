@@ -51,6 +51,22 @@ enum ToolCallState: String, Codable, Equatable {
     case running
     case completed
     case failed
+    /// Still running when the run ended: Stop, a lost connection, or a stopped batch.
+    case interrupted
+    /// You chose Skip on its approval, so it never ran.
+    case skipped
+
+    /// What the row shows, in the words both apps share. Awaiting approval isn't stored:
+    /// it's a running tool whose approval card is open (ChatViewModel.toolRowState).
+    var rowState: ToolRowState {
+        switch self {
+        case .running: return .running
+        case .completed: return .completed
+        case .failed: return .failed
+        case .interrupted: return .interrupted
+        case .skipped: return .skipped
+        }
+    }
 }
 
 struct ChatImageAttachment: Identifiable, Codable, Equatable {

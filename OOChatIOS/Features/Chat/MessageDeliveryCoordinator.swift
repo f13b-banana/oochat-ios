@@ -370,6 +370,7 @@ final class MessageDeliveryCoordinator: ObservableObject {
             return
         }
         updated.messages.removeAll { $0.role == .thinking }
+        Self.interruptRunningTools(in: &updated.messages)
         if let index = updated.messages.firstIndex(where: { $0.id == messageID }) {
             updated.messages[index].deliveryState = .sent
         }
@@ -400,6 +401,7 @@ final class MessageDeliveryCoordinator: ObservableObject {
             return
         }
         updated.messages.removeAll { $0.role == .thinking }
+        Self.interruptRunningTools(in: &updated.messages)
         if let index = updated.messages.firstIndex(where: { $0.id == messageID }) {
             updated.messages[index].deliveryState = .failed
         }
@@ -414,12 +416,44 @@ final class MessageDeliveryCoordinator: ObservableObject {
             return
         }
         updated.messages.removeAll { $0.role == .thinking }
+        Self.interruptRunningTools(in: &updated.messages)
         if let index = updated.messages.firstIndex(where: { $0.id == messageID }) {
             updated.messages[index].deliveryState = .cancelled
         }
         conversationState.clearCompletedUnread(conversationID: conversationID)
         onConnectionStateChange?(conversationID, .disconnected)
         conversationState.upsert(updated)
+    }
+
+    /// Fills in a tool's result, or adds the tool when its call never arrived.
+    private static func applyToolResult(
+        id: String,
+        name: String?,
+        output: String,
+        state: ToolCallState,
+        to messages: inout [ChatMessage]
+    ) {
+        guard let index = messages.firstIndex(where: { $0.id == id && $0.role == .tool }) else {
+            messages.append(
+                ChatMessage(id: id, role: .tool, content: output, toolName: name ?? "tool", toolState: state)
+            )
+            return
+        }
+        messages[index].toolName = name ?? messages[index].toolName
+        messages[index].content = output
+        // A skipped tool comes back as an error ("User rejected…"); it stays Skipped.
+        if messages[index].toolState != .skipped {
+            messages[index].toolState = state
+        }
+    }
+
+    /// A tool still running when its run ends never will finish: Stop, a lost connection, a
+    /// failure, or the rest of a batch you stopped (the host sends those no result).
+    static func interruptRunningTools(in messages: inout [ChatMessage]) {
+        for index in messages.indices
+        where messages[index].role == .tool && (messages[index].toolState ?? .running) == .running {
+            messages[index].toolState = .interrupted
+        }
     }
 
     func noteSessionModes(_ sessionModes: OIPSessionModes?, agentAddress: String) {
@@ -453,21 +487,7 @@ final class MessageDeliveryCoordinator: ObservableObject {
             )
             persistence = .message(id: id)
         case .toolResult(let id, let name, let output, let state):
-            if let index = conversation.messages.firstIndex(where: { $0.id == id && $0.role == .tool }) {
-                conversation.messages[index].toolName = name ?? conversation.messages[index].toolName
-                conversation.messages[index].content = output
-                conversation.messages[index].toolState = state
-            } else {
-                conversation.messages.append(
-                    ChatMessage(
-                        id: id,
-                        role: .tool,
-                        content: output,
-                        toolName: name ?? "tool",
-                        toolState: state
-                    )
-                )
-            }
+            Self.applyToolResult(id: id, name: name, output: output, state: state, to: &conversation.messages)
             persistence = .message(id: id)
         case .modeChanged(let protocolMode, let turnsLeft):
             conversation.mode = ChatMode(permissionMode: protocolMode)

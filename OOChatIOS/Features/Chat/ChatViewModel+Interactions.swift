@@ -1,3 +1,5 @@
+import ConnectOnionKit
+
 extension ChatViewModel {
     func allowPendingApprovalOnce(id: String) {
         resolvePendingApproval(id: id, with: .allowOnce)
@@ -8,6 +10,7 @@ extension ChatViewModel {
     }
 
     func skipPendingApproval(id: String) {
+        markToolAwaitingApproval(id: id, as: .skipped)
         resolvePendingApproval(id: id, with: .rejectSoft(feedback: nil))
     }
 
@@ -45,6 +48,34 @@ extension ChatViewModel {
             conversationID: activeConversationID,
             with: .askUser(.answer(answer))
         )
+    }
+
+    /// What a tool row shows: a running tool whose approval card is open is waiting on you.
+    func toolRowState(for message: ChatMessage, in conversationID: String) -> ToolRowState {
+        if isToolCallCoveredByPendingApproval(message, in: conversationID) {
+            return .awaitingApproval
+        }
+        return (message.toolState ?? .running).rowState
+    }
+
+    /// The tool the open approval card asks about, if it's in this chat.
+    func toolAwaitingApprovalID(in conversationID: String) -> String? {
+        conversation(withID: conversationID)?.messages
+            .first { isToolCallCoveredByPendingApproval($0, in: conversationID) }?
+            .id
+    }
+
+    /// Settles the tool the open approval card asks about, before the answer goes out.
+    private func markToolAwaitingApproval(id: String, as state: ToolCallState) {
+        guard activePendingApproval?.id == id,
+              var conversation = activeConversation,
+              let index = conversation.messages.firstIndex(where: {
+                  isToolCallCoveredByPendingApproval($0, in: conversation.id)
+              }) else {
+            return
+        }
+        conversation.messages[index].toolState = state
+        upsert(conversation)
     }
 
     private func resolvePendingApproval(id: String, with decision: ApprovalDecision) {

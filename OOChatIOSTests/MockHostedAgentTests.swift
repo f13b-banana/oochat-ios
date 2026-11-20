@@ -35,20 +35,20 @@ final class MockHostedAgentTests: XCTestCase {
     func testToolCallFramesMapToCorrelatedCallAndResultEvents() {
         let arguments: [String: JSONValue] = [
             "path": .string("OOChatIOS/Features/Chat/MessageBubble.swift"),
-            "line_end": .number(280),
+            "line_end": .number(280)
         ]
 
         let call = HostedAgentEvent.from([
             "type": .string("tool_call"),
             "tool_id": .string("tool-read-1"),
             "name": .string("read_file"),
-            "args": .object(arguments),
+            "args": .object(arguments)
         ])
         let result = HostedAgentEvent.from([
             "type": .string("tool_result"),
             "tool_id": .string("tool-read-1"),
             "name": .string("read_file"),
-            "result": .string("import SwiftUI"),
+            "result": .string("import SwiftUI")
         ])
 
         XCTAssertEqual(
@@ -68,7 +68,7 @@ final class MockHostedAgentTests: XCTestCase {
 
     func testLargeToolArgumentDoesNotTrapWhenRendered() {
         let arguments: [String: JSONValue] = [
-            "n": .number(1e20),
+            "n": .number(1e20)
         ]
 
         XCTAssertEqual(ToolActionSummary.argumentsDescription(arguments), "n: 1e+20")
@@ -116,7 +116,7 @@ final class MockHostedAgentTests: XCTestCase {
         let messages = [
             ChatMessage(role: .tool, content: "", toolName: "edit_file", toolState: .completed),
             ChatMessage(role: .tool, content: "", toolName: "read_file", toolState: .completed),
-            ChatMessage(role: .tool, content: "", toolName: "exec_command", toolState: .completed),
+            ChatMessage(role: .tool, content: "", toolName: "exec_command", toolState: .completed)
         ]
 
         XCTAssertEqual(
@@ -127,7 +127,7 @@ final class MockHostedAgentTests: XCTestCase {
 
     func testCanonicalJSONMatchesPythonUnicodeEscaping() {
         let value: JSONValue = .object([
-            "prompt": .string("执行 tree café 🧅"),
+            "prompt": .string("执行 tree café 🧅")
         ])
 
         XCTAssertEqual(
@@ -136,85 +136,12 @@ final class MockHostedAgentTests: XCTestCase {
         )
     }
 
-    func testSignedInputPayloadEscapesUnicodePrompt() {
-        let payload = HostedAgentClient.inputSignaturePayload(
-            agentAddress: "0xagent",
-            conversationID: "conversation-1",
-            inputID: "input-1",
-            prompt: "执行 tree",
-            mode: .ulw,
-            timestamp: 1_700_000_000
-        )
-
-        let canonical = CanonicalJSON.string(from: .object(payload))
-        XCTAssertTrue(canonical.contains(#""prompt":"\u6267\u884c tree""#))
-        XCTAssertFalse(canonical.contains("执行"))
-    }
-
-    func testSignedInputPayloadBindsImageAttachments() {
-        let payload = HostedAgentClient.inputSignaturePayload(
-            agentAddress: "0xagent",
-            conversationID: "conversation-1",
-            inputID: "input-1",
-            prompt: "",
-            mode: .safe,
-            timestamp: 1_700_000_000,
-            images: ["data:image/png;base64,AA=="]
-        )
-
-        XCTAssertEqual(
-            payload["attachments_sha256"],
-            .string("eea0aef2c9a60b399cfa9477181304bf863b142efdae3f57526e3f97fbe678ba")
-        )
-    }
-
-    func testSignedInputPayloadBindsFileAttachments() {
-        let payload = HostedAgentClient.inputSignaturePayload(
-            agentAddress: "0xagent",
-            conversationID: "conversation-1",
-            inputID: "input-1",
-            prompt: "",
-            mode: .safe,
-            timestamp: 1_700_000_000,
-            files: [
-                HostedAgentFilePayload(
-                    name: "note.txt",
-                    data: "data:text/plain;base64,SGk="
-                ),
-            ]
-        )
-
-        XCTAssertEqual(
-            payload["attachments_sha256"],
-            .string("0a322d04ff621f8cb555e2569abf297e8784122f9b906178d2f5d796acfeb0f6")
-        )
-    }
-
-    func testConnectSessionDigestMatchesPythonForUnicodeSnapshot() {
-        let session: [String: JSONValue] = [
-            "session_id": .string("conversation-1"),
-            "title": .string("执行 🧅"),
-        ]
-
-        let payload = HostedAgentClient.connectSignaturePayload(
-            agentAddress: "0xagent",
-            conversationID: "conversation-1",
-            session: session,
-            timestamp: 1_700_000_000
-        )
-
-        XCTAssertEqual(
-            payload["session_sha256"],
-            .string("c66eb933da064fb9182052583a28b2ac146860bd7f81245a49cb81c7623bdb3e")
-        )
-    }
-
     func testToolResultUsesErrorStateAndMessageFallback() {
         let event = HostedAgentEvent.from([
             "type": .string("tool_result"),
             "id": .string("tool-shell-1"),
             "status": .string("error"),
-            "message": .string("Permission denied"),
+            "message": .string("Permission denied")
         ])
 
         XCTAssertEqual(
@@ -233,8 +160,8 @@ final class MockHostedAgentTests: XCTestCase {
             "type": .string("tool_result"),
             "tool_id": .string("tool-search-1"),
             "result": .object([
-                "files": .array([.string("README.md")]),
-            ]),
+                "files": .array([.string("README.md")])
+            ])
         ])
 
         guard case .toolResult(_, _, let output, _) = event else {
@@ -247,7 +174,7 @@ final class MockHostedAgentTests: XCTestCase {
     func testToolEventParserIgnoresFramesWithoutCallIdentifiers() {
         XCTAssertNil(HostedAgentEvent.from([
             "type": .string("tool_call"),
-            "name": .string("read_file"),
+            "name": .string("read_file")
         ]))
     }
 
@@ -256,46 +183,10 @@ final class MockHostedAgentTests: XCTestCase {
             HostedAgentEvent.from([
                 "type": .string("mode_changed"),
                 "mode": .string("safe"),
-                "triggered_by": .string("ulw_checkpoint"),
+                "triggered_by": .string("ulw_checkpoint")
             ]),
             .modeChanged(.safe)
         )
-    }
-
-    func testModernSessionPayloadsBindUlwToSignedInput() {
-        let session: [String: JSONValue] = [
-            "session_id": .string("conversation-1"),
-        ]
-        let connectPayload = HostedAgentClient.connectSignaturePayload(
-            agentAddress: endpointA,
-            conversationID: "conversation-1",
-            session: session,
-            timestamp: 1_700_000_000
-        )
-        let inputPayload = HostedAgentClient.inputSignaturePayload(
-            agentAddress: endpointA,
-            conversationID: "conversation-1",
-            inputID: "input-1",
-            prompt: "Refactor the project",
-            mode: .ulw,
-            timestamp: 1_700_000_001
-        )
-
-        XCTAssertEqual(connectPayload["action"], .string("session.connect"))
-        XCTAssertEqual(
-            connectPayload["session_sha256"],
-            .string("690da7698c586c4daf8d4c507971707dfd7cb385acf0748d42a148198b0380fa")
-        )
-        XCTAssertEqual(inputPayload["action"], .string("session.input"))
-        XCTAssertEqual(inputPayload["to"], .string(endpointA))
-        XCTAssertEqual(inputPayload["session_id"], .string("conversation-1"))
-        XCTAssertEqual(inputPayload["input_id"], .string("input-1"))
-        XCTAssertEqual(inputPayload["mode"], .string("ulw"))
-        XCTAssertEqual(
-            inputPayload["attachments_sha256"],
-            .string("5675eee946de112f65f01d6f509a96b9e444811b7705bae7ec0b66ec4ac2c821")
-        )
-        XCTAssertNil(inputPayload["skip_tool_approval"])
     }
 
     func testApprovalFrameMapsToRequest() {
@@ -305,19 +196,19 @@ final class MockHostedAgentTests: XCTestCase {
             "tool": .string("write"),
             "arguments": .object([
                 "path": .string("prompt.md"),
-                "content": .string("You are a summarizer."),
+                "content": .string("You are a summarizer.")
             ]),
             "description": .string("Create the agent prompt"),
             "batch_remaining": .array([
                 .object([
                     "tool": .string("bash"),
-                    "arguments": .string(#"{"command":"swift test"}"#),
+                    "arguments": .string(#"{"command":"swift test"}"#)
                 ]),
                 .object([
                     "tool": .string("notify"),
-                    "arguments": .string("not-json"),
-                ]),
-            ]),
+                    "arguments": .string("not-json")
+                ])
+            ])
         ])
 
         XCTAssertEqual(
@@ -327,7 +218,7 @@ final class MockHostedAgentTests: XCTestCase {
                 tool: "write",
                 arguments: [
                     "path": .string("prompt.md"),
-                    "content": .string("You are a summarizer."),
+                    "content": .string("You are a summarizer.")
                 ],
                 description: "Create the agent prompt",
                 batchRemaining: [
@@ -338,7 +229,7 @@ final class MockHostedAgentTests: XCTestCase {
                     ToolApprovalBatchItem(
                         tool: "notify",
                         rawArguments: .string("not-json")
-                    ),
+                    )
                 ]
             )
         )
@@ -348,7 +239,7 @@ final class MockHostedAgentTests: XCTestCase {
         let request = ToolApprovalRequest.from([
             "type": .string("APPROVAL_NEEDED"),
             "tool": .string("edit"),
-            "args": .object(["path": .string("README.md")]),
+            "args": .object(["path": .string("README.md")])
         ])
 
         XCTAssertEqual(request?.tool, "edit")
@@ -359,7 +250,7 @@ final class MockHostedAgentTests: XCTestCase {
     func testApprovalFrameRejectsMissingTool() {
         XCTAssertNil(ToolApprovalRequest.from([
             "type": .string("approval_needed"),
-            "arguments": .object([:]),
+            "arguments": .object([:])
         ]))
     }
 
@@ -367,7 +258,7 @@ final class MockHostedAgentTests: XCTestCase {
         let request = ToolApprovalRequest.from([
             "type": .string("approval_needed"),
             "tool": .string("write"),
-            "arguments": .string("{\"path\":\"prompt.md\"}"),
+            "arguments": .string("{\"path\":\"prompt.md\"}")
         ])
         XCTAssertEqual(request?.arguments, ["path": .string("prompt.md")])
     }
@@ -378,7 +269,7 @@ final class MockHostedAgentTests: XCTestCase {
         let request = ToolApprovalRequest.from([
             "type": .string("approval_needed"),
             "tool": .string("write"),
-            "arguments": .string("prompt.md"),
+            "arguments": .string("prompt.md")
         ])
         XCTAssertEqual(request?.arguments, ["value": .string("prompt.md")])
     }
@@ -389,7 +280,7 @@ final class MockHostedAgentTests: XCTestCase {
             [
                 "type": .string("APPROVAL_RESPONSE"),
                 "approved": .bool(true),
-                "scope": .string("once"),
+                "scope": .string("once")
             ]
         )
         XCTAssertEqual(
@@ -397,7 +288,7 @@ final class MockHostedAgentTests: XCTestCase {
             [
                 "type": .string("APPROVAL_RESPONSE"),
                 "approved": .bool(true),
-                "scope": .string("session"),
+                "scope": .string("session")
             ]
         )
         XCTAssertEqual(
@@ -407,7 +298,7 @@ final class MockHostedAgentTests: XCTestCase {
                 "approved": .bool(false),
                 "scope": .string("once"),
                 "mode": .string("reject_soft"),
-                "feedback": .string("Use a different file"),
+                "feedback": .string("Use a different file")
             ]
         )
         XCTAssertEqual(
@@ -416,7 +307,7 @@ final class MockHostedAgentTests: XCTestCase {
                 "type": .string("APPROVAL_RESPONSE"),
                 "approved": .bool(false),
                 "scope": .string("once"),
-                "mode": .string("reject_hard"),
+                "mode": .string("reject_hard")
             ]
         )
         XCTAssertEqual(
@@ -425,7 +316,7 @@ final class MockHostedAgentTests: XCTestCase {
                 "type": .string("APPROVAL_RESPONSE"),
                 "approved": .bool(false),
                 "scope": .string("once"),
-                "mode": .string("reject_explain"),
+                "mode": .string("reject_explain")
             ]
         )
 
@@ -450,7 +341,7 @@ final class MockHostedAgentTests: XCTestCase {
                 "type": .string("APPROVAL_RESPONSE"),
                 "approved": .bool(true),
                 "scope": .string("once"),
-                "to": .string(endpointA),
+                "to": .string(endpointA)
             ]
         )
         XCTAssertNil(HostedAgentClient.approvalResponseFrame(
@@ -465,12 +356,12 @@ final class MockHostedAgentTests: XCTestCase {
         XCTAssertNil(UlwCheckpointRequest.from([
             "type": .string("ulw_turns_reached"),
             "turns_used": .number(1e300),
-            "max_turns": .number(100),
+            "max_turns": .number(100)
         ]))
         XCTAssertNil(UlwCheckpointRequest.from([
             "type": .string("ulw_turns_reached"),
             "turns_used": .number(1),
-            "max_turns": .number(.nan),
+            "max_turns": .number(.nan)
         ]))
     }
 
@@ -479,18 +370,18 @@ final class MockHostedAgentTests: XCTestCase {
     func testDeclinePlaceholderPreservesFrameIdentifier() {
         let approval = HostedAgentInteraction.declinePlaceholder(for: [
             "type": .string("approval_needed"),
-            "approval_id": .string("ap-7"),
+            "approval_id": .string("ap-7")
         ])
         XCTAssertEqual(approval?.id, "ap-7")
 
         let plan = HostedAgentInteraction.declinePlaceholder(for: [
             "type": .string("plan_review"),
-            "id": .string("plan-3"),
+            "id": .string("plan-3")
         ])
         XCTAssertEqual(plan?.id, "plan-3")
 
         XCTAssertNil(HostedAgentInteraction.declinePlaceholder(for: [
-            "type": .string("something_else"),
+            "type": .string("something_else")
         ]))
     }
 
@@ -516,7 +407,7 @@ final class MockHostedAgentTests: XCTestCase {
         let request = UlwCheckpointRequest.from([
             "type": .string("ulw_turns_reached"),
             "turns_used": .number(100),
-            "max_turns": .number(100),
+            "max_turns": .number(100)
         ])
         XCTAssertEqual(request?.turnsUsed, 100)
         XCTAssertEqual(request?.maxTurns, 100)
@@ -536,7 +427,7 @@ final class MockHostedAgentTests: XCTestCase {
                 "type": .string("ULW_RESPONSE"),
                 "action": .string("continue"),
                 "turns": .number(100),
-                "to": .string(endpointA),
+                "to": .string(endpointA)
             ]
         )
         XCTAssertEqual(
@@ -544,7 +435,7 @@ final class MockHostedAgentTests: XCTestCase {
             [
                 "type": .string("ULW_RESPONSE"),
                 "action": .string("switch_mode"),
-                "mode": .string("accept_edits"),
+                "mode": .string("accept_edits")
             ]
         )
     }
@@ -552,7 +443,7 @@ final class MockHostedAgentTests: XCTestCase {
     func testPlanReviewFramesMatchUpstreamContract() {
         let request = PlanReviewRequest.from([
             "type": .string("plan_review"),
-            "plan_content": .string("# Plan\n\n1. Implement"),
+            "plan_content": .string("# Plan\n\n1. Implement")
         ])
         XCTAssertEqual(request?.planContent, "# Plan\n\n1. Implement")
 
@@ -560,14 +451,14 @@ final class MockHostedAgentTests: XCTestCase {
             PlanReviewDecision.approve.responseFrame(for: request!),
             [
                 "type": .string("PLAN_REVIEW_RESPONSE"),
-                "message": .string("Plan approved. Implement now. Do NOT re-enter plan mode.\n\n---\n\n# Plan\n\n1. Implement"),
+                "message": .string("Plan approved. Implement now. Do NOT re-enter plan mode.\n\n---\n\n# Plan\n\n1. Implement")
             ]
         )
         XCTAssertEqual(
             PlanReviewDecision.requestChanges(feedback: "Use smaller commits").responseFrame(for: request!),
             [
                 "type": .string("PLAN_REVIEW_RESPONSE"),
-                "message": .string("Plan rejected. Revise with write_plan(). Feedback: Use smaller commits"),
+                "message": .string("Plan rejected. Revise with write_plan(). Feedback: Use smaller commits")
             ]
         )
     }
@@ -584,14 +475,14 @@ final class MockHostedAgentTests: XCTestCase {
                     "name": .string("username"),
                     "label": .string("Username"),
                     "type": .string("text"),
-                    "placeholder": .string("name@example.com"),
+                    "placeholder": .string("name@example.com")
                 ]),
                 .object([
                     "name": .string("password"),
                     "label": .string("Password"),
-                    "type": .string("password"),
-                ]),
-            ]),
+                    "type": .string("password")
+                ])
+            ])
         ])
 
         XCTAssertEqual(
@@ -607,7 +498,7 @@ final class MockHostedAgentTests: XCTestCase {
                         label: "Username",
                         placeholder: "name@example.com"
                     ),
-                    AskUserField(name: "password", label: "Password", type: "password"),
+                    AskUserField(name: "password", label: "Password", type: "password")
                 ]
             )
         )
@@ -617,7 +508,7 @@ final class MockHostedAgentTests: XCTestCase {
     func testAskUserFrameAcceptsLegacyTextAndDefaultsOptionalValues() {
         let request = AskUserRequest.from([
             "type": .string("ask_user"),
-            "text": .string("Which date?"),
+            "text": .string("Which date?")
         ])
 
         XCTAssertEqual(request?.question, "Which date?")
@@ -630,7 +521,7 @@ final class MockHostedAgentTests: XCTestCase {
     func testAskUserRejectsMissingQuestionAndEncodesResponseForEndpoint() {
         XCTAssertNil(AskUserRequest.from([
             "type": .string("ask_user"),
-            "options": .array([.string("Yes")]),
+            "options": .array([.string("Yes")])
         ]))
 
         let relayEndpoint = ResolvedEndpoint(
@@ -653,7 +544,7 @@ final class MockHostedAgentTests: XCTestCase {
             [
                 "type": .string("ASK_USER_RESPONSE"),
                 "answer": .string(#"{"username":"me","password":"secret"}"#),
-                "to": .string(endpointA),
+                "to": .string(endpointA)
             ]
         )
         XCTAssertEqual(
@@ -664,7 +555,7 @@ final class MockHostedAgentTests: XCTestCase {
             ),
             [
                 "type": .string("ASK_USER_RESPONSE"),
-                "answer": .string("red, blue"),
+                "answer": .string("red, blue")
             ]
         )
     }

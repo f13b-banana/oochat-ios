@@ -234,7 +234,7 @@ extension HostedAgentConnection {
             ) else {
                 return
             }
-            try await send(frame, over: socket)
+            try await send(signedCommand(frame), over: socket)
         } catch {
             failConnection(error, generation: generation)
         }
@@ -257,7 +257,7 @@ extension HostedAgentConnection {
                 failConnection(HostedAgentClientError.badFrame, generation: generation)
                 return
             }
-            try await send(frame, over: socket)
+            try await send(signedCommand(frame), over: socket)
         } catch {
             failConnection(error, generation: generation)
         }
@@ -471,18 +471,13 @@ extension HostedAgentConnection {
     }
 
     func buildConnectFrame(conversation: Conversation) throws -> [String: JSONValue] {
-        let timestamp = Double(Int(Date().timeIntervalSince1970))
-        let session = sessionPayload(for: conversation)
-        let payload = HostedAgentClient.connectSignaturePayload(
-            agentAddress: key.agentAddress,
-            conversationID: conversation.id,
-            session: session,
-            timestamp: timestamp
+        var frame = try signer.envelope(
+            type: "CONNECT",
+            payload: signer.connectPayload(to: key.agentAddress)
         )
-        var frame = try identityStore.signedEnvelope(type: "CONNECT", payload: payload)
         frame["to"] = .string(key.agentAddress)
         frame["session_id"] = .string(conversation.id)
-        frame["session"] = .object(session)
+        frame["session"] = .object(sessionPayload(for: conversation))
         frame["protocol"] = .object(OIP.descriptor)
         return frame
     }
@@ -502,30 +497,34 @@ extension HostedAgentConnection {
         conversation: Conversation,
         inputID: String
     ) throws -> [String: JSONValue] {
-        let timestamp = Double(Int(Date().timeIntervalSince1970))
-        let payload = HostedAgentClient.inputSignaturePayload(
-            agentAddress: key.agentAddress,
-            conversationID: conversation.id,
-            inputID: inputID,
-            prompt: prompt,
-            mode: conversation.mode,
-            timestamp: timestamp,
-            images: images,
-            files: files
-        )
-        var frame = try identityStore.signedEnvelope(type: "INPUT", payload: payload)
-        frame["to"] = .string(key.agentAddress)
-        frame["session_id"] = .string(conversation.id)
-        frame["input_id"] = .string(inputID)
-        frame["prompt"] = .string(prompt)
-        frame["mode"] = .string(conversation.mode.rawValue)
+        var fields: [String: JSONValue] = [
+            "session_id": .string(conversation.id),
+            "input_id": .string(inputID),
+            "prompt": .string(prompt),
+            "mode": .string(conversation.mode.rawValue)
+        ]
         if !images.isEmpty {
-            frame["images"] = .array(images.map(JSONValue.string))
+            fields["images"] = .array(images.map(JSONValue.string))
         }
         if !files.isEmpty {
-            frame["files"] = .array(files.map(\.jsonValue))
+            fields["files"] = .array(files.map(\.jsonValue))
         }
-        return frame
+        return try signer.command(type: "INPUT", fields: fields, to: key.agentAddress)
+    }
+
+    /// With 'signed_commands' on, the host runs onlyt eh signed payload, so every app frame
+    /// after CONNECT must be wrapped. PONG and SESSIONSTATUS are exempt and never come through here.
+    func signedCommand(_ frame: [String: JSONValue]) throws -> [String: JSONValue] {
+        guard case .string(let type)? = frame["type"] else {
+            throw HostedAgentClientError.badFrame
+        }
+
+        var fields = frame
+        for reserved in ["type", "to", "timestamp", "nonce"] {
+            fields[reserved] = nil
+        }
+
+        return try signer.command(type: type, fields: fields, to: key.agentAddress)
     }
 
     func send(_ frame: [String: JSONValue], over socket: any HostedAgentWebSocketTask) async throws {

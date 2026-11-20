@@ -150,7 +150,7 @@ struct ApprovalCard: View {
     @ViewBuilder
     private var argumentList: some View {
         let details = ToolActionSummary.argumentsDescription(displayArguments)
-        if (commandArgument == nil || isCommandExpanded), !details.isEmpty {
+        if commandArgument == nil || isCommandExpanded, !details.isEmpty {
             Text(details)
                 .font(.system(.footnote, design: .monospaced))
                 .textSelection(.enabled)

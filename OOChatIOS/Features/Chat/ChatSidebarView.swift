@@ -29,7 +29,7 @@ struct ChatSidebarView: View {
     var body: some View {
         sheets(alerts(baseContent))
     }
-    
+
     private var baseContent: some View {
         ZStack(alignment: .bottom) {
             sidebarList

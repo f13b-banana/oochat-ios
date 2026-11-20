@@ -166,9 +166,14 @@ struct Conversation: Identifiable, Equatable {
     var messages: [ChatMessage]
     var serverSession: [String: JSONValue]?
 
-    /// Placeholder title; `MessageDeliveryCoordinator` compares against it to decide whether
-    /// the first prompt should name the conversation.
-    static let defaultTitle = "New mobile session"
+    /// Placeholder title until the first real message names the chat (story 182, kit ChatTitle).
+    static let defaultTitle = "New chat"
+    /// Saved by earlier builds; such a chat is still waiting for a name.
+    static let legacyDefaultTitles: Set<String> = ["New mobile session"]
+
+    var isUntitled: Bool {
+        title == Self.defaultTitle || Self.legacyDefaultTitles.contains(title)
+    }
 
     init(agentID: String? = nil, agentAddress: String = "") {
         let now = Date()

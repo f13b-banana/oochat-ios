@@ -23,11 +23,10 @@ final class ChatSidebarViewTests: XCTestCase {
 
         XCTAssertNil(ViewHost.element(labelContains: "No agents connected", in: window))
         XCTAssertNotNil(ViewHost.element(labelContains: "Add agent", in: window))
-        XCTAssertNotNil(ViewHost.element(labelContains: "AGENTS", in: window))
         XCTAssertTrue(ViewHost.activateButton(labelContains: "Settings", in: window))
         XCTAssertEqual(settingsCount, 1)
 
-        XCTAssertTrue(ViewHost.activateButton(labelContains: "Add Agent", in: window))
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "Add agent", in: window))
         ViewHost.pump(0.3)
         XCTAssertNotNil(ViewHost.element(labelContains: "Agent address", in: window))
         XCTAssertTrue(ViewHost.activateButton(labelContains: "Cancel", in: window))
@@ -142,7 +141,7 @@ final class ChatSidebarViewTests: XCTestCase {
         )
 
         XCTAssertNotNil(ViewHost.element(labelContains: "Alpha Agent", in: window))
-        XCTAssertNotNil(ViewHost.element(labelContains: "No chat sessions", in: window))
+        XCTAssertNil(ViewHost.element(labelContains: "No chats yet", in: window), "no filler under an empty agent")
     }
 
     func testSidebarDefaultsToFirstAgentWhenNoAgentIsActive() {
@@ -238,7 +237,7 @@ final class ChatSidebarViewTests: XCTestCase {
             )
         )
 
-        XCTAssertTrue(ViewHost.activateButton(labelContains: "Add Agent", in: window))
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "Add agent", in: window))
         XCTAssertNotNil(ViewHost.waitForElement(labelContains: "Agent address", in: window))
 
         XCTAssertTrue(ViewHost.enterText("Saved Agent", intoTextInput: "Name", in: window))
@@ -367,7 +366,8 @@ private struct SidebarFixture {
             mode: .safe,
             createdAt: Date(timeIntervalSince1970: 500),
             updatedAt: updatedAt,
-            messages: [],
+            // A chat is only listed once it has a message (story 182).
+            messages: [ChatMessage(role: .user, content: title)],
             serverSession: nil
         )
     }

@@ -10,9 +10,9 @@ struct ApprovalCard: View {
     var onStop: () -> Void
     var onExplain: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    // action is always visible first. The header only folds a long command away after the person has seen it
-    @State private var isCommandExpanded = true
     @State private var isConfirmingTrust = false
+    // Explain, the session grant and Stop sit behind More, so the card leads with the decision.
+    @State private var showsMoreActions = false
     private static let commandArgumentKeys: Set<String> = ["cmd", "command", "script"]
 
     private var request: ToolApprovalRequest {
@@ -20,98 +20,38 @@ struct ApprovalCard: View {
     }
 
     var body: some View {
-        // update spacing to OOSpace.medium
-        VStack(alignment: .leading, spacing: OOSpace.medium) {
-            header
-
-            if let description = request.description, !description.isEmpty {
-                Text(description)
-                    .font(.subheadline)
-                    // update foreground colour to be ink secondary as defined in OOColor
-                    .foregroundStyle(OOColor.inkSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            commandPreview
-            argumentList
-
-            // Create stack for card field labels to allow user for permission
-            VStack(alignment: .leading, spacing: OOSpace.small) {
-                CardFieldLabel(label: "Scope", text: ApprovalDisclosure.consequence(for: request))
-                CardFieldLabel(label: "If you allow", text: ApprovalDisclosure.consequence(for: request))
-            }
-            if !request.batchRemaining.isEmpty {
-                Text("\(request.batchRemaining.count) more action\(request.batchRemaining.count == 1 ? "" : "s") waiting")
-                    .font(.caption)
-                    // update foreground colour to be ink secondary as defined in OOColor
-                    .foregroundStyle(OOColor.inkSecondary)
-            }
-            actionRow
-        }
-        .conversationCard()
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Permission requested for \(request.tool)")
-    }
-
-    @ViewBuilder
-    private var header: some View {
-        if commandArgument != nil {
-            Button {
-                withAnimation(AppMotion.stateChange(reduceMotion: reduceMotion)) {
-                    isCommandExpanded.toggle()
+        // The Kit decision notice: amber eyebrow, a plain sentence saying what will happen,
+        // then what allowing it means. The command or arguments follow so the person can check them.
+        OONotice(
+            .decision,
+            title: OOApprovalDisclosure.summary(tool: request.tool, arguments: request.arguments),
+            message: ApprovalDisclosure.consequence(for: request)
+        ) {
+            VStack(alignment: .leading, spacing: OOSpace.medium) {
+                if let description = request.description, !description.isEmpty {
+                    Text(description)
+                        .font(.subheadline)
+                        .foregroundStyle(OOColor.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-            } label: {
-                headerContent
-            }
-            .buttonStyle(AppPressButtonStyle(pressedScale: 0.99, pressedOpacity: 0.88))
-            .accessibilityValue(isCommandExpanded ? "expanded" : "collapsed")
-        } else {
-            headerContent
-        }
-    }
 
-    private var headerContent: some View {
-        HStack(alignment: .top, spacing: OOSpace.small) {
-            if commandArgument != nil {
-                Image(systemName: isCommandExpanded ? "chevron.down" : "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(OOColor.inkSecondary)
-                    .frame(width: 10)
-                    .padding(.top, 4)
-                    .accessibilityHidden(true)
-            }
+                commandPreview
+                argumentList
 
-            // change spacing from 6 to 4
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 7) {
-                    Text(toolTitle)
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(OOColor.ink)
-                        .lineLimit(1)
-
-                    if let toolSubtitle {
-                        Text(toolSubtitle)
-                            .font(.system(.subheadline, design: .monospaced))
-                            .foregroundStyle(OOColor.inkSecondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
+                if !request.batchRemaining.isEmpty {
+                    Text("\(request.batchRemaining.count) more action\(request.batchRemaining.count == 1 ? "" : "s") waiting")
+                        .font(.caption)
+                        .foregroundStyle(OOColor.inkSecondary)
                 }
-                // permissionStatusBadge
-                // Add needs permission text
-                Text("Needs permission")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(OOColor.primary)
-                    .lineLimit(1)
+                actionRow
             }
-            Spacer(minLength: 0)
         }
-        .contentShape(Rectangle())
     }
+
     @ViewBuilder
     private var commandPreview: some View {
-        if let commandArgument, isCommandExpanded {
+        if let commandArgument {
             HStack(alignment: .firstTextBaseline, spacing: OOSpace.small) {
                 Text("$")
                     .font(.system(.footnote, design: .monospaced))
@@ -128,14 +68,13 @@ struct ApprovalCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(OOSpace.medium)
             .background(codeBackground)
-            .transition(AppMotion.materialize(reduceMotion: reduceMotion))
         }
     }
 
     @ViewBuilder
     private var argumentList: some View {
         let details = ToolActionSummary.argumentsDescription(displayArguments)
-        if commandArgument == nil || isCommandExpanded, !details.isEmpty {
+        if !details.isEmpty {
             Text(details)
                 .font(.system(.footnote, design: .monospaced))
                 .textSelection(.enabled)
@@ -143,7 +82,6 @@ struct ApprovalCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(OOSpace.medium)
                 .background(codeBackground)
-                .transition(AppMotion.materialize(reduceMotion: reduceMotion))
         }
     }
     // New Code Background
@@ -173,23 +111,43 @@ struct ApprovalCard: View {
                 .accessibilityIdentifier("approval.skip.\(request.id)")
 
                 Button {
+                    withAnimation(AppMotion.stateChange(reduceMotion: reduceMotion)) {
+                        showsMoreActions.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("More")
+                        Image(systemName: "chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .rotationEffect(.degrees(showsMoreActions ? 180 : 0))
+                            .accessibilityHidden(true)
+                    }
+                }
+                .buttonStyle(CardSecondaryButtonStyle())
+                .accessibilityValue(showsMoreActions ? "expanded" : "collapsed")
+                .accessibilityIdentifier("approval.more.\(request.id)")
+            }
+
+            // Kept open while the trust question is showing, so closing More can't hide it.
+            if showsMoreActions || isConfirmingTrust {
+                Button {
                     onExplain()
                 } label: {
                     Text("Explain")
                 }
                 .buttonStyle(CardSecondaryButtonStyle())
                 .accessibilityIdentifier("approval.explain.\(request.id)")
-            }
 
-            trustSection
+                trustSection
 
-            Button(role: .destructive) {
-                onStop()
-            } label: {
-                Text("Stop response")
+                Button(role: .destructive) {
+                    onStop()
+                } label: {
+                    Text("Stop response")
+                }
+                .buttonStyle(CardSecondaryButtonStyle(tint: AppTheme.destructive, stroke: AppTheme.destructive))
+                .accessibilityIdentifier("approval.stop.\(request.id)")
             }
-            .buttonStyle(CardQuietButtonStyle(tint: AppTheme.destructive))
-            .accessibilityIdentifier("approval.stop.\(request.id)")
         }
     }
     // Allowing once is one decision. Trusting is every later request like it, so the
@@ -203,13 +161,13 @@ struct ApprovalCard: View {
                     .foregroundStyle(OOColor.ink)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text(ApprovalDisclosure.trustScope)
+                Text(OOApprovalDisclosure.trustScope(tool: request.tool))
                     .font(.footnote)
                     .foregroundStyle(OOColor.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: OOSpace.small) {
-                    Button {
+                    Button(role: .cancel) {
                         withAnimation(AppMotion.stateChange(reduceMotion: reduceMotion)) {
                             isConfirmingTrust = false
                         }
@@ -223,9 +181,17 @@ struct ApprovalCard: View {
                         isConfirmingTrust = false
                         onTrustSession()
                     } label: {
-                        Text("Trust")
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.footnote.weight(.semibold))
+                                .accessibilityHidden(true)
+                            // The question above names what is trusted; the button only repeats the verb.
+                            Text("Trust")
+                        }
                     }
-                    .buttonStyle(CardSecondaryButtonStyle())
+                    // The wider grant is the risky choice: red text and a warning mark, but no
+                    // fill, so it never outweighs Cancel or the green Allow once.
+                    .buttonStyle(CardSecondaryButtonStyle(tint: OOColor.failureText))
                     .accessibilityLabel("Confirm: \(trustTitle) for this session")
                     .accessibilityIdentifier("approval.trustConfirm.\(request.id)")
                 }
@@ -258,34 +224,9 @@ struct ApprovalCard: View {
         }
     }
 
-    private var toolTitle: String {
-        if commandArgument != nil {
-            return "Command"
-        }
-
-        return request.tool
-            .replacingOccurrences(of: "_", with: " ")
-            .capitalized
-    }
-
-    private var toolSubtitle: String? {
-        commandArgument
-            ?? request.arguments["path"]?.stringValue
-            ?? request.arguments["file"]?.stringValue
-            ?? request.arguments["url"]?.stringValue
-    }
-
+    // The host trusts the whole tool for the session, not one command, so the title names the tool.
     private var trustTitle: String {
-        guard let commandArgument else {
-            return "Trust this tool"
-        }
-
-        let trimmedCommand = commandArgument.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedCommand.isEmpty, trimmedCommand.count <= 18 {
-            return "Trust \(trimmedCommand)"
-        }
-
-        return "Trust this command"
+        OOApprovalDisclosure.trustTitle(tool: request.tool)
     }
 
     private var displayArguments: [String: JSONValue] {
@@ -341,26 +282,6 @@ enum ApprovalDisclosure {
         return .other
     }
 
-    /// What this one approval covers.
-    static func scope(for request: ToolApprovalRequest) -> String {
-        switch effect(for: request) {
-        case .runsCommand:
-            return "This command, once."
-        case .changesFiles, .readsOnly:
-            if let path = request.arguments["path"]?.stringValue ?? request.arguments["file"]?.stringValue {
-                return "This call only, on \(path)."
-            }
-            return "This call only."
-        case .usesNetwork:
-            if let url = request.arguments["url"]?.stringValue {
-                return "This call only, to \(url)."
-            }
-            return "This call only."
-        case .other:
-            return "This call only."
-        }
-    }
-
     /// What happens if the person taps Allow once.
     static func consequence(for request: ToolApprovalRequest) -> String {
         switch effect(for: request) {
@@ -376,10 +297,6 @@ enum ApprovalDisclosure {
             return "The agent runs this tool with the values shown above."
         }
     }
-
-    /// What the wider grant covers; shown on the confirmation step.
-    static let trustScope =
-        "Requests like this one run without asking until this session ends. You can still stop the response at any time."
 
     private static func containsAny(_ text: String, _ needles: [String]) -> Bool {
         needles.contains { text.contains($0) }

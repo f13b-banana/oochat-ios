@@ -88,9 +88,35 @@ final class OOApprovalDisclosureTests: XCTestCase {
         XCTAssertEqual(OOApprovalDisclosure.trustTitle(tool: "  "), "Trust this tool")
         XCTAssertEqual(
             OOApprovalDisclosure.trustScope(tool: "bash"),
-            "Every later request to use bash runs without asking until this session ends, "
+            "Every later bash call runs without asking until this session ends, "
                 + "whatever it asks to do. You can still stop the response at any time."
         )
         XCTAssertTrue(OOApprovalDisclosure.trustScope(tool: "").contains("this tool"))
+    }
+
+    func testSummarySaysWhatTheCallWillDo() {
+        XCTAssertEqual(
+            OOApprovalDisclosure.summary(tool: "delete_file", arguments: ["path": .string("/workspace/secret.txt")]),
+            "Delete secret.txt."
+        )
+        XCTAssertEqual(
+            OOApprovalDisclosure.summary(
+                tool: "write",
+                arguments: ["path": .string("~/Desktop/hi.md"), "content": .string("hi")]
+            ),
+            "Create or replace hi.md with the content supplied by the agent."
+        )
+        XCTAssertEqual(
+            OOApprovalDisclosure.summary(tool: "run_command", arguments: ["command": .string("git status --short")]),
+            "Run a Git status operation in the repository."
+        )
+        XCTAssertEqual(
+            OOApprovalDisclosure.summary(tool: "bash", arguments: ["command": .string("./scripts/run_kit_tests.sh")]),
+            "Run a shell command using ./scripts/run_kit_tests.sh."
+        )
+        XCTAssertEqual(
+            OOApprovalDisclosure.summary(tool: "custom_action", arguments: [:]),
+            "Allow the agent to run custom_action."
+        )
     }
 }

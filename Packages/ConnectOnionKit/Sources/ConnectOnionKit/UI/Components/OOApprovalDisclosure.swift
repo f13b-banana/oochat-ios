@@ -83,12 +83,110 @@ public enum OOApprovalDisclosure {
         return name.isEmpty ? "Trust this tool" : "Trust all \(name) calls"
     }
 
-    /// What the wider grant covers, shown on the confirmation step
+    /// What the wider grant covers, shown on the confirmation step. The tool name is used as a
+    /// noun ("bash call"), as in trustTitle, so a name like "write" is not read as a verb.
     public static func trustScope(tool: String) -> String {
         let name = tool.trimmingCharacters(in: .whitespacesAndNewlines)
-        let subject = name.isEmpty ? "this tool" : name
-        return "Every later request to use \(subject) runs without asking until this session ends, "
+        let subject = name.isEmpty ? "call to this tool" : "\(name) call"
+        return "Every later \(subject) runs without asking until this session ends, "
             + "whatever it asks to do. You can still stop the response at any time."
+    }
+
+    /// One sentence saying what the call will do, used as the title of the approval.
+    /// Moved here from the macOS app so both apps say the same thing; wording unchanged.
+    public static func summary(tool: String, arguments: [String: JSONValue]) -> String {
+        let name = tool.lowercased()
+        let target = firstString(summaryTargetKeys, in: arguments).map(shortTarget)
+
+        if let line = phrase(for: name, target: target, in: fileSummaries) {
+            return line
+        }
+        if ["shell", "command", "execute", "bash"].contains(where: name.contains),
+           let command = command(in: arguments) {
+            return explain(command: command)
+        }
+        if let line = phrase(for: name, target: target, in: messageSummaries) {
+            return line
+        }
+        if name.contains("click") {
+            return "Interact with the currently open webpage."
+        }
+        return "Allow the agent to run \(tool)."
+    }
+
+    /// A tool-name match and the sentence it gives, with `{target}` replaced by the short target.
+    private struct SummaryRule: Sendable {
+        let terms: [String]
+        let withTarget: String
+        let fallback: String
+    }
+
+    private static let fileSummaries = [
+        SummaryRule(terms: ["delete", "remove", "unlink"], withTarget: "Delete {target}.",
+                    fallback: "Delete the selected item."),
+        SummaryRule(terms: ["write"], withTarget: "Create or replace {target} with the content supplied by the agent.",
+                    fallback: "Write content to a file."),
+        SummaryRule(terms: ["edit", "update", "patch"], withTarget: "Modify {target} using the agent’s proposed changes.",
+                    fallback: "Modify an existing file or resource."),
+        SummaryRule(terms: ["create"], withTarget: "Create {target}.",
+                    fallback: "Create a new file or resource."),
+        SummaryRule(terms: ["move", "rename"], withTarget: "Move or rename {target}.",
+                    fallback: "Move or rename a file or resource.")
+    ]
+
+    private static let messageSummaries = [
+        SummaryRule(terms: ["send", "reply"], withTarget: "Send information to {target}.",
+                    fallback: "Send information to an external recipient."),
+        SummaryRule(terms: ["upload"], withTarget: "Upload a file to {target}.",
+                    fallback: "Upload a file to an external service.")
+    ]
+
+    private static let summaryTargetKeys = [
+        "path", "file_path", "filepath", "filename", "target", "url",
+        "command", "recipient", "to", "event_id"
+    ]
+
+    private static let commandSummaries = [
+        "rm": "Delete the files or folders named by this command.",
+        "mkdir": "Create one or more folders.",
+        "touch": "Create an empty file or update its modified time.",
+        "cp": "Copy files or folders to another location.",
+        "mv": "Move or rename files or folders.",
+        "python": "Run a Python program or script.",
+        "python3": "Run a Python program or script.",
+        "swift": "Run a Swift command or program."
+    ]
+
+    private static func phrase(for name: String, target: String?, in rules: [SummaryRule]) -> String? {
+        guard let rule = rules.first(where: { $0.terms.contains(where: name.contains) }) else {
+            return nil
+        }
+        return target.map { rule.withTarget.replacingOccurrences(of: "{target}", with: $0) } ?? rule.fallback
+    }
+
+    private static func shortTarget(_ value: String) -> String {
+        let lastComponent = URL(fileURLWithPath: value).lastPathComponent
+        return lastComponent.isEmpty ? value : lastComponent
+    }
+
+    private static func explain(command: String) -> String {
+        let words = command.trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(whereSeparator: \.isWhitespace)
+            .map(String.init)
+        guard let executable = words.first else {
+            return "Run a shell command."
+        }
+        if let line = commandSummaries[executable] {
+            return line
+        }
+        switch executable {
+        case "git":
+            return "Run a Git \(words.dropFirst().first ?? "operation") operation in the repository."
+        case "npm", "pnpm", "yarn":
+            return "Run the \(words.dropFirst().first ?? "command") task with \(executable)."
+        default:
+            return "Run a shell command using \(executable)."
+        }
     }
 
     private static func command(in arguments: [String: JSONValue]) -> String? {

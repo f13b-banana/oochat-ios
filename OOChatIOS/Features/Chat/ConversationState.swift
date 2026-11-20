@@ -52,6 +52,9 @@ final class ConversationState: ObservableObject {
         if case .failure(let error) = snapshotResult {
             persistenceError = error
         }
+
+        let conversationIDs = Set(snapshot.conversations.map(\.id))
+        draftsByConversationID = store.loadDrafts().filter { conversationIDs.contains($0.key) }
     }
 
     var activeAgent: SavedAgent? {
@@ -79,10 +82,12 @@ final class ConversationState: ObservableObject {
     }
 
     func updateActiveDraft(_ draft: String) {
-        guard let activeConversationID else {
+        guard let activeConversationID,
+              draftsByConversationID[activeConversationID, default: ""] != draft else {
             return
         }
-        draftsByConversationID[activeConversationID] = draft
+        draftsByConversationID[activeConversationID] = draft.isEmpty ? nil : draft
+        store.saveDrafts(draftsByConversationID)
     }
 
     /// Created on first use, so a view that reads it before the first provider frame observes the same store.
@@ -192,6 +197,7 @@ final class ConversationState: ObservableObject {
             }
         }
         draftsByConversationID[conversation.id] = nil
+        store.saveDrafts(draftsByConversationID)
         workRoomStoresByConversationID[conversation.id] = nil
         failedDeliveryConversationIDs.remove(conversation.id)
         completedUnreadConversationIDs.remove(conversation.id)
@@ -224,6 +230,7 @@ final class ConversationState: ObservableObject {
             completedUnreadConversationIDs.remove(conversationID)
             recordPersistence(store.deleteConversationResult(id: conversationID))
         }
+        store.saveDrafts(draftsByConversationID)
         markActiveConversationViewed()
         recordPersistence(store.deleteAgentResult(id: agent.id))
         persistSelection()

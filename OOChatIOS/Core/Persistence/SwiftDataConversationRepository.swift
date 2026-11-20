@@ -9,6 +9,7 @@ final class SwiftDataConversationRepository: ConversationRepository {
     private let defaults: UserDefaults
     private let activeAgentKey = "connectonion.native-ios.swiftdata.activeAgent"
     private let activeConversationKey = "connectonion.native-ios.swiftdata.activeConversation"
+    private let draftsKey = "connectonion.native-ios.swiftdata.drafts"
 
     init(inMemory: Bool = false, storeURL: URL? = nil, defaults: UserDefaults = .standard) throws {
         self.defaults = defaults
@@ -208,6 +209,18 @@ final class SwiftDataConversationRepository: ConversationRepository {
     func saveActive(agentID: String?, conversationID: String?) {
         setActive(agentID, forKey: activeAgentKey)
         setActive(conversationID, forKey: activeConversationKey)
+    }
+
+    func loadDrafts() -> [String: String] {
+        defaults.dictionary(forKey: draftsKey) as? [String: String] ?? [:]
+    }
+
+    func saveDrafts(_ drafts: [String: String]) {
+        if drafts.isEmpty {
+            defaults.removeObject(forKey: draftsKey)
+        } else {
+            defaults.set(drafts, forKey: draftsKey)
+        }
     }
 
     /// Case- and diacritic-insensitive search over conversation titles and message content,

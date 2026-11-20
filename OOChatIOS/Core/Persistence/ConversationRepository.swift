@@ -54,6 +54,10 @@ protocol ConversationRepository {
     func saveActive(agentID: String?, conversationID: String?)
     func search(_ query: String) -> [Conversation]
 
+    /// Unsent composer text per conversation ID, so a draft survives a relaunch.
+    func loadDrafts() -> [String: String]
+    func saveDrafts(_ drafts: [String: String])
+
     /// Result-returning variants let feature code surface persistence failures while the
     /// compatibility methods above keep existing callers source-compatible during migration.
     func loadResult() -> Result<ChatSnapshot, ConversationRepositoryError>
@@ -72,6 +76,9 @@ protocol ConversationRepository {
 }
 
 extension ConversationRepository {
+    func loadDrafts() -> [String: String] { [:] }
+    func saveDrafts(_ drafts: [String: String]) {}
+
     func loadResult() -> Result<ChatSnapshot, ConversationRepositoryError> {
         .success(load())
     }

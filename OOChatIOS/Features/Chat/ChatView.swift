@@ -16,6 +16,9 @@ struct ChatView: View {
     let showsComposer: Bool
     let showsSidebarButton: Bool
     let controlCenter: ChatControlCenter?
+    /// Ids of the Work Rooms pushed onto this chat; the shell reads it to hide the Control Center.
+    @Binding var workRoomPath: [String]
+    let onAddAgent: () -> Void
     let onOpenSidebar: () -> Void
 
     init(
@@ -23,12 +26,16 @@ struct ChatView: View {
         showsComposer: Bool = true,
         showsSidebarButton: Bool = true,
         controlCenter: ChatControlCenter? = nil,
+        workRoomPath: Binding<[String]> = .constant([]),
+        onAddAgent: @escaping () -> Void = {},
         onOpenSidebar: @escaping () -> Void = {}
     ) {
         self.viewModel = viewModel
         self.showsComposer = showsComposer
         self.showsSidebarButton = showsSidebarButton
         self.controlCenter = controlCenter
+        _workRoomPath = workRoomPath
+        self.onAddAgent = onAddAgent
         self.onOpenSidebar = onOpenSidebar
     }
 
@@ -41,13 +48,19 @@ struct ChatView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $workRoomPath) {
             ChatScreen(
                 viewModel: viewModel,
                 showsComposer: showsComposer,
                 showsSidebarButton: showsSidebarButton,
-                onOpenSidebar: onOpenSidebar
+                onAddAgent: onAddAgent,
+                onOpenSidebar: onOpenSidebar,
+                onOpenWorkRoom: { workRoomPath.append($0) }
             )
+            // The Control tab and its switch below hang off this root screen, so a pushed Work Room has neither.
+            .navigationDestination(for: String.self) { workRoomID in
+                WorkRoomScreen(viewModel: viewModel, workRoomID: workRoomID)
+            }
             .accessibilityHidden(isControlTabShowing)
             .overlay {
                 if case .tabs(let dashboard, let selection, _) = controlCenter {
@@ -91,7 +104,9 @@ struct ChatScreen: View {
     @ObservedObject var viewModel: ChatViewModel
     let showsComposer: Bool
     var showsSidebarButton: Bool = true
+    var onAddAgent: () -> Void = {}
     let onOpenSidebar: () -> Void
+    let onOpenWorkRoom: (String) -> Void
     @Environment(\.accessibilityReduceMotion) var reduceMotion
     @State var bottomAnchorY: CGFloat = 0
     @State var scrollViewportHeight: CGFloat = 0
@@ -114,9 +129,17 @@ struct ChatScreen: View {
                             if shouldShowEmptyState(for: conversation) {
                                 EmptyChatState(
                                     agentName: viewModel.activeAgent?.name ?? "Your agent",
-                                    showsSuggestions: showsComposer
-                                ) { suggestion in
-                                    viewModel.prompt = suggestion.prompt
+                                    skills: StarterSkills.ordered(
+                                        viewModel.activeAgentSkills ?? [],
+                                        dashboard: viewModel.activeDashboard
+                                    ),
+                                    showsSkills: showsComposer
+                                ) { skill in
+                                    viewModel.prompt = "/\(skill.name) "
+                                    promptFocusRequest += 1
+                                } onShowAllSkills: {
+                                    // A lone "/" opens the composer's skill picker.
+                                    viewModel.prompt = "/"
                                     promptFocusRequest += 1
                                 }
                                 .frame(
@@ -269,7 +292,7 @@ struct ChatScreen: View {
                     }
                 }
             } else {
-                ContentUnavailableView("No Conversation", systemImage: "bubble.left")
+                noChatState
             }
         }
         .background {
@@ -290,8 +313,11 @@ struct ChatScreen: View {
                         .lineLimit(1)
                         .contentTransition(.opacity)
 
-                    sessionStatus
-                        .contentTransition(.opacity)
+                    // No chat, nothing to connect: a status here would only read as a fault.
+                    if viewModel.activeConversation != nil {
+                        sessionStatus
+                            .contentTransition(.opacity)
+                    }
                 }
                 .animation(
                     AppMotion.stateChange(reduceMotion: reduceMotion),
@@ -321,6 +347,39 @@ struct ChatScreen: View {
                 // centers an overflowing principal title in the leftover asymmetric space,
                 // pushing the title and status pill right of screen center.
                 trailingBalanceItem
+            }
+        }
+    }
+
+    /// No chat open. With an agent, the next step is a chat with it; with none, adding one.
+    @ViewBuilder
+    private var noChatState: some View {
+        if let agent = viewModel.activeAgent ?? viewModel.agents.first {
+            ContentUnavailableView {
+                Label("No chat open", systemImage: "bubble.left")
+            } description: {
+                Text("Start a chat with \(agent.name), or pick one from the sidebar.")
+            } actions: {
+                Button {
+                    _ = viewModel.createConversation(for: agent)
+                } label: {
+                    Text("New chat with \(agent.name)")
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .buttonStyle(.ooPrimary)
+
+                Button("Add agent", action: onAddAgent)
+                    .buttonStyle(.ooSecondary)
+            }
+        } else {
+            ContentUnavailableView {
+                Label("Add your first agent", systemImage: "person.badge.plus")
+            } description: {
+                Text("An agent's address starts with 0x. Find it where the agent runs, or scan its QR code.")
+            } actions: {
+                Button("Add agent", action: onAddAgent)
+                    .buttonStyle(.ooPrimary)
             }
         }
     }
@@ -405,5 +464,23 @@ struct ChatScreen: View {
             }
             .frame(minHeight: 24)
         }
+    }
+}
+
+/// Looks the Work Room up by id on every render, so the pushed screen follows live frames.
+private struct WorkRoomScreen: View {
+    @ObservedObject var viewModel: ChatViewModel
+    let workRoomID: String
+
+    var body: some View {
+        Group {
+            if let conversationID = viewModel.activeConversationID,
+               let workRoom = viewModel.conversationState.workRoomStore(for: conversationID).workRoom(id: workRoomID) {
+                OOWorkRoomView(workRoom: workRoom)
+            }
+        }
+        // The heading is inside the Work Room, so the bar title stays short.
+        .navigationTitle("Work Room")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

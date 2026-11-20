@@ -5,18 +5,39 @@ import XCTest
 
 @MainActor
 final class ChatViewTests: XCTestCase {
-    func testNoConversationShowsEmptyStateAndOpenSidebarAction() {
+    func testNoAgentsOffersAddAgentAndOpenSidebar() {
         let viewModel = makeContainerViewModel(agents: [], conversations: [])
         var openSidebarCount = 0
+        var addAgentCount = 0
         let window = ViewHost.host(
-            ChatView(viewModel: viewModel) {
-                openSidebarCount += 1
-            }
+            ChatView(
+                viewModel: viewModel,
+                onAddAgent: { addAgentCount += 1 },
+                onOpenSidebar: { openSidebarCount += 1 }
+            )
         )
 
-        XCTAssertNotNil(ViewHost.element(labelContains: "No Conversation", in: window))
+        XCTAssertNotNil(ViewHost.element(labelContains: "Add your first agent", in: window))
+        XCTAssertNil(ViewHost.element(labelContains: "Not Connected", in: window))
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "Add agent", in: window))
+        XCTAssertEqual(addAgentCount, 1)
         XCTAssertTrue(ViewHost.activateButton(labelContains: "Open sidebar", in: window))
         XCTAssertEqual(openSidebarCount, 1)
+    }
+
+    func testNoChatWithAnAgentStartsANewChat() {
+        let fixture = ChatContainerFixture()
+        let viewModel = makeContainerViewModel(
+            agents: [fixture.agent],
+            conversations: [],
+            activeAgentID: fixture.agent.id
+        )
+        let window = ViewHost.host(ChatView(viewModel: viewModel))
+
+        XCTAssertNotNil(ViewHost.element(labelContains: "No chat open", in: window))
+        XCTAssertNil(viewModel.activeConversation)
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "New chat with \(fixture.agent.name)", in: window))
+        XCTAssertNotNil(viewModel.activeConversation)
     }
 
     func testTimelineRendersMessagesAndToolGroupsWithoutComposer() {
@@ -178,7 +199,7 @@ final class ChatViewTests: XCTestCase {
         XCTAssertEqual(viewModel.connectionState, .connected)
     }
 
-    func testEmptyConversationShowsStartersAndPopulatesComposer() {
+    func testEmptyConversationNamesTheAgentWithoutGenericStarters() {
         let fixture = ChatContainerFixture()
         let conversation = fixture.conversation()
         let viewModel = makeContainerViewModel(
@@ -189,20 +210,34 @@ final class ChatViewTests: XCTestCase {
         )
         let window = ViewHost.host(ChatView(viewModel: viewModel))
 
-        XCTAssertNotNil(ViewHost.element(labelContains: "Start with \(fixture.agent.name)", in: window))
-        XCTAssertEqual(
-            ChatStarterSuggestion.defaults.map(\.title),
-            ["Plan a feature", "Review code", "Debug issue", "Explain project"]
+        XCTAssertNotNil(ViewHost.element(labelContains: fixture.agent.name, in: window))
+        // No skills loaded yet, so only the hint shows.
+        XCTAssertNotNil(ViewHost.element(labelContains: "Type a message to start.", in: window))
+        XCTAssertNil(ViewHost.element(labelContains: "Plan a feature", in: window))
+    }
+
+    func testStarterSkillsFillTheComposerAndOpenTheFullList() {
+        let skills = ["commit", "dashboard", "review-pr", "ship-feature", "deploy"].map {
+            OIPAgentSkill(name: $0, description: "Runs \($0)")
+        }
+        var selected: [String] = []
+        var showAllCount = 0
+        let window = ViewHost.host(
+            EmptyChatState(agentName: "my-agent", skills: skills, showsSkills: true) { skill in
+                selected.append(skill.name)
+            } onShowAllSkills: {
+                showAllCount += 1
+            }
         )
 
-        for suggestion in ChatStarterSuggestion.defaults {
-            viewModel.prompt = ""
-            XCTAssertTrue(
-                ViewHost.activateButton(labelContains: suggestion.title, in: window),
-                "Expected starter button for \(suggestion.title)"
-            )
-            XCTAssertEqual(viewModel.prompt, suggestion.prompt)
-        }
+        XCTAssertNotNil(ViewHost.element(labelContains: "Pick a skill or type a message.", in: window))
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "/commit", in: window))
+        XCTAssertNotNil(ViewHost.element(labelContains: "/review-pr", in: window))
+        // Five skills: three chips, and the fourth place opens the full list.
+        XCTAssertNil(ViewHost.element(labelContains: "/ship-feature", in: window))
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "All 5 skills", in: window))
+        XCTAssertEqual(selected, ["commit"])
+        XCTAssertEqual(showAllCount, 1)
     }
 
     func testConversationWithMessagesDoesNotShowStarters() {
@@ -220,7 +255,8 @@ final class ChatViewTests: XCTestCase {
         )
         let window = ViewHost.host(ChatView(viewModel: viewModel))
 
-        XCTAssertNil(ViewHost.element(labelContains: "Start with \(fixture.agent.name)", in: window))
+        XCTAssertNil(ViewHost.element(labelContains: "Type a message to start.", in: window))
+        XCTAssertNil(ViewHost.element(labelContains: "Pick a skill or type a message.", in: window))
         XCTAssertNil(ViewHost.element(labelContains: "Plan a feature", in: window))
         XCTAssertNotNil(ViewHost.element(labelContains: "Review this change", in: window))
     }

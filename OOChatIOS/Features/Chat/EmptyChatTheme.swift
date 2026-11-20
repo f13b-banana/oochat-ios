@@ -10,7 +10,8 @@ enum EmptyChatPalette {
 
     static let chipText = OOColor.ink
 
-    static let chipIcon = OOColor.inkSecondary
+    // The same green command glyph the composer's / picker uses, so chips read as skills.
+    static let chipIcon = AppTheme.primary
 
     static let chipFill = OOColor.paper
 
@@ -63,28 +64,17 @@ enum EmptyChatMetrics {
     static let logoStageSize: CGFloat = 132
     static let logoSize: CGFloat = 72
     static let logoImageVerticalOffset: CGFloat = 1
-    static let logoOuterAuraSize: CGFloat = 230
-    static let logoOuterAuraStartRadius: CGFloat = 24
-    static let logoOuterAuraEndRadius: CGFloat = 124
-    static let logoOuterAuraBlur: CGFloat = 38
-    static let logoAuraSize: CGFloat = 168
-    static let logoAuraStartRadius: CGFloat = 12
-    static let logoAuraEndRadius: CGFloat = 92
-    static let logoAuraBlur: CGFloat = 28
     static let logoBacklightSize: CGFloat = 104
     static let logoBacklightStartRadius: CGFloat = 5
     static let logoBacklightEndRadius: CGFloat = 56
     static let logoBacklightBlur: CGFloat = 11
-    static let logoIdleShadowRadius: CGFloat = 10
-    static let logoActiveShadowRadius: CGFloat = 16
-    static let logoIdleShadowOffset: CGFloat = 4
-    static let logoActiveShadowOffset: CGFloat = 6
-    static let logoPulseDuration: TimeInterval = 3.4
+    static let logoShadowRadius: CGFloat = 10
+    static let logoShadowOffset: CGFloat = 4
     static let headingMaximumWidth: CGFloat = 280
     static let suggestionGroupMaximumWidth: CGFloat = 344
     static let chipSpacing: CGFloat = 7
-    static let chipContentSpacing: CGFloat = 6
-    static let chipMinimumHeight: CGFloat = 36
+    static let chipContentSpacing: CGFloat = 7
+    static let chipMinimumHeight: CGFloat = 44
     static let chipHorizontalPadding: CGFloat = 12
     static let chipIconSize: CGFloat = 15
     static let chipCornerRadius: CGFloat = 16
@@ -95,27 +85,7 @@ enum EmptyChatMetrics {
         colorScheme == .dark ? 0.96 : 0.88
     }
 
-    static func logoOuterAuraCoreOpacity(for colorScheme: ColorScheme) -> Double {
-        colorScheme == .dark ? 0.085 : 0.055
-    }
-
-    static func logoOuterAuraEdgeOpacity(for colorScheme: ColorScheme) -> Double {
-        colorScheme == .dark ? 0.035 : 0.025
-    }
-
-    static func logoAuraCoreOpacity(for colorScheme: ColorScheme) -> Double {
-        colorScheme == .dark ? 0.17 : 0.13
-    }
-
-    static func logoAuraEdgeOpacity(for colorScheme: ColorScheme) -> Double {
-        colorScheme == .dark ? 0.065 : 0.055
-    }
-
-    static func logoShadowOpacity(isActive: Bool, colorScheme: ColorScheme) -> Double {
-        if colorScheme == .dark {
-            return isActive ? 0.20 : 0.13
-        }
-
-        return isActive ? 0.12 : 0.07
+    static func logoShadowOpacity(for colorScheme: ColorScheme) -> Double {
+        colorScheme == .dark ? 0.13 : 0.07
     }
 }

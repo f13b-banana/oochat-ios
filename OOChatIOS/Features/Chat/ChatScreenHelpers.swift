@@ -92,8 +92,9 @@ extension ChatScreen {
         case .toolCallGroup(let messages):
             ToolCallGroupView(messages: messages)
         case .workRoom(let workRoom):
-            // No-op until the Work Room screen exists; it will push onto this chat's NavigationStack.
-            OOWorkRoomCard(workRoom: workRoom) {}
+            OOWorkRoomCard(workRoom: workRoom) {
+                onOpenWorkRoom(workRoom.id)
+            }
         }
     }
 

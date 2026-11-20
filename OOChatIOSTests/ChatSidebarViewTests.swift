@@ -21,7 +21,8 @@ final class ChatSidebarViewTests: XCTestCase {
             )
         )
 
-        XCTAssertNotNil(ViewHost.element(labelContains: "No agents connected", in: window))
+        XCTAssertNil(ViewHost.element(labelContains: "No agents connected", in: window))
+        XCTAssertNotNil(ViewHost.element(labelContains: "Add agent", in: window))
         XCTAssertNotNil(ViewHost.element(labelContains: "AGENTS", in: window))
         XCTAssertTrue(ViewHost.activateButton(labelContains: "Settings", in: window))
         XCTAssertEqual(settingsCount, 1)

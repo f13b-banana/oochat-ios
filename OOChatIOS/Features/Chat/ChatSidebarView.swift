@@ -12,6 +12,8 @@ struct ChatSidebarView: View {
     let onAddChat: (SavedAgent) -> Void
     let onConnected: () -> Void
     let onSettings: () -> Void
+    /// Each change opens the Add Agent form (sent from the chat's empty state).
+    var addAgentRequest = 0
 
     @State private var expandedAgentIDs = Set<String>()
     @State private var deleteTarget: Conversation?
@@ -62,6 +64,9 @@ struct ChatSidebarView: View {
                 expandedAgentIDs.insert(activeAgentID)
                 focusedAgentID = activeAgentID
             }
+        }
+        .onChange(of: addAgentRequest) {
+            beginAddingAgent()
         }
         .onChange(of: isSidebarOpen) {
             if !isSidebarOpen {
@@ -175,12 +180,17 @@ struct ChatSidebarView: View {
                 .listRowBackground(Color.clear)
 
             if viewModel.agents.isEmpty {
-                Text("No agents connected")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .listRowInsets(SidebarMetrics.emptyRowInsets)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
+                Button(action: beginAddingAgent) {
+                    Label("Add agent", systemImage: "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.primary)
+                        .frame(maxWidth: .infinity, minHeight: ooMinimumTarget, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .listRowInsets(SidebarMetrics.emptyRowInsets)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             } else if visibleAgents.isEmpty {
                 Text("No matches")
                     .font(.subheadline)

@@ -194,6 +194,24 @@ final class AgentPresenceCoordinatorTests: XCTestCase {
         XCTAssertTrue(viewModel.isAgentOnline(editedAgent))
         XCTAssertFalse(viewModel.isAgentOnline(agent))
     }
+
+    func testDashboardIsKeptPerConversation() throws {
+        let environment = try makeEnvironment()
+        let viewModel = environment.viewModel
+        setUpAgentAndConversation(viewModel)
+        let conversationID = try XCTUnwrap(viewModel.activeConversationID)
+
+        XCTAssertNil(viewModel.activeDashboard)
+
+        viewModel.apply(.dashboard(.page(html: "<p>hi</p>")), forConversationID: "another-conversation")
+
+        XCTAssertNil(viewModel.activeDashboard)
+
+        viewModel.apply(.dashboard(.tooLarge(bytes: 20)), forConversationID: conversationID)
+
+        XCTAssertEqual(viewModel.activeDashboard, .tooLarge(bytes: 20))
+    }
+
     private func makeEnvironment() throws -> TestEnvironment {
         let suiteName = "OOChatIOSTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

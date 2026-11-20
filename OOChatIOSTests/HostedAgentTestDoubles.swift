@@ -73,6 +73,9 @@ final class MockAgentTransport: HostedAgentTransport {
     private(set) var submittedOnboardingCodes: [String] = []
     var sendBehaviorsByPrompt: [String: Behavior] = [:]
     var streamedEvents: [HostedAgentEvent] = []
+    // Sent as soon as the INPUT goes out, before any approval: the real host announces a tool
+    // call, then asks permission to run it.
+    var eventsBeforeInteractions: [HostedAgentEvent] = []
     var approvalRequests: [ToolApprovalRequest] = []
     var ulwCheckpoints: [UlwCheckpointRequest] = []
     var planReviews: [PlanReviewRequest] = []
@@ -169,6 +172,9 @@ final class MockAgentTransport: HostedAgentTransport {
         // The real connection reports the dispatch before the INPUT leaves.
         if let onInputDispatched = handlers.onInputDispatched {
             await onInputDispatched()
+        }
+        for event in eventsBeforeInteractions {
+            await handlers.onEvent?(event)
         }
         let output = try await output(for: sendBehaviorsByPrompt[prompt.text] ?? sendBehavior)
         try await replayInteractions(onInteraction: handlers.onInteraction)

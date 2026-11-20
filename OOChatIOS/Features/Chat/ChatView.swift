@@ -157,6 +157,10 @@ struct ChatScreen: View {
                                     .id(entry.id)
                                     .transition(AppMotion.materialize(reduceMotion: reduceMotion))
                             }
+                            .environment(
+                                \.toolAwaitingApprovalID,
+                                viewModel.toolAwaitingApprovalID(in: conversation.id)
+                            )
 
                             if let approval = viewModel.activePendingApproval {
                                 ApprovalCard(approval: approval) {

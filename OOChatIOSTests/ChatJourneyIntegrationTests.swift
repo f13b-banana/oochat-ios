@@ -312,6 +312,117 @@ final class ChatJourneyIntegrationTests: XCTestCase {
         )
     }
 
+    // MARK: - Tool row states
+
+    // The host announces the tool, then asks permission. Until you answer, it isn't running.
+    func testToolWaitingOnItsApprovalCardIsAwaitingApproval() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        let viewModel = try app.launch()
+        let conversation = try startChat(on: viewModel)
+        app.transport.eventsBeforeInteractions = [touchToolCall]
+        app.transport.approvalRequests = [touchApproval]
+
+        viewModel.prompt = "Use bash to run: touch a.txt"
+        viewModel.sendPrompt()
+        await waitForPendingApproval(on: viewModel)
+
+        let tool = try XCTUnwrap(viewModel.activeConversation?.messages.first { $0.role == .tool })
+        XCTAssertEqual(viewModel.toolRowState(for: tool, in: conversation.id), .awaitingApproval)
+
+        viewModel.allowPendingApprovalOnce(id: touchApproval.id)
+        await viewModel.sendTask?.value
+    }
+
+    // The host reports a skipped tool as an error ("User rejected…"); you chose it, so it's Skipped.
+    func testSkippedToolStaysSkippedWhenTheHostReportsItAsAnError() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        var viewModel = try app.launch()
+        let conversation = try startChat(on: viewModel)
+        app.transport.eventsBeforeInteractions = [touchToolCall]
+        app.transport.approvalRequests = [touchApproval]
+        app.transport.streamedEvents = [
+            .toolResult(id: "tool-touch", name: "bash", output: "Error: User rejected tool 'bash'.", state: .failed)
+        ]
+
+        viewModel.prompt = "Use bash to run: touch a.txt"
+        viewModel.sendPrompt()
+        await waitForPendingApproval(on: viewModel)
+        viewModel.skipPendingApproval(id: touchApproval.id)
+        await viewModel.sendTask?.value
+
+        var tool = try XCTUnwrap(viewModel.activeConversation?.messages.first { $0.role == .tool })
+        XCTAssertEqual(tool.toolState, .skipped)
+        XCTAssertEqual(viewModel.toolRowState(for: tool, in: conversation.id), .skipped)
+
+        viewModel = try app.relaunch()
+        tool = try XCTUnwrap(viewModel.activeConversation?.messages.first { $0.role == .tool })
+        XCTAssertEqual(tool.toolState, .skipped, "after relaunch")
+    }
+
+    // Stop while a tool runs: it never finishes, so it must not spin forever, even after relaunch.
+    func testToolRunningWhenYouStopIsInterruptedAndStaysThatWay() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        var viewModel = try app.launch()
+        _ = try startChat(on: viewModel)
+        app.transport.eventsBeforeInteractions = [touchToolCall]
+        app.transport.sendBehavior = .waitUntilCancelled
+
+        viewModel.prompt = "Use bash to run: touch a.txt"
+        viewModel.sendPrompt()
+        for _ in 0..<100 where viewModel.activeConversation?.messages.contains(where: { $0.role == .tool }) != true {
+            await Task.yield()
+        }
+        viewModel.stopActiveResponse()
+        await viewModel.sendTask?.value
+
+        XCTAssertEqual(viewModel.activeConversation?.messages.first { $0.role == .tool }?.toolState, .interrupted)
+        viewModel = try app.relaunch()
+        XCTAssertEqual(
+            viewModel.activeConversation?.messages.first { $0.role == .tool }?.toolState,
+            .interrupted,
+            "after relaunch"
+        )
+    }
+
+    // After you stop a batch, the host sends the rest of it no result, but the reply still comes.
+    func testToolsLeftWithoutAResultWhenTheReplyArrivesAreInterrupted() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        let viewModel = try app.launch()
+        _ = try startChat(on: viewModel)
+        app.transport.eventsBeforeInteractions = [
+            touchToolCall,
+            .toolCall(id: "tool-echo", name: "bash", arguments: ["command": .string("echo hi")])
+        ]
+        app.transport.streamedEvents = [
+            .toolResult(id: "tool-touch", name: "bash", output: "", state: .completed)
+        ]
+        app.transport.sendBehavior = .succeed(output: "Stopped as you asked.")
+
+        viewModel.prompt = "Run two commands"
+        viewModel.sendPrompt()
+        await viewModel.sendTask?.value
+
+        let tools = viewModel.activeConversation?.messages.filter { $0.role == .tool } ?? []
+        XCTAssertEqual(tools.map(\.toolState), [.completed, .interrupted])
+    }
+
+    private var touchToolCall: HostedAgentEvent {
+        .toolCall(id: "tool-touch", name: "bash", arguments: ["command": .string("touch a.txt")])
+    }
+
+    private var touchApproval: ToolApprovalRequest {
+        ToolApprovalRequest(id: "approval-touch", tool: "bash", arguments: ["command": .string("touch a.txt")])
+    }
+
+    private func startChat(on viewModel: ChatViewModel) throws -> Conversation {
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Runner", address: Self.address))
+        return viewModel.createConversation(for: agent)
+    }
+
     // test if mode and server would survive relaunch
     func testModeAndServerSessionSurviveRelaunch() async throws {
         let app = try AppInstallation()

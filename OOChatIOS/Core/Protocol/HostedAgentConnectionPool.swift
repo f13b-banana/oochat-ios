@@ -1,11 +1,14 @@
-import Foundation
 import ConnectOnionKit
+import Foundation
 
 enum HostedAgentSessionUpdate: Equatable {
+    case hostStatus(String)
     case dashboard(OIPDashboard)
 
     var kind: String {
         switch self {
+        case .hostStatus:
+            return "status"
         case.dashboard:
             return "dashboard"
         }
@@ -174,6 +177,28 @@ actor HostedAgentConnectionPool {
             release(lease)
             await trimToSize()
             return result
+        } catch {
+            release(lease)
+            await trimToSize()
+            throw error
+        }
+    }
+
+    func requestModeChange(
+        agentAddress: String,
+        conversation: Conversation,
+        mode: OIPPermissionMode,
+        onEvent: @escaping @MainActor (HostedAgentEvent) -> Void
+    ) async throws {
+        let lease = await acquire(agentAddress: agentAddress, conversationID: conversation.id)
+        do {
+            try await lease.connection.requestModeChange(
+                conversation: conversation,
+                mode: mode,
+                onEvent: onEvent
+            )
+            release(lease)
+            await trimToSize()
         } catch {
             release(lease)
             await trimToSize()

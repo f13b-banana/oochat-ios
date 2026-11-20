@@ -1,16 +1,27 @@
 import SwiftUI
 
 extension Composer {
+    @ViewBuilder
     var modeMenu: some View {
         Button {
             showModeMenu = true
         } label: {
+            let displayedMode = viewModel.activePendingMode ?? viewModel.activeMode
             HStack(spacing: 5) {
-                Image(systemName: viewModel.activeMode.icon)
+                Image(systemName: displayedMode.icon)
                     .foregroundStyle(AppTheme.primary)
 
-                Text(viewModel.activeMode.label)
+                Text(displayedMode.label)
                     .foregroundStyle(.secondary)
+
+                if viewModel.activePendingMode != nil {
+                    Text("Pending")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(.orange.opacity(0.12), in: Capsule())
+                }
 
                 Image(systemName: "chevron.up.chevron.down")
                     .imageScale(.small)
@@ -26,14 +37,24 @@ extension Composer {
             }
         }
         .buttonStyle(AppPressButtonStyle(pressedScale: 0.96, pressedOpacity: 0.88))
-        .disabled(viewModel.activeConversation == nil || viewModel.isProcessing)
-        .accessibilityLabel("Chat mode: \(viewModel.activeMode.label)")
+        .disabled(viewModel.activeConversation == nil || viewModel.isProcessing || viewModel.activePendingMode != nil)
+        .accessibilityLabel(viewModel.activePendingMode.map { "Chat mode: \($0.label), pending" }
+                            ?? "Chat mode: \(viewModel.activeMode.label)")
         .popover(isPresented: $showModeMenu) {
             modeSheet
                 .frame(idealWidth: ComposerMetrics.modePopoverWidth)
                 .presentationCompactAdaptation(.sheet)
                 .presentationDetents([.height(sheetHeight)])
                 .presentationDragIndicator(.visible)
+        }
+
+        if viewModel.activePendingMode == nil,
+           viewModel.activeMode == .ulw,
+           let turnsLeft = viewModel.activeFullAccessTurnsLeft {
+            Text("\(turnsLeft) \(turnsLeft == 1 ? "turn" : "turns") left")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 8)
         }
     }
 
@@ -46,7 +67,7 @@ extension Composer {
                 .padding(.top, 20)
                 .padding(.bottom, 4)
 
-            ForEach(ChatMode.allCases) { mode in
+            ForEach(viewModel.offeredModes) { mode in
                 Button {
                     viewModel.setMode(mode)
                     showModeMenu = false
@@ -89,7 +110,7 @@ extension Composer {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
-            if viewModel.activeMode == mode {
+            if (viewModel.activePendingMode ?? viewModel.activeMode) == mode {
                 Image(systemName: "checkmark")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(AppTheme.primary)
@@ -124,14 +145,12 @@ private extension ChatMode {
 
     var detail: String {
         switch self {
-        case .safe:
-            return "Ask before file edits and commands"
         case .plan:
-            return "Research first, then review the plan"
-        case .accept:
-            return "Trust the agent to edit without asking"
+            return "Ask before any change."
+        case .safe, .accept:
+            return "Review each action and approve safe work automatically."
         case .ulw:
-            return "Work autonomously for up to 100 turns"
+            return "Bypass approval for the bounded user-driven turns shown."
         }
     }
 }

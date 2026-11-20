@@ -326,6 +326,7 @@ final class ChatJourneyIntegrationTests: XCTestCase {
         XCTAssertEqual(app.transport.connectedAddresses, [Self.address])
 
         viewModel.setMode(.ulw)
+        await viewModel.settleModeChange()
         XCTAssertEqual(viewModel.activeMode, .ulw)
 
         viewModel = try app.relaunch()

@@ -2,8 +2,10 @@
 
 set -euo pipefail
 
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly REPOSITORY_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
+REPOSITORY_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+readonly REPOSITORY_ROOT
 readonly PROJECT_PATH="${REPOSITORY_ROOT}/OOChatIOS.xcodeproj"
 readonly SCHEME_NAME="OOChatIOS"
 readonly MINIMUM_IOS_MAJOR=17

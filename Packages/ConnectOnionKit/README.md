@@ -99,6 +99,18 @@ Diff the frame list against CONFORMANCE.md, add rows and fixtures for new frames
 `host-src` row whose source changed. Do not edit a fixture to make a test pass; change it only
 because the spec changed.
 
+## When to send SESSION_STATUS
+The host answers `{"type":"SESSION_STATUS","session_id":…,"status":"running"|"connected"|"not_found"}`
+(`ws_router/session.py`). It gives a real answer only to the identity that
+owns the session; everyoneelse gets`not_found`, so the reply is never an existence check.
+
+1. Send it only on a socket that has received `CONNECTED`. There the host
+already knows who you are, so `OIPClientFrames.sessionStatus(sessionID:)` (unsigned, exempt from the v2 gate) is enough. Never open a socket just to ask: a status-only socket must sign the query, and the kit has no builder for that.
+2. Ask when the host says a run is going (`CONNECTED` or a reply says`running`)and this socket is notwaiting for that run's OUTPUT, for example a run started before areconnect or a relaunch. Ask again every `SessionStatusLabel.pollInterval` (10 s), the interval O Chat's `use-agent-sdk.ts` uses. While your own INPUT is in flight, OUTPUT already tells you when the run ends, so don't poll.
+3. Stop when `SessionStatusLabel.keepsPolling(after:)` is false (the answer is not `running`), the socket closes, or the user leaves the chat.
+4. `not_found` feeds`SessionEvent.notFound` into`reduce`(`SessionStatusLabel.event(for:)`), which ends the session. `running`and `connected` only change the header text.
+5. Show `SessionStatusLabel.text(state:hasBookmark:hostStatus:)` in the chat header, passing the `status` of the last CONNECTED or SESSION_STATUS.
+
 ## Protocol version
 
 The spec bundled with host 1.8.10 calls itself **OIP 0.1** and advertises `{"name": "oip", "version": "0.1"}`

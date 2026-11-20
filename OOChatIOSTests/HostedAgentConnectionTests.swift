@@ -400,7 +400,7 @@ final class HostedAgentConnectionTests: XCTestCase {
         await connection.waitForPendingInteractionResponses()
         XCTAssertEqual(try socket.sentFrames().count, sentBeforeInteractions)
 
-        try socket.enqueueFrame(["type": .string("OUTPUT"), "message": .string("done")])
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("done")])
         let promptResult = try await promptTask.value
         XCTAssertEqual(promptResult.output, "done")
         await connection.close()
@@ -1042,7 +1042,7 @@ final class HostedAgentConnectionTests: XCTestCase {
         await connection.close()
     }
 
-    private var agentAddress: String {
+    var agentAddress: String {
         "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }
 
@@ -1126,7 +1126,7 @@ final class HostedAgentConnectionTests: XCTestCase {
         try assertSignatureVerifies(ulw)
     }
 
-    private func makeConversation(
+    func makeConversation(
         id: String,
         mode: ChatMode = .safe,
         serverSession: [String: JSONValue]? = nil
@@ -1272,6 +1272,95 @@ final class HostedAgentConnectionTests: XCTestCase {
         XCTAssertEqual(result.serverSession?["theme"], .string("from-host"))
         XCTAssertEqual(result.serverSession?["session_id"], .string("c-3"))
         await connection.close()
+    }
+
+    func testModeChangedAnswersTheRequestOnceAndFreesItsSlot() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let conversation = makeConversation(id: "mode-confirm")
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+        let socket = try await factory.socket(at: 0)
+        var events: [HostedAgentEvent] = []
+
+        try await connection.requestModeChange(conversation: conversation, mode: .fullAccess) { events.append($0) }
+        let request = try await socket.waitForSentFrame(type: "mode_change")
+        XCTAssertEqual(request["mode"]?.stringValue, "full-access")
+
+        try socket.enqueueFrame(KitFixtures.frame("mode_changed.full_access"))
+        try await waitUntil { !events.isEmpty }
+        // A second mode_changed with no request and no prompt waiting goes nowhere.
+        try socket.enqueueFrame(KitFixtures.frame("mode_changed.full_access"))
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(events, [.modeChanged(mode: .fullAccess, turnsLeft: 5)])
+        let handler = await connection.pendingModeChangeHandler
+        XCTAssertNil(handler)
+        // Not .busy: the confirmation cleared the slot.
+        try await connection.requestModeChange(conversation: conversation, mode: .auto) { _ in }
+        await connection.close()
+    }
+
+    func testHostModeChangedDuringAPromptReachesThePrompt() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let conversation = makeConversation(id: "mode-host")
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+        let socket = try await factory.socket(at: 0)
+        var events: [HostedAgentEvent] = []
+
+        let promptTask = Task {
+            try await connection.sendPrompt(
+                conversation: conversation,
+                prompt: "keep going",
+                onEvent: { events.append($0) },
+                onInteraction: nil
+            )
+        }
+        _ = try await socket.waitForSentFrame(type: "INPUT")
+        try socket.enqueueFrame(KitFixtures.frame("mode_changed"))
+        try await waitUntil { !events.isEmpty }
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("done")])
+
+        _ = try await promptTask.value
+        XCTAssertEqual(events, [.modeChanged(mode: .auto, turnsLeft: nil)])
+        await connection.close()
+    }
+
+    func testUnansweredModeChangeTimesOut() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory, modeChangeTimeout: 0.05)
+        let conversation = makeConversation(id: "mode-timeout")
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+        var events: [HostedAgentEvent] = []
+
+        try await connection.requestModeChange(conversation: conversation, mode: .readOnly) { events.append($0) }
+        try await waitUntil { !events.isEmpty }
+
+        XCTAssertEqual(events, [.modeChangeTimedOut])
+        await connection.close()
+    }
+
+    func testInvalidParamsErrorFailsThePendingModeChange() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let conversation = makeConversation(id: "mode-error")
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+        let socket = try await factory.socket(at: 0)
+        var events: [HostedAgentEvent] = []
+
+        try await connection.requestModeChange(conversation: conversation, mode: .fullAccess) { events.append($0) }
+        _ = try await socket.waitForSentFrame(type: "mode_change")
+        try socket.enqueueFrame([
+            "type": .string("ERROR"),
+            "code": .number(-32602),
+            "message": .string("Mode not offered")
+        ])
+        try await waitUntil { !events.isEmpty }
+
+        guard case .modeChangeFailed = events.first else {
+            return XCTFail("Expected .modeChangeFailed, got \(events)")
+        }
+        XCTAssertEqual(events.count, 1)
     }
 
     private func incompatibleFrame(host version: String) -> [String: JSONValue] {
@@ -1475,7 +1564,7 @@ final class HostedAgentConnectionTests: XCTestCase {
         await assertExecError(.closed, from: task)
     }
 
-    private func makeConnection(
+    func makeConnection(
         factory: MockHostedAgentSocketFactory,
         resolver: HostedAgentEndpointResolver? = nil,
         observer: HostedAgentConnectionStateObserver = HostedAgentConnectionStateObserver(),
@@ -1484,6 +1573,8 @@ final class HostedAgentConnectionTests: XCTestCase {
         livenessCheckInterval: TimeInterval = 0.1,
         resumeAttemptLimit: Int = 0,
         resumeRetryDelay: TimeInterval = 0,
+        statusPollInterval: TimeInterval = 10,
+        modeChangeTimeout: TimeInterval = 15,
         bookmarkStore: HostedAgentBookmarkStore = HostedAgentBookmarkStore(suiteName: "test.bookmarks.\(UUID().uuidString)"),
         execTimeout: TimeInterval = 30
     ) -> HostedAgentConnection {
@@ -1501,12 +1592,14 @@ final class HostedAgentConnectionTests: XCTestCase {
             livenessCheckInterval: livenessCheckInterval,
             resumeAttemptLimit: resumeAttemptLimit,
             resumeRetryDelay: resumeRetryDelay,
+            statusPollInterval: statusPollInterval,
+            modeChangeTimeout: modeChangeTimeout,
             bookmarkStore: bookmarkStore,
             execTimeout: execTimeout
         )
     }
 
-    private func establish(
+    func establish(
         _ connection: HostedAgentConnection,
         conversation: Conversation,
         factory: MockHostedAgentSocketFactory,

@@ -27,14 +27,12 @@ enum ChatMode: String, CaseIterable, Codable, Identifiable, Equatable {
 
     var label: String {
         switch self {
-        case .safe:
-            return "Safe"
         case .plan:
-            return "Plan"
-        case .accept:
-            return "Accept Edits"
+            return "Read only"
+        case .safe, .accept:
+            return "Auto"
         case .ulw:
-            return "Ultra Work"
+            return "Full access"
         }
     }
 }

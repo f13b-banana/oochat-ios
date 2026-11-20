@@ -1,0 +1,8 @@
+{
+  "type": "PROVIDER_CONTROL_ACK",
+  "requestId": "control-1",
+  "request_id": "control-1",
+  "action": "take",
+  "accepted": false,
+  "reason": "not_ready"
+}

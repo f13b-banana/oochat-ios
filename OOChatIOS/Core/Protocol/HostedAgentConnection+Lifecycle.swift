@@ -32,18 +32,22 @@ extension HostedAgentConnection {
     private func dispatchRemaining(_ frame: [String: JSONValue], generation: Int) async {
         switch frame["type"]?.stringValue {
         case "tool_call", "tool_result",
-             OIPFrameType.providerInvocation, OIPFrameType.providerActivity, OIPFrameType.providerMessage:
+             OIPFrameType.providerInvocation, OIPFrameType.providerActivity, OIPFrameType.providerMessage,
+             OIPFrameType.providerInterruptAck, OIPFrameType.providerInputAck,
+             OIPFrameType.providerPermissionAck, OIPFrameType.providerStationAttachAck,
+             OIPFrameType.providerSession, OIPFrameType.providerControlAck,
+             OIPFrameType.providerArtifact:
             await handleEvent(frame)
         case "mode_changed":
             await handleModeChanged(frame)
         case "approval_needed", "APPROVAL_NEEDED", "ulw_turns_reached", "plan_review", "ask_user":
             await handleInteraction(frame, generation: generation)
         case "ERROR":
-            failConnection(connectError(for: frame), generation: generation)
+            await handleError(frame, generation: generation)
         case "SESSION_STATUS", "DASHBOARD_SNAPSHOT":
             handleSessionUpdate(frame, generation: generation)
         default:
-            break
+            handleOnboarding(frame)
         }
     }
 
@@ -123,6 +127,21 @@ extension HostedAgentConnection {
             serverSession: serverSession,
             sessionModes: sessionModes
         )
+        await connectionStateObserver.deliver(conversationID: key.conversationID, provider: .snapshot(connected))
+        if let socket {
+            // A failed write ends the Work Room request it carried instead of leaving it looking sent.
+            let transport = WorkRoomTransport(frames: frames, sendReportingFailure: { [weak self] frame, failed in
+                Task {
+                    do {
+                        guard let self else { throw HostedAgentClientError.closed }
+                        try await self.send(frame, over: socket)
+                    } catch {
+                        failed()
+                    }
+                }
+            })
+            await connectionStateObserver.deliver(conversationID: key.conversationID, provider: .transport(transport))
+        }
         let waiters = Array(connectWaiters.values)
         connectWaiters.removeAll()
         for waiter in waiters {
@@ -274,10 +293,15 @@ extension HostedAgentConnection {
     }
 
     private func handleEvent(_ frame: [String: JSONValue]) async {
-        guard let pending = pendingPrompt, let event = HostedAgentEvent.from(frame) else {
+        guard let event = HostedAgentEvent.from(frame) else {
             return
         }
-        await pending.onEvent?(event)
+        // Provider frames belong to the Work Room, so they arrive with or without a prompt pending.
+        if case .providerFrame(let providerFrame) = event {
+            await connectionStateObserver.deliver(conversationID: key.conversationID, provider: .frame(providerFrame))
+            return
+        }
+        await pendingPrompt?.onEvent?(event)
     }
 
     private func handleModeChanged(_ frame: [String: JSONValue]) async {
@@ -301,6 +325,13 @@ extension HostedAgentConnection {
     }
 
     private func handleInteraction(_ frame: [String: JSONValue], generation: Int) async {
+        // A Provider approval belongs to the Work Room, so it gets no outer card and no second answer.
+        if frame["type"]?.stringValue == OIPFrameType.approvalNeeded {
+            await connectionStateObserver.deliver(conversationID: key.conversationID, provider: .frame(OIPServerFrame.decode(frame)))
+            if await connectionStateObserver.ownsApproval(conversationID: key.conversationID, body: frame) {
+                return
+            }
+        }
         guard let pending = pendingPrompt else {
             return
         }
@@ -664,6 +695,7 @@ extension HostedAgentConnection {
     func disconnect(with error: Error, closeCode: URLSessionWebSocketTask.CloseCode) {
         // clear shared state before any waiter can resume and call back into this actor
         socketGeneration += 1
+        awaitingOnboarding = false
         setState(.disconnected)
         connectionStatus = nil
 
@@ -708,7 +740,12 @@ extension HostedAgentConnection {
         guard state != newState else {
             return
         }
+        let wasConnected = state == .connected
         state = newState
+        if wasConnected {
+            // Queued in order with every other provider update, so a late drop never clears the next connection's transport.
+            connectionStateObserver.deliverLater(conversationID: key.conversationID, provider: .connectionDropped)
+        }
         if newState == .connected {
             requiresRevalidation = false
         }
@@ -792,7 +829,7 @@ extension HostedAgentConnection {
     // -32010 means the host speaks another OIP version. canResume(after:) already treats every
     // client error except .closed and .timeout as final, so this ends the attempt with no retry.
     // Every other ERROR keeps its old meaning: the host's own text.
-    private func connectError(for frame: [String: JSONValue]) -> HostedAgentClientError {
+    func connectError(for frame: [String: JSONValue]) -> HostedAgentClientError {
         if case .incompatible(let incompatibility)? = try? OIPHandshake.interpret(frame) {
             return .incompatibleProtocol(incompatibility)
         }

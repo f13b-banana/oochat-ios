@@ -1,0 +1,22 @@
+{
+  "frame": {
+    "from": "0x03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+    "invocationId": "codex:call-7",
+    "nonce": "nonce-1",
+    "payload": {
+      "invocationId": "codex:call-7",
+      "nonce": "nonce-1",
+      "requestId": "interrupt-1",
+      "stateRevision": 2,
+      "timestamp": 1700000000,
+      "to": "0xabababababababababababababababababababababababababababababababab",
+      "type": "PROVIDER_INTERRUPT"
+    },
+    "requestId": "interrupt-1",
+    "stateRevision": 2,
+    "timestamp": 1700000000,
+    "to": "0xabababababababababababababababababababababababababababababababab",
+    "type": "PROVIDER_INTERRUPT"
+  },
+  "signed": true
+}

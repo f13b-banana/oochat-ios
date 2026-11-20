@@ -47,13 +47,19 @@ public struct OIPSigner: Sendable {
     /// builds part of CONNECT that gets signed
     /// Signed part for CONNECT: recipient, whole-second timestamp, a fresh nonce, and
     /// 'signed_commands: 1'  which switches the host's per-command signature check on.
-    public func connectPayload(to recipient: String) -> [String: JSONValue] {
-        [
+    /// `requestSessionSync` adds `extensions: {"session-sync": ["0.1"]}`, which is how the host is asked to
+    /// negotiate Station Pairing and Control. Without it the payload is unchanged.
+    public func connectPayload(to recipient: String, requestSessionSync: Bool = false) -> [String: JSONValue] {
+        var payload: [String: JSONValue] = [
             "to": .string(recipient),
             "timestamp": .number(now().timeIntervalSince1970.rounded(.down)),
             "nonce": .string(nonce()),
             "signed_commands": .number(1)
         ]
+        if requestSessionSync {
+            payload["extensions"] = .object([OIP.sessionSyncExtension: .array([.string(OIP.sessionSyncVersion)])])
+        }
+        return payload
     }
 
     /// Wraps payload into complete signed frame.

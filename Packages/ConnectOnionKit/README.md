@@ -51,7 +51,10 @@ let bytes = CanonicalJSON.data(from: payload)
 // {"prompt":"\u6267\u884c tree caf\u00e9 \ud83e\uddc5","type":"INPUT"}
 ```
 
-There is no connection API yet. When one lands it will be documented here.
+The kit does not open a socket. The app owns the connection and decodes each server frame with
+`OIPServerFrame.decode`. It feeds the frames named in `WorkRoomStore.frameTypes` to a `WorkRoomStore` and
+gives the store a `WorkRoomTransport`, through which the store sends its signed commands. The transport
+reports a failed write (`sendReportingFailure:`), and the request it carried then ends at once.
 
 ## Tests
 
@@ -65,8 +68,8 @@ files build on older toolchains.
 
 ### Fixtures
 
-`Tests/ConnectOnionKitTests/Fixtures/frames/` holds one JSON file per protocol frame (58 frames,
-60 files), loaded in tests through `Bundle.module` because the test target declares
+`Tests/ConnectOnionKitTests/Fixtures/frames/` holds one JSON file per protocol frame (68 frames,
+116 files, counting variants), loaded in tests through `Bundle.module` because the test target declares
 `resources: [.copy("Fixtures")]`.
 
 ```swift

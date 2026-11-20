@@ -7,6 +7,8 @@ enum HostedAgentSessionUpdate: Equatable {
 
     // the host changed the mode on its own: a Full access turn finished, or the budget ran out.
     case modeChanged(mode: OIPPermissionMode, turnsLeft: Int?)
+    // The host wants an invite code (or took it, or refused it) before it lets this conversation connect.
+    case onboarding(HostedAgentOnboarding)
     var kind: String {
         switch self {
         case .hostStatus:
@@ -15,8 +17,25 @@ enum HostedAgentSessionUpdate: Equatable {
             return "dashboard"
         case.modeChanged:
             return "mode"
+        case .onboarding:
+            return "onboarding"
         }
     }
+}
+
+enum HostedAgentOnboarding: Equatable {
+    case required(OIPOnboardRequired)
+    case rejected(String)
+    case granted
+}
+
+// What a conversation's Work Room store needs from its connection, in socket order.
+enum HostedAgentProviderUpdate {
+    case frame(OIPServerFrame)
+    case snapshot(OIPConnected)
+    case connectionDropped
+    // The way to answer a Provider approval on this socket, offered each time the connection is ready.
+    case transport(WorkRoomTransport)
 }
 
 // sends only the newest queued state update for each conversation
@@ -27,6 +46,76 @@ final class HostedAgentConnectionStateObserver: @unchecked Sendable {
     private var storedProfileHandler: (@MainActor (String, OIPAgentProfile) -> Void)?
     private var profileSequenceByAgentAddress: [String: Int] = [:]
     private var storedUpdateHandler: (@MainActor (String, HostedAgentSessionUpdate) -> Void)?
+    private var storedProviderHandler: (@MainActor (String, HostedAgentProviderUpdate) -> Void)?
+    private var storedOwnsApprovalHandler: (@MainActor (String, [String: JSONValue]) -> Bool)?
+
+    var providerHandler: (@MainActor (String, HostedAgentProviderUpdate) -> Void)? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return storedProviderHandler
+        }
+        set {
+            lock.lock()
+            storedProviderHandler = newValue
+            lock.unlock()
+        }
+    }
+
+    // Whether the conversation's Work Room store answers this approval_needed, so no outer card is built for it.
+    var ownsApprovalHandler: (@MainActor (String, [String: JSONValue]) -> Bool)? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return storedOwnsApprovalHandler
+        }
+        set {
+            lock.lock()
+            storedOwnsApprovalHandler = newValue
+            lock.unlock()
+        }
+    }
+
+    @MainActor
+    func ownsApproval(conversationID: String, body: [String: JSONValue]) -> Bool {
+        ownsApprovalHandler?(conversationID, body) ?? false
+    }
+
+    // Provider updates waiting for the main actor, in the order the connection produced them.
+    private var providerQueue: [(String, HostedAgentProviderUpdate)] = []
+
+    // Unlike the state updates below, none is skipped: each frame is a revision of a Work Room. Anything queued by
+    // `deliverLater` goes first, so updates reach the store in the order the connection produced them.
+    @MainActor
+    func deliver(conversationID: String, provider update: HostedAgentProviderUpdate) {
+        enqueue(conversationID, update)
+        drainProviderQueue()
+    }
+
+    // For a caller that cannot wait for the main actor. The update keeps its place ahead of any later `deliver`.
+    func deliverLater(conversationID: String, provider update: HostedAgentProviderUpdate) {
+        enqueue(conversationID, update)
+        Task { @MainActor [weak self] in self?.drainProviderQueue() }
+    }
+
+    private func enqueue(_ conversationID: String, _ update: HostedAgentProviderUpdate) {
+        lock.lock()
+        providerQueue.append((conversationID, update))
+        lock.unlock()
+    }
+
+    @MainActor
+    private func drainProviderQueue() {
+        while true {
+            lock.lock()
+            let next = providerQueue.isEmpty ? nil : providerQueue.removeFirst()
+            lock.unlock()
+            guard let (conversationID, update) = next else {
+                return
+            }
+            providerHandler?(conversationID, update)
+        }
+    }
 
     var updateHandler: (@MainActor (String, HostedAgentSessionUpdate) -> Void)? {
         get {
@@ -308,6 +397,14 @@ actor HostedAgentConnectionPool {
             await trimToSize()
             throw error
         }
+    }
+
+    func submitOnboarding(agentAddress: String, conversationID: String, code: String) async throws {
+        let key = HostedAgentConnectionKey(agentAddress: agentAddress, conversationID: conversationID)
+        guard let connection = connections[key]?.connection else {
+            throw HostedAgentClientError.closed
+        }
+        try await connection.submitOnboarding(code: code)
     }
 
     func waitForPendingInteractionResponses(agentAddress: String, conversationID: String) async {

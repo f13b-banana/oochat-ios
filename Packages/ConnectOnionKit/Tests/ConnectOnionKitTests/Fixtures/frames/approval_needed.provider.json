@@ -1,0 +1,19 @@
+{
+  "type": "approval_needed",
+  "id": "approval-codex-long",
+  "tool": "codex",
+  "arguments": {},
+  "provider": "codex",
+  "invocationId": "codex:call-7",
+  "parentToolCallId": "call-7",
+  "activityId": "review",
+  "providerApproval": {
+    "action": "Inspect the workspace",
+    "scope": "This Work Room only",
+    "reason": "Check the requested workspace result before continuing",
+    "scopeClassification": "workroom",
+    "allowOnce": true,
+    "allowSession": false,
+    "files": ["sort.c", "test_sort.c"]
+  }
+}

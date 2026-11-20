@@ -1,0 +1,59 @@
+{
+  "type": "provider_invocation",
+  "invocationId": "codex:call-7",
+  "parentToolCallId": "call-7",
+  "provider": "codex",
+  "providerDisplayName": "Codex",
+  "taskTitle": "Build and verify the requested C program",
+  "currentSummary": "Working in the selected workspace",
+  "permissionMode": "manual",
+  "sessionId": "codex-session-1",
+  "status": "running",
+  "stateRevision": 1,
+  "workroomId": "codex:call-7",
+  "providerPermission": {
+    "provider": "codex",
+    "activeOptionId": "codex:workspace-ask",
+    "appliesTo": "subsequent_turn",
+    "effectiveRevision": 1,
+    "options": [
+      {
+        "id": "codex:read-only",
+        "nativeProfileId": "codex:read-only",
+        "reviewer": "user",
+        "label": "Read Only",
+        "description": "Read files only, no changes",
+        "risk": "standard",
+        "selectable": true
+      },
+      {
+        "id": "codex:workspace-ask",
+        "nativeProfileId": "codex:workspace",
+        "reviewer": "user",
+        "label": "Ask for approval",
+        "description": "Ask before workspace changes",
+        "risk": "standard",
+        "selectable": true
+      },
+      {
+        "id": "codex:workspace-auto",
+        "nativeProfileId": "codex:workspace",
+        "reviewer": "auto",
+        "label": "Approve for me",
+        "description": "Approve workspace changes automatically",
+        "risk": "standard",
+        "selectable": true
+      },
+      {
+        "id": "codex:full-access",
+        "nativeProfileId": "codex:danger-full-access",
+        "reviewer": "auto",
+        "label": "Full Access",
+        "description": "Run without sandbox limits",
+        "risk": "elevated",
+        "selectable": false,
+        "disabledReason": "Host permission ceiling is Auto."
+      }
+    ]
+  }
+}

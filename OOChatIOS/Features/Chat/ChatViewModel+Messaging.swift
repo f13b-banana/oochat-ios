@@ -2,6 +2,10 @@ import Foundation
 
 extension ChatViewModel {
     func sendPrompt() {
+        // A Station has no outer chat: the host refuses INPUT, so nothing is sent.
+        guard !(activeAgent.map(isStation) ?? false) else {
+            return
+        }
         stopVoiceInput()
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let images = pendingImages

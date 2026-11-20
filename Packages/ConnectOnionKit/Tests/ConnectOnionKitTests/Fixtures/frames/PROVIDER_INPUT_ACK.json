@@ -1,0 +1,7 @@
+{
+  "type": "PROVIDER_INPUT_ACK",
+  "requestId": "input-1",
+  "invocationId": "codex:call-7",
+  "accepted": true,
+  "stateRevision": 1
+}

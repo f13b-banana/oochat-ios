@@ -31,6 +31,8 @@ protocol HostedAgentConversationTransport: AnyObject {
     var onConnectionStateChange: (@MainActor (String, ConversationConnectionState) -> Void)? { get set }
     var onAgentProfile: (@MainActor (String, OIPAgentProfile) -> Void)? { get set }
     var onSessionUpdate: (@MainActor (String, HostedAgentSessionUpdate) -> Void)? { get set }
+    var onProviderUpdate: (@MainActor (String, HostedAgentProviderUpdate) -> Void)? { get set }
+    var ownsApproval: (@MainActor (String, [String: JSONValue]) -> Bool)? { get set }
 
     func connect(agentAddress: String, conversation: Conversation) async throws -> HostedAgentResult
     func sendPrompt(
@@ -53,6 +55,8 @@ protocol HostedAgentConversationTransport: AnyObject {
         onEvent: @escaping @MainActor (HostedAgentEvent) -> Void
     ) async throws
     func waitForPendingInteractionResponses(agentAddress: String, conversationID: String) async
+    // Answers an ONBOARD_REQUIRED on the conversation's open socket with ONBOARD_SUBMIT.
+    func submitOnboarding(agentAddress: String, conversationID: String, code: String) async throws
     func noteNetworkLost() async
     func applicationDidBecomeActive()
 }
@@ -63,6 +67,20 @@ extension HostedAgentConversationTransport {
     var onSessionUpdate: (@MainActor (String, HostedAgentSessionUpdate) -> Void)? {
         get { nil }
         set { _ = newValue }
+    }
+
+    var onProviderUpdate: (@MainActor (String, HostedAgentProviderUpdate) -> Void)? {
+        get { nil }
+        set { _ = newValue }
+    }
+
+    var ownsApproval: (@MainActor (String, [String: JSONValue]) -> Bool)? {
+        get { nil }
+        set { _ = newValue }
+    }
+
+    func submitOnboarding(agentAddress: String, conversationID: String, code: String) async throws {
+        throw HostedAgentClientError.closed
     }
 
     // Default for test doubles that don't support mode control.

@@ -69,6 +69,8 @@ final class MockAgentTransport: HostedAgentTransport {
     }
 
     var onSessionUpdate: (@MainActor (String, HostedAgentSessionUpdate) -> Void)?
+    var onProviderUpdate: (@MainActor (String, HostedAgentProviderUpdate) -> Void)?
+    private(set) var submittedOnboardingCodes: [String] = []
     var sendBehaviorsByPrompt: [String: Behavior] = [:]
     var streamedEvents: [HostedAgentEvent] = []
     var approvalRequests: [ToolApprovalRequest] = []
@@ -266,6 +268,10 @@ final class MockAgentTransport: HostedAgentTransport {
             throw modeChangeError
         }
         await onEvent(modeChangeReply ?? .modeChanged(mode: mode, turnsLeft: nil))
+    }
+
+    func submitOnboarding(agentAddress: String, conversationID: String, code: String) async throws {
+        submittedOnboardingCodes.append(code)
     }
 
     func waitForPendingInteractionResponses(agentAddress: String, conversationID: String) async {

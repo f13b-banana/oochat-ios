@@ -58,6 +58,8 @@ actor HostedAgentConnection {
     var socketGeneration = 0
     var connectWaiters: [UUID: CheckedContinuation<HostedAgentResult, Error>] = [:]
     var pendingPrompt: PendingPrompt?
+    // The host answered CONNECT with ONBOARD_REQUIRED and waits for an invite code. The socket stays open.
+    var awaitingOnboarding = false
 
     // The mode_change request waiting for its mode_changed, if any.
     var pendingModeChangeHandler: (@MainActor (HostedAgentEvent) -> Void)?
@@ -133,6 +135,10 @@ actor HostedAgentConnection {
             )
         }
 
+        if awaitingOnboarding {
+            return onboardingPlaceholderResult()
+        }
+
         let waiterID = UUID()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -172,6 +178,9 @@ actor HostedAgentConnection {
         try Task.checkCancellation()
         _ = try await ensureConnected(conversation: conversation)
         try Task.checkCancellation()
+        guard !awaitingOnboarding else {
+            throw HostedAgentClientError.onboardingRequired
+        }
         guard pendingPrompt == nil else {
             throw HostedAgentClientError.busy
         }
@@ -457,7 +466,7 @@ actor HostedAgentConnection {
         }
     }
 
-    private func scheduleConnectTimeout(generation: Int) {
+    func scheduleConnectTimeout(generation: Int) {
         connectTimeoutTask?.cancel()
         connectTimeoutTask = Task { [weak self] in
             do {
@@ -493,7 +502,7 @@ actor HostedAgentConnection {
 
     private func hasTimedOut(generation: Int) -> Bool {
         // A user decision restarts activity tracking after a long interaction pause.
-        guard interactionTasks.isEmpty else {
+        guard interactionTasks.isEmpty, !awaitingOnboarding else {
             return false
         }
         return generation == socketGeneration

@@ -1,0 +1,8 @@
+{
+  "type": "PROVIDER_INTERRUPT_ACK",
+  "requestId": "interrupt-1",
+  "invocationId": "codex:call-7",
+  "accepted": false,
+  "stateRevision": 2,
+  "reason": "state_changed"
+}

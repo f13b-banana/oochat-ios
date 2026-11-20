@@ -92,9 +92,10 @@ extension ChatScreen {
         case .toolCallGroup(let messages):
             ToolCallGroupView(messages: messages)
         case .workRoom(let workRoom):
-            OOWorkRoomCard(workRoom: workRoom) {
+            let store = viewModel.activeConversationID.map { viewModel.conversationState.workRoomStore(for: $0) }
+            OOWorkRoomCard(workRoom: workRoom, onOpen: {
                 onOpenWorkRoom(workRoom.id)
-            }
+            }, onDecide: { store?.decide($0, in: workRoom.id) })
         }
     }
 

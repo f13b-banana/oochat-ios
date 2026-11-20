@@ -9,7 +9,7 @@ enum HostedAgentEvent: Equatable {
     case modeChangeFailed(String)
     case modeChangeTimedOut
 
-    /// A decoded provider_invocation, provider_activity or provider_message, for the conversation's Work Room store.
+    /// A decoded provider frame (invocation, activity, message or interrupt ack), for the conversation's Work Room store.
     case providerFrame(OIPServerFrame)
 
     static func from(_ frame: [String: JSONValue]) -> HostedAgentEvent? {
@@ -25,7 +25,13 @@ enum HostedAgentEvent: Equatable {
             )
         }
 
-        if [OIPFrameType.providerInvocation, OIPFrameType.providerActivity, OIPFrameType.providerMessage].contains(type) {
+        let providerTypes = [
+            OIPFrameType.providerInvocation, OIPFrameType.providerActivity, OIPFrameType.providerMessage,
+            OIPFrameType.providerInterruptAck, OIPFrameType.providerInputAck, OIPFrameType.providerPermissionAck,
+            OIPFrameType.providerStationAttachAck, OIPFrameType.providerSession, OIPFrameType.providerControlAck,
+            OIPFrameType.providerArtifact
+        ]
+        if providerTypes.contains(type) {
             return .providerFrame(OIPServerFrame.decode(frame))
         }
 

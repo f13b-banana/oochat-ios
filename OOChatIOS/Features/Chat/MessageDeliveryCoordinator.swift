@@ -182,6 +182,8 @@ final class MessageDeliveryCoordinator: ObservableObject {
               !pausedConversationIDs.contains(conversationID),
               deliveryTasksByConversationID[conversationID] == nil,
               let conversation = conversationState.conversation(withID: conversationID),
+              // A Claude Station refuses outer INPUT, so nothing queued for one is ever sent.
+              !ChatViewModel.rememberedStationAddresses().contains(conversation.agentAddress.lowercased()),
               // A .transmitted message comes first: it was sent before the app last closed and
               // must be settled (never resent) before anything queued after it goes out.
               let message = conversation.messages.first(where: {
@@ -277,11 +279,6 @@ final class MessageDeliveryCoordinator: ObservableObject {
         let conversationState = conversationState
         return HostedAgentPromptHandlers(
             onEvent: { [weak self] event in
-                // Provider frames feed the conversation's Work Room store, not its messages.
-                if case .providerFrame(let frame) = event {
-                    conversationState.workRoomStore(for: conversationID).receive(frame)
-                    return
-                }
                 self?.apply(event, toConversationID: conversationID)
             },
             onInteraction: { interaction in

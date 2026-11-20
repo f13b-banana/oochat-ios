@@ -1,0 +1,11 @@
+{
+  "type": "provider_session",
+  "provider": "claude_code",
+  "invocationId": "claude_code:station:station-session",
+  "parentToolCallId": "claude_station:station-session",
+  "sessionId": "",
+  "owner": "terminal",
+  "phase": "local_observing",
+  "stateRevision": 2,
+  "protocolVersion": "oip-provider-session/0.1"
+}

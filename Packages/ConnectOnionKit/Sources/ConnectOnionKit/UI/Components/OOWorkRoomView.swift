@@ -2,28 +2,68 @@ import SwiftUI
 
 /// The Work Room for one Work Room group. The task title leads, with the Provider state beneath
 /// it, then one status sentence, the running step with at most one last result, and the current
-/// turn of the Provider's conversation. Earlier turns and activity are folded away.
+/// turn of the Provider's conversation. Earlier turns and activity are folded away. While a verified Provider
+/// approval waits, its decision takes the place of the status sentence.
 /// The app supplies the navigation around it (a push on iOS, the detail pane on macOS).
 public struct OOWorkRoomView: View {
     private let workRoom: WorkRoom
+    private let onDecide: ((WorkRoomDecision) -> Void)?
+    private let onStop: (() -> Void)?
+    private let onDraftChange: ((String) -> Void)?
+    private let onSend: (() -> Void)?
+    private let mic: OOWorkRoomMic?
+    private let onChangePermission: ((String, Bool) -> Void)?
+    private let onChangeControl: ((OIPProviderControlAction) -> Void)?
     @State private var showsEarlierActivity = false
     @State private var showsEarlierTurns = false
     @AccessibilityFocusState private var isHeadingFocused: Bool
 
-    public init(workRoom: WorkRoom) {
+    /// `onDecide` is the app's answer to the store (`WorkRoomStore.decide`); without it a pending approval is
+    /// shown but cannot be answered here.
+    /// `onStop` is the app's call to `WorkRoomStore.stop(in:)`; without it no Stop button is drawn.
+    /// `onDraftChange` and `onSend` are the app's calls to `WorkRoomStore.setDraft(_:in:)` and `send(in:)`;
+    /// the composer is drawn only when `onSend` is given.
+    /// `mic` adds the app's dictation control to that composer.
+    /// `onChangePermission` is the app's call to `WorkRoomStore.changePermission(to:confirmRisk:in:)`; the Permission
+    /// Profile selector is drawn only when the Work Room has a catalog and this is given.
+    /// `onChangeControl` is the app's call to `WorkRoomStore.changeControl(_:in:)`; the Control row is drawn only
+    /// when the Work Room has `control` and this is given.
+    public init(
+        workRoom: WorkRoom,
+        onDecide: ((WorkRoomDecision) -> Void)? = nil,
+        onStop: (() -> Void)? = nil,
+        onDraftChange: ((String) -> Void)? = nil,
+        onSend: (() -> Void)? = nil,
+        onChangePermission: ((String, Bool) -> Void)? = nil,
+        onChangeControl: ((OIPProviderControlAction) -> Void)? = nil,
+        mic: OOWorkRoomMic? = nil
+    ) {
         self.workRoom = workRoom
+        self.onDecide = onDecide
+        self.onStop = onStop
+        self.onDraftChange = onDraftChange
+        self.onSend = onSend
+        self.mic = mic
+        self.onChangePermission = onChangePermission
+        self.onChangeControl = onChangeControl
     }
 
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: OOSpace.large) {
                 header
-                if let summary = workRoom.summary {
+                if let approval = workRoom.approval, workRoom.status == .awaitingApproval {
+                    OOWorkRoomDecision(approval: approval, onDecide: onDecide)
+                } else if let summary = workRoom.summary {
                     Text(summary)
                         .font(.body)
                         .foregroundStyle(OOColor.ink)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if let preview = workRoom.preview {
+                    OOWorkRoomPreview(screenshot: preview)
+                }
+                stopControls
                 activity
                 conversation
             }
@@ -32,6 +72,17 @@ public struct OOWorkRoomView: View {
             .frame(maxWidth: .infinity)
         }
         .background(OOColor.surface)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if let onSend {
+                OOWorkRoomComposer(
+                    composer: workRoom.composer,
+                    provider: workRoom.provider,
+                    draft: Binding(get: { workRoom.composer.draft }, set: { onDraftChange?($0) }),
+                    onSend: onSend,
+                    mic: mic
+                )
+            }
+        }
         // VoiceOver lands on the heading when the Work Room opens.
         // Wait for the push transition to finish, or VoiceOver moves back to the navigation bar.
         .task {
@@ -57,6 +108,44 @@ public struct OOWorkRoomView: View {
                     .foregroundStyle(OOColor.inkSecondary)
             }
             .accessibilityElement(children: .combine)
+            if let permission = workRoom.permission, let onChangePermission {
+                OOWorkRoomPermission(permission: permission, provider: workRoom.provider, onChange: onChangePermission)
+            }
+            if let control = workRoom.control, let onChangeControl {
+                OOWorkRoomControl(control: control, onChange: onChangeControl)
+            }
+        }
+    }
+
+    /// The Scoped Stop: the button, then "Stop requested" or "Status needs confirmation" in its place
+    /// while the barrier holds, with the host's reason when it refused.
+    @ViewBuilder private var stopControls: some View {
+        let stop = workRoom.stop
+        if let text = stop.barrierText {
+            Label(text, systemImage: "hourglass")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(OOColor.ink)
+                .accessibilityAddTraits(.isStaticText)
+        } else if let onStop, stop.offersStop || stop.isRequesting || stop.unavailableReason != nil {
+            VStack(alignment: .leading, spacing: OOSpace.small) {
+                if let rejection = stop.rejection {
+                    Text(rejection)
+                        .font(.subheadline)
+                        .foregroundStyle(OOColor.failureText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Button(stop.isRequesting ? "Requesting stop" : "Stop", action: onStop)
+                    .buttonStyle(.ooSecondary)
+                    .disabled(!stop.offersStop)
+                    .accessibilityLabel(stop.isRequesting ? "Requesting stop" : "Stop this Work Room")
+                    .accessibilityHint("Stops only this \(workRoom.provider.displayName) run, not the agent")
+                if let reason = stop.unavailableReason {
+                    Text(reason)
+                        .font(.subheadline)
+                        .foregroundStyle(OOColor.inkSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 

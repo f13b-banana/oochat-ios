@@ -5,6 +5,17 @@
 
 import Foundation
 
+/// A provider builder refused its input; `invalidField` names the wire field.
+public enum OIPClientFrameError: Error, Equatable {
+    case invalidField(String)
+}
+
+/// What a client asks of a Station session's control.
+public enum OIPProviderControlAction: String, Equatable, Sendable {
+    case take
+    case release
+}
+
 /// Builds every frame the client sends to one agent, signed throug OIPSigner unless exempt.
 /// Pure: no sockets no app types, the app passes plain values in and sends what comes out.
 
@@ -42,11 +53,12 @@ public struct OIPClientFrames: Sendable {
         direct: Bool,
         sessionID: String?,
         session: JSONValue?,
-        lastMessageID: String?
+        lastMessageID: String?,
+        requestSessionSync: Bool = false
     ) throws -> [String: JSONValue] {
         var frame = try signer.envelope(
             type: OIPFrameType.connect,
-            payload: signer.connectPayload(to: recipient)
+            payload: signer.connectPayload(to: recipient, requestSessionSync: requestSessionSync)
         )
         frame["protocol"] = .object(OIP.descriptor)
         if !direct {
@@ -129,14 +141,120 @@ public struct OIPClientFrames: Sendable {
     }
 
     /// `decision` is the approval's fields (approved, scope, mode, feedback)
-    ///  `requestID` is the `id` of the approval_needed event; always wins over the decision
+    ///  `requestID` is the `id` of the approval_needed event; always wins over the decision. Nil only when the
+    ///  host stamped no id: then no `request_id` is sent, as the web client does.
     public func approvalResponse(
-        requestID: String,
+        requestID: String?,
         decision: [String: JSONValue]
     ) throws -> [String: JSONValue] {
         var fields = decision
-        fields["request_id"] = .string(requestID)
+        fields["request_id"] = requestID.map(JSONValue.string)
         return try command(type: OIPFrameType.approvalResponse, fields: fields)
+    }
+
+    // Provider commands. A builder throws `OIPClientFrameError` rather than sign a frame the host would reject.
+
+    /// Stops one Provider Invocation. `stateRevision` is the revision the client last saw for it.
+    public func providerInterrupt(
+        invocationID: String,
+        requestID: String,
+        stateRevision: Int
+    ) throws -> [String: JSONValue] {
+        try command(
+            type: OIPFrameType.providerInterrupt,
+            fields: try Self.invocationFields(invocationID, requestID, stateRevision)
+        )
+    }
+
+    /// Sends text to a Provider Invocation. The text is trimmed and must be 1 to 12,000 characters.
+    public func providerInput(
+        invocationID: String,
+        requestID: String,
+        stateRevision: Int,
+        text: String
+    ) throws -> [String: JSONValue] {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.unicodeScalars.count <= Self.providerInputLimit else {
+            throw OIPClientFrameError.invalidField("text")
+        }
+        var fields = try Self.invocationFields(invocationID, requestID, stateRevision)
+        fields["text"] = .string(trimmed)
+        return try command(type: OIPFrameType.providerInput, fields: fields)
+    }
+
+    /// `confirmRisk` must be true for an elevated option; the host checks that, the client only passes it on.
+    public func providerPermissionChange(
+        invocationID: String,
+        requestID: String,
+        stateRevision: Int,
+        optionID: String,
+        confirmRisk: Bool
+    ) throws -> [String: JSONValue] {
+        var fields = try Self.invocationFields(invocationID, requestID, stateRevision)
+        fields["optionId"] = .string(try Self.boundedID(optionID, "optionId"))
+        fields["confirmRisk"] = .bool(confirmRisk)
+        return try command(type: OIPFrameType.providerPermissionChange, fields: fields)
+    }
+
+    public func providerStationAttach(pairingCode: String, requestID: String) throws -> [String: JSONValue] {
+        guard !pairingCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              pairingCode.unicodeScalars.count <= Self.pairingCodeLimit else {
+            throw OIPClientFrameError.invalidField("pairingCode")
+        }
+        return try command(
+            type: OIPFrameType.providerStationAttach,
+            fields: [
+                "pairingCode": .string(pairingCode),
+                "request_id": .string(try Self.boundedID(requestID, "request_id", 128))
+            ]
+        )
+    }
+
+    /// `stateRevision` is the Station control revision from `provider_session`, not an invocation revision.
+    public func providerControl(
+        sessionID: String,
+        action: OIPProviderControlAction,
+        stateRevision: Int,
+        requestID: String
+    ) throws -> [String: JSONValue] {
+        guard stateRevision > 0 else {
+            throw OIPClientFrameError.invalidField("stateRevision")
+        }
+        return try command(
+            type: OIPFrameType.providerControl,
+            fields: [
+                "sessionId": .string(try Self.boundedID(sessionID, "sessionId")),
+                "action": .string(action.rawValue),
+                "stateRevision": .number(Double(stateRevision)),
+                "request_id": .string(try Self.boundedID(requestID, "request_id", 128))
+            ]
+        )
+    }
+
+    private static let providerInputLimit = 12_000
+    private static let pairingCodeLimit = 128
+
+    private static func invocationFields(
+        _ invocationID: String,
+        _ requestID: String,
+        _ stateRevision: Int
+    ) throws -> [String: JSONValue] {
+        guard stateRevision > 0 else {
+            throw OIPClientFrameError.invalidField("stateRevision")
+        }
+        return [
+            "invocationId": .string(try boundedID(invocationID, "invocationId")),
+            "requestId": .string(try boundedID(requestID, "requestId", 128)),
+            "stateRevision": .number(Double(stateRevision))
+        ]
+    }
+
+    /// A non-empty id of at most `limit` characters; the host's bounds are 512 for ids and 128 for request ids.
+    private static func boundedID(_ value: String, _ field: String, _ limit: Int = 512) throws -> String {
+        guard !value.isEmpty, value.count <= limit else {
+            throw OIPClientFrameError.invalidField(field)
+        }
+        return value
     }
 
     public func command(type: String, fields: [String: JSONValue]) throws -> [String: JSONValue] {

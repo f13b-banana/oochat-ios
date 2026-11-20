@@ -14,6 +14,7 @@ struct ChatSidebarView: View {
     let onSettings: () -> Void
     /// Each change opens the Add Agent form (sent from the chat's empty state).
     var addAgentRequest = 0
+    var onSelectStation: (SavedAgent) -> Void = { _ in }
 
     @State private var expandedAgentIDs = Set<String>()
     @State private var deleteTarget: Conversation?
@@ -336,7 +337,12 @@ struct ChatSidebarView: View {
             isExpanded: expandedAgentIDs.contains(agent.id),
             isOnline: viewModel.isAgentOnline(agent),
             onToggle: {
-                toggleAgent(agent)
+                if viewModel.isStation(agent) {
+                    focusedAgentID = agent.id
+                    onSelectStation(agent)
+                } else {
+                    toggleAgent(agent)
+                }
             },
             onRename: {
                 beginRenaming(agent)
@@ -354,7 +360,8 @@ struct ChatSidebarView: View {
             },
             onDelete: {
                 agentDeleteTarget = agent
-            }
+            },
+            isStation: viewModel.isStation(agent)
         )
     }
 

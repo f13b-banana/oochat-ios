@@ -69,6 +69,15 @@ private func expectFrame(_ built: [String: JSONValue], equals name: String) thro
     )
 }
 
+@Test func connectCanAskForSessionSyncAndOtherwiseAsksForNothing() throws {
+    try expectFrame(
+        frames().connect(direct: true, sessionID: nil, session: nil, lastMessageID: nil, requestSessionSync: true),
+        equals: "connect-session-sync"
+    )
+    let plain = try frames().connect(direct: true, sessionID: nil, session: nil, lastMessageID: nil)
+    #expect(plain["payload"]?.objectValue?["extensions"] == nil)
+}
+
 @Test func inputMatchesItsFixture() throws {
     try expectFrame(
         frames().input(
@@ -167,4 +176,123 @@ private func expectFrame(_ built: [String: JSONValue], equals name: String) thro
     let input = try frames().input(inputID: "i", prompt: "p")
     #expect(input["images"] == nil)
     #expect(input["files"] == nil)
+}
+
+@Test func providerCommandsMatchTheirFixtures() throws {
+    try expectFrame(
+        frames().providerInterrupt(invocationID: "codex:call-7", requestID: "interrupt-1", stateRevision: 2),
+        equals: "provider-interrupt"
+    )
+    try expectFrame(
+        frames().providerInput(
+            invocationID: "codex:call-7",
+            requestID: "input-1",
+            stateRevision: 1,
+            text: "  Add a reverse-order fixture \n"
+        ),
+        equals: "provider-input"
+    )
+    try expectFrame(
+        frames().providerPermissionChange(
+            invocationID: "codex:call-7",
+            requestID: "permission-1",
+            stateRevision: 1,
+            optionID: "codex:workspace-auto",
+            confirmRisk: false
+        ),
+        equals: "provider-permission-change"
+    )
+    try expectFrame(
+        frames().providerStationAttach(pairingCode: "test-pairing-code", requestID: "attach-1"),
+        equals: "provider-station-attach"
+    )
+    try expectFrame(
+        frames().providerControl(sessionID: "station-session", action: .take, stateRevision: 2, requestID: "control-1"),
+        equals: "provider-control"
+    )
+}
+
+@Test func providerCommandsRefuseInvalidInput() {
+    let frames = frames()
+    for revision in [0, -1] {
+        #expect(throws: OIPClientFrameError.invalidField("stateRevision")) {
+            try frames.providerInterrupt(invocationID: "a", requestID: "r", stateRevision: revision)
+        }
+        #expect(throws: OIPClientFrameError.invalidField("stateRevision")) {
+            try frames.providerControl(sessionID: "s", action: .release, stateRevision: revision, requestID: "r")
+        }
+    }
+    #expect(throws: OIPClientFrameError.invalidField("invocationId")) {
+        try frames.providerInterrupt(invocationID: "", requestID: "r", stateRevision: 1)
+    }
+    #expect(throws: OIPClientFrameError.invalidField("requestId")) {
+        try frames.providerInterrupt(invocationID: "a", requestID: String(repeating: "r", count: 129), stateRevision: 1)
+    }
+    #expect(throws: OIPClientFrameError.invalidField("text")) {
+        try frames.providerInput(invocationID: "a", requestID: "r", stateRevision: 1, text: " \n ")
+    }
+    #expect(throws: OIPClientFrameError.invalidField("text")) {
+        try frames.providerInput(invocationID: "a", requestID: "r", stateRevision: 1, text: String(repeating: "x", count: 12_001))
+    }
+    #expect(throws: OIPClientFrameError.invalidField("optionId")) {
+        try frames.providerPermissionChange(
+            invocationID: "a", requestID: "r", stateRevision: 1, optionID: "", confirmRisk: true
+        )
+    }
+    #expect(throws: OIPClientFrameError.invalidField("pairingCode")) {
+        try frames.providerStationAttach(pairingCode: "", requestID: "r")
+    }
+    #expect(throws: OIPClientFrameError.invalidField("pairingCode")) {
+        try frames.providerStationAttach(pairingCode: String(repeating: "p", count: 129), requestID: "r")
+    }
+}
+
+@Test func providerInputAtTheLimitIsAccepted() throws {
+    let frame = try frames().providerInput(
+        invocationID: "a", requestID: "r", stateRevision: 1, text: String(repeating: "x", count: 12_000)
+    )
+    #expect(frame["type"] == .string("PROVIDER_INPUT"))
+}
+
+@Test func providerCommandsAreNotV2Exempt() {
+    for type in [
+        OIPFrameType.providerInterrupt, OIPFrameType.providerInput, OIPFrameType.providerPermissionChange,
+        OIPFrameType.providerStationAttach, OIPFrameType.providerControl
+    ] {
+        #expect(!OIPClientFrames.v2ExemptTypes.contains(type))
+    }
+}
+
+// ConnectOnion 1.8.10 reads only the signed payload. It accepts `request_id` or `requestId`; only the spec's `request_id` is sent.
+@Test func stationAttachAndControlKeepEveryFieldInsideTheSignedPayload() throws {
+    for frame in [
+        try frames().providerStationAttach(pairingCode: "code", requestID: "r-1"),
+        try frames().providerControl(sessionID: "s", action: .take, stateRevision: 2, requestID: "r-1")
+    ] {
+        let payload = try #require(frame["payload"]?.objectValue)
+        #expect(payload["request_id"] == .string("r-1"))
+        #expect(payload["requestId"] == nil)
+    }
+}
+
+@Test func everyProviderFrameCarriesAllItsFieldsInsideThePayload() throws {
+    let all = [
+        try frames().providerInterrupt(invocationID: "i", requestID: "r", stateRevision: 1),
+        try frames().providerInput(invocationID: "i", requestID: "r", stateRevision: 1, text: "hi"),
+        try frames().providerPermissionChange(
+            invocationID: "i", requestID: "r", stateRevision: 1, optionID: "claude:plan", confirmRisk: false
+        ),
+        try frames().providerStationAttach(pairingCode: "code", requestID: "r"),
+        try frames().providerControl(sessionID: "s", action: .release, stateRevision: 1, requestID: "r")
+    ]
+    for frame in all {
+        let payload = try #require(frame["payload"]?.objectValue)
+        for key in ["from", "signature", "payload"] {
+            #expect(payload[key] == nil)
+        }
+        for (key, value) in frame where !["payload", "from", "signature"].contains(key) {
+            #expect(payload[key] == value, "\(key) must be signed")
+        }
+        #expect(payload["nonce"] != nil && payload["to"] != nil && payload["timestamp"] != nil)
+    }
 }

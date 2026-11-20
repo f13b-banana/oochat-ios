@@ -60,6 +60,41 @@ public struct OIPProviderInvocation: Equatable, Sendable {
     public var errorSummary: String?
     public var workroomID: String?
     public var continuationOf: String?
+    /// The Permission Profile catalog, kept only when it validates against `stateRevision`.
+    public var providerPermission: OIPProviderPermission?
+    /// Who drives a Claude Station, with its phase and its own revision counter (not `stateRevision`).
+    /// Set only by `provider_session` or a snapshot, and only when all three are valid.
+    public var controlOwner: OIPControlOwner?
+    public var controlPhase: OIPControlPhase?
+    public var controlRevision: Int?
+}
+
+/// Which side of a Claude Station session drives it. The host calls the device `browser`.
+public enum OIPControlOwner: String, Equatable, Sendable {
+    case terminal
+    case browser
+}
+
+/// Where a Claude Station's handover stands.
+public enum OIPControlPhase: String, Equatable, Sendable {
+    case localStarting = "local_starting"
+    case localObserving = "local_observing"
+    case handoverToRemote = "handover_to_remote"
+    case remoteControlling = "remote_controlling"
+    case handoverToLocal = "handover_to_local"
+    case completed
+    case failed
+}
+
+/// provider_session: the Control state of a Claude Station. `stateRevision` is the control revision, a
+/// separate counter from the invocation's. It is found by `invocationID` alone.
+public struct OIPProviderSession: Equatable, Sendable {
+    public let invocationID: String
+    /// The host's own value when the frame carries a valid one.
+    public var parentToolCallID: String?
+    public let owner: OIPControlOwner
+    public let phase: OIPControlPhase
+    public let stateRevision: Int
 }
 
 /// provider_activity: one semantic step, upserted by `activityID` within its invocation.
@@ -105,6 +140,73 @@ public struct OIPProviderMessage: Equatable, Sendable {
     public let text: String
 }
 
+/// approval_needed with Provider context. A Provider approval is an ordinary `approval_needed` frame, there is no
+/// provider_approval frame; it is answered with APPROVAL_RESPONSE. `presentation` is nil when the nested
+/// `providerApproval` failed a check: the approval then stays generic and offers no Allow anywhere.
+public struct OIPProviderApproval: Equatable, Sendable {
+    /// The approval's `id`, echoed as `request_id` in the answer. Nil when the host stamped none.
+    public let id: String?
+    public let invocationID: String
+    public let parentToolCallID: String
+    public let provider: OIPProvider
+    public let activityID: String?
+    public let presentation: Presentation?
+
+    public enum Scope: String, Equatable, Sendable {
+        case workroom
+        case elevated
+        case unknown
+    }
+
+    /// Everything about the approval a client may show: all of it is allowed copy or base file names.
+    public struct Presentation: Equatable, Sendable {
+        public let scope: Scope
+        public let action: String
+        public let scopeText: String
+        public let reason: String
+        /// Forced false unless the scope is `workroom`.
+        public let allowOnce: Bool
+        /// Forced false unless the scope is `workroom`. No client offers it.
+        public let allowSession: Bool
+        /// Base names only, at most 128 characters each, no duplicates, at most 8.
+        public let files: [String]
+    }
+}
+
+/// The host's answer to PROVIDER_INTERRUPT, PROVIDER_INPUT or PROVIDER_PERMISSION_CHANGE. `reason` is the host's
+/// string, kept open: an unknown reason still decodes and is a rejection like any other. A client accepts a
+/// positive ack only when `requestID`, `invocationID` and `stateRevision` match what it sent.
+public struct OIPProviderAck: Equatable, Sendable {
+    /// Empty when the host could not read the request's id.
+    public let requestID: String
+    public let invocationID: String?
+    public let accepted: Bool
+    /// Positive revision; nil when missing or not a positive integer.
+    public let stateRevision: Int?
+    public let reason: String?
+    /// Only on an accepted PROVIDER_PERMISSION_ACK, kept raw: the Work Room store validates it against the new revision.
+    public let providerPermission: JSONValue?
+}
+
+/// The host's answer to PROVIDER_STATION_ATTACH, matched by `requestID`.
+public struct OIPProviderStationAttachAck: Equatable, Sendable {
+    public let requestID: String
+    public let accepted: Bool
+    public let sessionID: String?
+    public let reason: String?
+}
+
+/// The host's answer to PROVIDER_CONTROL, matched by `requestID`. `stateRevision` is the new control revision.
+public struct OIPProviderControlAck: Equatable, Sendable {
+    public let requestID: String
+    /// `take` or `release`; the host sends an empty string when it could not read the request, and the
+    /// documented accepted frame omits it.
+    public let action: String?
+    public let accepted: Bool
+    public let stateRevision: Int?
+    public let reason: String?
+}
+
 extension OIPServerFrame {
     static func decodeProviderFrame(_ type: String, _ frame: [String: JSONValue]) -> OIPServerFrame? {
         switch type {
@@ -114,8 +216,21 @@ extension OIPServerFrame {
             return OIPProviderActivity(frame).map(OIPServerFrame.providerActivity)
         case OIPFrameType.providerMessage:
             return OIPProviderMessage(frame).map(OIPServerFrame.providerMessage)
+        case OIPFrameType.providerSession:
+            return OIPProviderSession(frame).map(OIPServerFrame.providerSession)
+        case OIPFrameType.providerInterruptAck:
+            return OIPProviderAck(frame).map(OIPServerFrame.providerInterruptAck)
+        case OIPFrameType.providerInputAck:
+            return OIPProviderAck(frame).map(OIPServerFrame.providerInputAck)
+        case OIPFrameType.providerPermissionAck:
+            return OIPProviderAck(frame).map(OIPServerFrame.providerPermissionAck)
+        case OIPFrameType.providerStationAttachAck:
+            return OIPProviderStationAttachAck(frame).map(OIPServerFrame.providerStationAttachAck)
+        case OIPFrameType.providerControlAck:
+            return OIPProviderControlAck(frame).map(OIPServerFrame.providerControlAck)
         default:
-            return nil
+            return type == OIPFrameType.providerArtifact
+                ? OIPProviderArtifact(frame).map(OIPServerFrame.providerArtifact) : nil
         }
     }
 }
@@ -154,6 +269,25 @@ extension OIPProviderInvocation {
         errorSummary = ProviderCopy.summary(frame["errorSummary"]?.stringValue)
         workroomID = safeID(frame["workroomId"])
         continuationOf = safeID(frame["continuationOf"])
+        providerPermission = OIPProviderPermission(
+            frame["providerPermission"], provider: correlation.provider, stateRevision: stateRevision
+        )
+    }
+}
+
+extension OIPProviderSession {
+    init?(_ frame: [String: JSONValue]) {
+        guard let invocationID = boundedID(frame["invocationId"]),
+              let owner = frame["owner"]?.stringValue.flatMap(OIPControlOwner.init(rawValue:)),
+              let phase = frame["phase"]?.stringValue.flatMap(OIPControlPhase.init(rawValue:)),
+              let revision = positiveRevision(frame["stateRevision"]) else {
+            return nil
+        }
+        self.invocationID = invocationID
+        parentToolCallID = boundedID(frame["parentToolCallId"])
+        self.owner = owner
+        self.phase = phase
+        stateRevision = revision
     }
 }
 
@@ -205,6 +339,43 @@ extension OIPProviderActivity {
     }
 }
 
+extension OIPProviderApproval {
+    /// Nil unless the frame carries Provider context (provider, invocationId and parentToolCallId).
+    init?(_ frame: [String: JSONValue]) {
+        guard let correlation = ProviderCorrelation(frame) else {
+            return nil
+        }
+        id = frame["id"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+        invocationID = correlation.invocationID
+        parentToolCallID = correlation.parentToolCallID
+        provider = correlation.provider
+        activityID = boundedID(frame["activityId"])
+        presentation = Presentation(frame["providerApproval"])
+    }
+}
+
+extension OIPProviderApproval.Presentation {
+    init?(_ value: JSONValue?) {
+        guard let fields = value?.objectValue,
+              let scope = fields["scopeClassification"]?.stringValue.flatMap(OIPProviderApproval.Scope.init(rawValue:)),
+              let scopeText = ProviderCopy.approvalScopes[scope.rawValue],
+              fields["scope"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) == scopeText,
+              let action = ProviderCopy.approvalAction(fields["action"]?.stringValue),
+              let reason = ProviderCopy.approvalReason(fields["reason"]?.stringValue),
+              let allowOnce = fields["allowOnce"]?.boolValue,
+              let allowSession = fields["allowSession"]?.boolValue else {
+            return nil
+        }
+        self.scope = scope
+        self.scopeText = scopeText
+        self.action = action
+        self.reason = reason
+        self.allowOnce = scope == .workroom && allowOnce
+        self.allowSession = scope == .workroom && allowSession
+        files = OIPProviderActivity.fileNames(fields["files"])
+    }
+}
+
 extension OIPProviderMessage {
     /// Core's limit, counted the way Core counts (Unicode scalars), before trimming.
     static let textLimit = 16_000
@@ -230,6 +401,51 @@ extension OIPProviderMessage {
     }
 }
 
+extension OIPProviderAck {
+    init?(_ frame: [String: JSONValue]) {
+        guard let requestID = frame["requestId"]?.stringValue, let accepted = frame["accepted"]?.boolValue else {
+            return nil
+        }
+        self.requestID = requestID
+        invocationID = frame["invocationId"]?.stringValue
+        self.accepted = accepted
+        stateRevision = positiveRevision(frame["stateRevision"])
+        reason = frame["reason"]?.stringValue
+        providerPermission = frame["providerPermission"]
+    }
+}
+
+extension OIPProviderStationAttachAck {
+    init?(_ frame: [String: JSONValue]) {
+        guard let requestID = (frame["request_id"] ?? frame["requestId"])?.stringValue,
+              let accepted = frame["accepted"]?.boolValue else {
+            return nil
+        }
+        self.requestID = requestID
+        self.accepted = accepted
+        sessionID = frame["sessionId"]?.stringValue
+        reason = frame["reason"]?.stringValue
+    }
+}
+
+extension OIPProviderControlAck {
+    init?(_ frame: [String: JSONValue]) {
+        guard let requestID = (frame["request_id"] ?? frame["requestId"])?.stringValue,
+              let accepted = frame["accepted"]?.boolValue else {
+            return nil
+        }
+        self.requestID = requestID
+        action = frame["action"]?.stringValue
+        self.accepted = accepted
+        stateRevision = positiveRevision(frame["stateRevision"])
+        reason = frame["reason"]?.stringValue
+    }
+}
+
+private func positiveRevision(_ value: JSONValue?) -> Int? {
+    value?.intValue.flatMap { $0 > 0 ? $0 : nil }
+}
+
 /// A non-empty id of at most 512 characters, the bound Core puts on correlation ids.
 private func boundedID(_ value: JSONValue?) -> String? {
     guard let id = value?.stringValue, !id.isEmpty, id.count <= 512 else {
@@ -239,7 +455,7 @@ private func boundedID(_ value: JSONValue?) -> String? {
 }
 
 /// The host's id rule for Work Room, continuation and message ids: `^[A-Za-z0-9._:-]{1,512}$`.
-private func safeID(_ value: JSONValue?) -> String? {
+func safeID(_ value: JSONValue?) -> String? {
     guard let id = value?.stringValue,
           id.range(of: "^[A-Za-z0-9._:-]{1,512}$", options: .regularExpression) != nil else {
         return nil

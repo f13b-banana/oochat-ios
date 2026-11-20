@@ -80,6 +80,26 @@ final class SidebarRowViewTests: XCTestCase {
         XCTAssertEqual(addChatCount, 1)
     }
 
+    func testStationAgentRowShowsTheStationCaption() {
+        let window = ViewHost.host(
+            SidebarAgentRow(
+                agent: ViewFixtures.agent(name: "Orbit Agent"),
+                isExpanded: false,
+                isOnline: true,
+                onToggle: {},
+                onRename: {},
+                onEdit: {},
+                onAddChat: {},
+                onShowQRCode: { _ in },
+                onDelete: {},
+                isStation: true
+            )
+            .padding()
+        )
+
+        XCTAssertNotNil(ViewHost.element(labelContains: "Station", in: window))
+    }
+
     func testAgentRowCompactsDefaultAddressNameForDisplay() {
         let agent = SavedAgent(
             id: "default-agent",

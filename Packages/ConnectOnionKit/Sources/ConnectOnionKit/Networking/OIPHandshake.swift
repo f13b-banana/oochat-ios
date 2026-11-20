@@ -141,6 +141,12 @@ public enum OIPHandshake {
 }
 
 extension OIPConnected {
+    /// The host answered a CONNECT that asked for session-sync by naming the extension at version 0.1.
+    /// Only SESSION_* frames need it. Station Pairing and Control do not, so the Work Room store ignores it.
+    public var advertisesSessionSync: Bool {
+        hostProtocol?.extensions[OIP.sessionSyncExtension] == OIP.sessionSyncVersion
+    }
+
     /// A turn is still running on the host and its output will be replayed after CONNECTED.
     public var isRunning: Bool {
         status == "running"

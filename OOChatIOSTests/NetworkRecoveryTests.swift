@@ -50,6 +50,24 @@ final class NetworkRecoveryTests: XCTestCase {
         XCTAssertFalse(viewModel.isProcessing)
     }
 
+    func testAMessageQueuedBeforeTheAgentWasKnownAsAStationIsNeverSentToIt() async {
+        let (viewModel, transport, monitor) = makeEnvironment()
+        let agent = setUpAgentAndConversation(viewModel)
+        monitor.simulate(online: false)
+        viewModel.prompt = "queued while offline"
+        viewModel.sendPrompt()
+
+        ChatViewModel.rememberStationAddress(agent.address)
+        defer { UserDefaults.standard.removeObject(forKey: "ClaudeStationAddresses") }
+        monitor.simulate(online: true)
+        await viewModel.recoveryTask?.value
+        await viewModel.flushQueuedMessages()
+
+        XCTAssertTrue(transport.sentPrompts.isEmpty)
+        let userMessage = viewModel.activeConversation?.messages.last { $0.role == .user }
+        XCTAssertEqual(userMessage?.deliveryState, .queued)
+    }
+
     func testMultipleOfflineSendsQueueInOrder() {
         let (viewModel, transport, monitor) = makeEnvironment()
         setUpAgentAndConversation(viewModel)

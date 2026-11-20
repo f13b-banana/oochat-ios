@@ -1,0 +1,43 @@
+{
+  "type": "PROVIDER_PERMISSION_ACK",
+  "requestId": "permission-1",
+  "invocationId": "codex:call-7",
+  "accepted": true,
+  "stateRevision": 2,
+  "providerPermission": {
+    "provider": "codex",
+    "activeOptionId": "codex:workspace-auto",
+    "appliesTo": "subsequent_turn",
+    "effectiveRevision": 2,
+    "options": [
+      {
+        "id": "codex:workspace-ask",
+        "nativeProfileId": "codex:workspace",
+        "reviewer": "user",
+        "label": "Ask for approval",
+        "description": "Ask before workspace changes",
+        "risk": "standard",
+        "selectable": true
+      },
+      {
+        "id": "codex:workspace-auto",
+        "nativeProfileId": "codex:workspace",
+        "reviewer": "auto",
+        "label": "Approve for me",
+        "description": "Approve workspace changes automatically",
+        "risk": "standard",
+        "selectable": true
+      },
+      {
+        "id": "codex:full-access",
+        "nativeProfileId": "codex:danger-full-access",
+        "reviewer": "auto",
+        "label": "Full Access",
+        "description": "Run without sandbox limits",
+        "risk": "elevated",
+        "selectable": false,
+        "disabledReason": "Host permission ceiling is Auto."
+      }
+    ]
+  }
+}

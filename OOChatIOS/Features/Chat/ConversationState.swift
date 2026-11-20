@@ -90,14 +90,51 @@ final class ConversationState: ObservableObject {
         store.saveDrafts(draftsByConversationID)
     }
 
+    func applyProviderUpdate(_ update: HostedAgentProviderUpdate, forConversationID conversationID: String) {
+        let store = workRoomStore(for: conversationID)
+        switch update {
+        case .frame(let frame):
+            store.receive(frame)
+        case .snapshot(let connected):
+            store.receiveSnapshot(connected)
+        case .connectionDropped:
+            store.connectionDidDrop()
+        case .transport(let transport):
+            store.transport = transport
+        }
+    }
+
+    func ownsApproval(_ body: [String: JSONValue], forConversationID conversationID: String) -> Bool {
+        workRoomStore(for: conversationID).ownsApproval(body)
+    }
+
+    /// A Station's paired session reconnects under its own conversation but keeps the store that holds the pairing.
+    /// The old conversation gets a fresh store, so its socket closing cannot reach the moved one.
+    func moveWorkRoomStore(from oldID: String, to newID: String) {
+        let moved = workRoomStore(for: oldID)
+        moved.moveBarrier(toScope: barrierScope(forConversationID: newID))
+        workRoomStoresByConversationID[newID] = moved
+        workRoomStoresByConversationID[oldID] = makeWorkRoomStore(for: oldID)
+    }
+
     /// Created on first use, so a view that reads it before the first provider frame observes the same store.
     func workRoomStore(for conversationID: String) -> WorkRoomStore {
         if let existing = workRoomStoresByConversationID[conversationID] {
             return existing
         }
-        let created = WorkRoomStore()
+        let created = makeWorkRoomStore(for: conversationID)
         workRoomStoresByConversationID[conversationID] = created
         return created
+    }
+
+    /// The Stop Barrier is saved per agent address and conversation id, which survive a relaunch. A conversation
+    /// that is not saved yet has no durable id, so its barrier stays in memory only.
+    func barrierScope(forConversationID conversationID: String) -> String? {
+        conversation(withID: conversationID).map { "\($0.agentAddress):\($0.id)" }
+    }
+
+    private func makeWorkRoomStore(for conversationID: String) -> WorkRoomStore {
+        WorkRoomStore(barrierScope: barrierScope(forConversationID: conversationID))
     }
 
     func agent(withID id: String) -> SavedAgent? {

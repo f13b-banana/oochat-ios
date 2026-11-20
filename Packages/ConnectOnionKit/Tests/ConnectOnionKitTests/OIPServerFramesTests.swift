@@ -178,7 +178,8 @@ final class OIPServerFrameTests: XCTestCase {
                     OIPAgentSkill(name: "co-browser", description: "drive a browser", location: "project"),
                     OIPAgentSkill(name: "my-notes", description: "personal", location: "user")
                 ],
-                balanceUSD: 25.34
+                balanceUSD: 25.34,
+                providerStation: nil
             ))
         )
     }
@@ -187,7 +188,7 @@ final class OIPServerFrameTests: XCTestCase {
         XCTAssertEqual(
             OIPServerFrame.decode(frame("AGENT_PROFILE")),
             .agentProfile(OIPAgentProfile(
-                sessionID: nil, name: nil, address: nil, model: nil, tools: [], skills: [], balanceUSD: nil
+                sessionID: nil, name: nil, address: nil, model: nil, tools: [], skills: [], balanceUSD: nil, providerStation: nil
             ))
         )
     }
@@ -488,6 +489,176 @@ final class OIPServerFrameTests: XCTestCase {
         )
     }
 
+    // MARK: Provider acks
+
+    private func ack(_ name: String) throws -> OIPProviderAck {
+        let decoded = try decode(name)
+        switch decoded {
+        case .providerInterruptAck(let ack), .providerInputAck(let ack), .providerPermissionAck(let ack):
+            return ack
+        default:
+            XCTFail("\(name) did not decode to an invocation ack")
+            throw CocoaError(.coderInvalidValue)
+        }
+    }
+
+    func testInterruptAckDecodesAcceptedFixture() throws {
+        guard case .providerInterruptAck(let ack) = try decode("PROVIDER_INTERRUPT_ACK.accepted") else {
+            return XCTFail("expected .providerInterruptAck")
+        }
+        XCTAssertEqual(
+            ack,
+            OIPProviderAck(
+                requestID: "interrupt-1", invocationID: "codex:call-7", accepted: true,
+                stateRevision: 2, reason: nil, providerPermission: nil
+            )
+        )
+    }
+
+    func testInputAckDecodesAcceptedFixture() throws {
+        guard case .providerInputAck(let ack) = try decode("PROVIDER_INPUT_ACK") else {
+            return XCTFail("expected .providerInputAck")
+        }
+        XCTAssertTrue(ack.accepted)
+        XCTAssertEqual(ack.stateRevision, 1)
+        XCTAssertNil(ack.reason)
+    }
+
+    func testPermissionAckKeepsProviderPermissionRaw() throws {
+        guard case .providerPermissionAck(let ack) = try decode("PROVIDER_PERMISSION_ACK.accepted") else {
+            return XCTFail("expected .providerPermissionAck")
+        }
+        XCTAssertTrue(ack.accepted)
+        XCTAssertEqual(ack.stateRevision, 2)
+        XCTAssertEqual(ack.providerPermission?.objectValue?["effectiveRevision"], .number(2))
+    }
+
+    func testEveryDocumentedInvocationAckReasonDecodes() throws {
+        let reasons: [(String, [String])] = [
+            ("PROVIDER_INTERRUPT_ACK", [
+                "not_active", "invalid_request", "invalid_revision", "state_changed", "state_unconfirmed"
+            ]),
+            ("PROVIDER_INPUT_ACK", [
+                "invalid_request", "invalid_revision", "not_active", "unsupported_provider", "state_changed",
+                "state_unconfirmed", "provider_start_failed", "terminal_owns_session"
+            ]),
+            ("PROVIDER_PERMISSION_ACK", [
+                "invalid_request", "invalid_revision", "not_owner", "operator_required", "not_found",
+                "unsupported_option", "ceiling_denied", "confirmation_required", "unavailable"
+            ])
+        ]
+        for (type, list) in reasons {
+            for reason in list {
+                let decoded = try ack("\(type).\(reason)")
+                XCTAssertFalse(decoded.accepted, "\(type).\(reason)")
+                XCTAssertEqual(decoded.reason, reason)
+                XCTAssertEqual(decoded.stateRevision, 2)
+            }
+        }
+    }
+
+    func testPermissionAckStaleRevisionFixtureDecodes() throws {
+        let decoded = try ack("PROVIDER_PERMISSION_ACK")
+        XCTAssertFalse(decoded.accepted)
+        XCTAssertEqual(decoded.reason, "stale_revision")
+        XCTAssertNil(decoded.stateRevision)
+    }
+
+    func testAckWithAnUnknownReasonStillDecodes() throws {
+        var input = try fixture("PROVIDER_INPUT_ACK.not_active")
+        input["reason"] = .string("brand_new_reason")
+        guard case .providerInputAck(let ack) = OIPServerFrame.decode(input) else {
+            return XCTFail("expected .providerInputAck")
+        }
+        XCTAssertFalse(ack.accepted)
+        XCTAssertEqual(ack.reason, "brand_new_reason")
+    }
+
+    func testAckWithoutAcceptedIsUnknown() throws {
+        var input = try fixture("PROVIDER_INTERRUPT_ACK.accepted")
+        input["accepted"] = nil
+        XCTAssertEqual(OIPServerFrame.decode(input), .unknown(type: "PROVIDER_INTERRUPT_ACK", body: input))
+    }
+
+    func testAckKeepsAnEmptyRequestIDAndDropsABadRevision() throws {
+        var input = try fixture("PROVIDER_INTERRUPT_ACK.invalid_request")
+        input["requestId"] = .string("")
+        input["invocationId"] = .null
+        input["stateRevision"] = .number(0)
+        guard case .providerInterruptAck(let ack) = OIPServerFrame.decode(input) else {
+            return XCTFail("expected .providerInterruptAck")
+        }
+        XCTAssertEqual(ack.requestID, "")
+        XCTAssertNil(ack.invocationID)
+        XCTAssertNil(ack.stateRevision)
+    }
+
+    func testStationAttachAckDecodesAcceptedAndRejections() throws {
+        XCTAssertEqual(
+            try decode("PROVIDER_STATION_ATTACH_ACK"),
+            .providerStationAttachAck(OIPProviderStationAttachAck(
+                requestID: "attach-1", accepted: true, sessionID: "station-session", reason: nil
+            ))
+        )
+        for reason in ["invalid_request", "invalid_pairing_code"] {
+            guard case .providerStationAttachAck(let ack) = try decode("PROVIDER_STATION_ATTACH_ACK.\(reason)") else {
+                return XCTFail("expected .providerStationAttachAck")
+            }
+            XCTAssertFalse(ack.accepted)
+            XCTAssertNil(ack.sessionID)
+            XCTAssertEqual(ack.reason, reason)
+        }
+    }
+
+    func testControlAckDecodesAcceptedAndRejections() throws {
+        XCTAssertEqual(
+            try decode("PROVIDER_CONTROL_ACK"),
+            .providerControlAck(OIPProviderControlAck(
+                requestID: "control-1", action: "take", accepted: true, stateRevision: 3, reason: nil
+            ))
+        )
+        let reasons = ["invalid_request", "stale_or_unowned", "not_ready", "handover_timeout", "provider_busy"]
+        for reason in reasons {
+            guard case .providerControlAck(let ack) = try decode("PROVIDER_CONTROL_ACK.\(reason)") else {
+                return XCTFail("expected .providerControlAck")
+            }
+            XCTAssertFalse(ack.accepted)
+            XCTAssertNil(ack.stateRevision)
+            XCTAssertEqual(ack.reason, reason)
+        }
+    }
+
+    func testControlAckWithoutAnActionStillDecodes() throws {
+        var input = try fixture("PROVIDER_CONTROL_ACK")
+        input["action"] = nil
+        guard case .providerControlAck(let ack) = OIPServerFrame.decode(input) else {
+            return XCTFail("expected .providerControlAck")
+        }
+        XCTAssertTrue(ack.accepted)
+        XCTAssertNil(ack.action)
+        XCTAssertEqual(ack.stateRevision, 3)
+    }
+
+    func testStationAndControlAcksNeedRequestID() throws {
+        for name in ["PROVIDER_STATION_ATTACH_ACK", "PROVIDER_CONTROL_ACK"] {
+            var input = try fixture(name)
+            input["request_id"] = nil
+            input["requestId"] = nil
+            XCTAssertEqual(OIPServerFrame.decode(input), .unknown(type: name, body: input))
+        }
+    }
+
+    func testStationAndControlAcksAcceptEitherSpellingOfTheRequestID() throws {
+        for name in ["PROVIDER_STATION_ATTACH_ACK", "PROVIDER_CONTROL_ACK"] {
+            var input = try fixture(name)
+            input["requestId"] = input["request_id"]
+            input["request_id"] = nil
+            if case .unknown = OIPServerFrame.decode(input) {
+                XCTFail("\(name) with requestId only did not decode")
+            }
+        }
+    }
+
     // MARK: Unknown
 
     func testEveryFixtureDecodesAndOnlyHandledTypesAreTyped() throws {
@@ -511,7 +682,14 @@ final class OIPServerFrameTests: XCTestCase {
             OIPFrameType.ping,
             OIPFrameType.providerInvocation,
             OIPFrameType.providerActivity,
-            OIPFrameType.providerMessage
+            OIPFrameType.providerMessage,
+            OIPFrameType.providerArtifact,
+            OIPFrameType.providerSession,
+            OIPFrameType.providerInterruptAck,
+            OIPFrameType.providerInputAck,
+            OIPFrameType.providerPermissionAck,
+            OIPFrameType.providerStationAttachAck,
+            OIPFrameType.providerControlAck
         ]).union(OIPServerFrame.streamEventTypes)
 
         for file in files {

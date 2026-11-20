@@ -15,6 +15,10 @@ public enum OIP {
         "min_version": .string(minVersion),
         "max_version": .string(maxVersion)
     ]
+
+    /// The extension that lets a client pair with a Claude Station and take Control of it.
+    public static let sessionSyncExtension = "session-sync"
+    public static let sessionSyncVersion = "0.1"
 }
 
 // OIP error codes
@@ -23,6 +27,8 @@ public enum OIPErrorCode {
     public static let invalidParams = -32602
     public static let internalError = -32603
     public static let staleAnswer = "STALE_ANSWER"
+    /// The host is a Claude Station: it answers an outer INPUT or EXEC with this code.
+    public static let providerStationOnly = "provider_station_only"
 }
 // Definitions for OIP Protocol frames
 public enum OIPFrameType {
@@ -44,6 +50,9 @@ public enum OIPFrameType {
     public static let proxyAttach = "PROXY_ATTACH"
     public static let providerInterrupt = "PROVIDER_INTERRUPT"
     public static let providerPermissionChange = "PROVIDER_PERMISSION_CHANGE"
+    public static let providerInput = "PROVIDER_INPUT"
+    public static let providerStationAttach = "PROVIDER_STATION_ATTACH"
+    public static let providerControl = "PROVIDER_CONTROL"
     public static let wikiRead = "WIKI_READ"
     public static let adminPromote = "ADMIN_PROMOTE"
     public static let adminDemote = "ADMIN_DEMOTE"
@@ -82,10 +91,15 @@ public enum OIPFrameType {
     public static let sessionChanged = "SESSION_CHANGED"
     public static let providerInterruptAck = "PROVIDER_INTERRUPT_ACK"
     public static let providerPermissionAck = "PROVIDER_PERMISSION_ACK"
+    public static let providerInputAck = "PROVIDER_INPUT_ACK"
+    public static let providerStationAttachAck = "PROVIDER_STATION_ATTACH_ACK"
+    public static let providerControlAck = "PROVIDER_CONTROL_ACK"
     public static let modeChanged = "mode_changed"
     public static let providerInvocation = "provider_invocation"
     public static let providerActivity = "provider_activity"
     public static let providerMessage = "provider_message"
+    public static let providerArtifact = "provider_artifact"
+    public static let providerSession = "provider_session"
 
     // Both directions
     public static let sessionStatus = "SESSION_STATUS"

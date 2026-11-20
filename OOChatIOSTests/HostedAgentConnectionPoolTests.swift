@@ -422,4 +422,24 @@ final class HostedAgentClientErrorMessageTests: XCTestCase {
             )
         }
     }
+
+    // The drop is queued from the connection actor without waiting; a quick reconnect's updates must not overtake it,
+    // or the late drop would clear the new connection's transport.
+    @MainActor
+    func testALateConnectionDropStaysAheadOfTheNextConnectionsUpdates() {
+        let observer = HostedAgentConnectionStateObserver()
+        var seen: [String] = []
+        observer.providerHandler = { _, update in
+            if case .connectionDropped = update {
+                seen.append("dropped")
+            } else {
+                seen.append("snapshot")
+            }
+        }
+
+        observer.deliverLater(conversationID: "c", provider: .connectionDropped)
+        observer.deliver(conversationID: "c", provider: .frame(OIPServerFrame.decode([:])))
+
+        XCTAssertEqual(seen, ["dropped", "snapshot"])
+    }
 }

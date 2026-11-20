@@ -1,22 +1,43 @@
-import SwiftUI
 import ConnectOnionKit
+import SwiftUI
+import UIKit
+
+/// tabs or beside control center viewing
+enum ChatControlCenter {
+
+    // next to chat, hidden or showing via toolbar
+    case beside(isOpen: Bool, toggle: () -> Void)
+
+    case tabs(dashboard: OIPDashboard, selection: Binding<OOAgentView>, attention: OOAgentView?)
+}
 
 struct ChatView: View {
     @ObservedObject var viewModel: ChatViewModel
     let showsComposer: Bool
     let showsSidebarButton: Bool
+    let controlCenter: ChatControlCenter?
     let onOpenSidebar: () -> Void
 
     init(
         viewModel: ChatViewModel,
         showsComposer: Bool = true,
         showsSidebarButton: Bool = true,
+        controlCenter: ChatControlCenter? = nil,
         onOpenSidebar: @escaping () -> Void = {}
     ) {
         self.viewModel = viewModel
         self.showsComposer = showsComposer
         self.showsSidebarButton = showsSidebarButton
+        self.controlCenter = controlCenter
         self.onOpenSidebar = onOpenSidebar
+    }
+
+    /// The chat stays mounted under the Control tab, so VoiceOver must not read it there.
+    private var isControlTabShowing: Bool {
+        if case .tabs(_, let selection, _) = controlCenter {
+            return selection.wrappedValue == .control
+        }
+        return false
     }
 
     var body: some View {
@@ -27,6 +48,41 @@ struct ChatView: View {
                 showsSidebarButton: showsSidebarButton,
                 onOpenSidebar: onOpenSidebar
             )
+            .accessibilityHidden(isControlTabShowing)
+            .overlay {
+                if case .tabs(let dashboard, let selection, _) = controlCenter {
+                    // Mounted once and only shown or hidden, so the page keeps its state across tab switches.
+                    // After a skill button, back to Chat where its turn runs
+                    OOControlCenterPane(dashboard: dashboard, skills: viewModel.activeAgentSkills) { message in
+                        viewModel.runControlCenterSkill(message)
+                        selection.wrappedValue = .chat
+                    }
+                    .opacity(selection.wrappedValue == .control ? 1 : 0)
+                    .allowsHitTesting(selection.wrappedValue == .control)
+                    .accessibilityHidden(selection.wrappedValue != .control)
+                }
+            }
+            .onChange(of: isControlTabShowing) { _, isShowing in
+                if isShowing {
+                    UIApplication.shared.sendAction(
+                        #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
+                    )
+                }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if case .tabs(_, let selection, let attention) = controlCenter {
+                    OOViewSwitch(selection: selection, attention: attention)
+                        .frame(maxWidth: .infinity)
+                        .background(Color(.systemBackground))
+                }
+            }
+            .toolbar {
+                if case .beside(let isOpen, let toggle) = controlCenter {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        OOControlCenterButton(isOpen: isOpen, action: toggle)
+                    }
+                }
+            }
         }
     }
 }
@@ -219,6 +275,10 @@ struct ChatScreen: View {
         .background {
             ChatScreenBackdrop()
                 .ignoresSafeArea()
+        }
+        // connect as soon as the chat is on screen for control center
+        .task(id: viewModel.activeConversationID) {
+            viewModel.connectActiveConversationOnOpen()
         }
         .navigationTitle(viewModel.activeConversation?.title ?? "Chat")
         .navigationBarTitleDisplayMode(.inline)

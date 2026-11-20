@@ -1,10 +1,3 @@
-//
-//  OIPServerFramesTests.swift
-//  ConnectOnionKit
-//
-//  Created by Jesse on 15/10/2026.
-//
-
 import Foundation
 import XCTest
 @testable import ConnectOnionKit

@@ -1,10 +1,3 @@
-//
-//  AgentBalanceTests.swift
-//  ConnectOnionKit
-//
-//  Created by Kevin Chin on 31/10/2026.
-//
-
 import XCTest
 @testable import ConnectOnionKit
 

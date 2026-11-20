@@ -79,6 +79,8 @@ final class ChatViewTests: XCTestCase {
         let transport = MockAgentTransport()
         let monitor = MockNetworkMonitor()
         transport.agentAvailabilityByAddress[fixture.agent.address] = .online
+        // The chat's own socket fails to open, so only presence says the agent is online.
+        transport.connectBehavior = .fail(HostedAgentClientError.closed)
         let viewModel = makeContainerViewModel(
             agents: [fixture.agent],
             conversations: [conversation],
@@ -105,6 +107,31 @@ final class ChatViewTests: XCTestCase {
         XCTAssertNotNil(
             ViewHost.element(labelContains: "Session status: Not Connected", in: window)
         )
+    }
+
+    // open chat opens socket for dashboard_snapshot
+    func testShowingAChatConnectsItSoTheControlCenterCanArrive() async {
+        let fixture = ChatContainerFixture()
+        let conversation = fixture.conversation()
+        let transport = MockAgentTransport()
+        let viewModel = makeContainerViewModel(
+            agents: [fixture.agent],
+            conversations: [conversation],
+            activeAgentID: fixture.agent.id,
+            activeConversationID: conversation.id,
+            client: transport,
+            networkMonitor: MockNetworkMonitor()
+        )
+        XCTAssertTrue(transport.connectedAddresses.isEmpty)
+
+        _ = ViewHost.host(NavigationStack { ChatView(viewModel: viewModel) })
+        let deadline = Date().addingTimeInterval(1)
+        while viewModel.connectionState != .connected, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        XCTAssertEqual(transport.connectedAddresses, [fixture.agent.address])
+        XCTAssertEqual(viewModel.connectionState, .connected)
     }
 
     func testEmptyConversationShowsStartersAndPopulatesComposer() {
@@ -209,6 +236,78 @@ final class ChatShellViewTests: XCTestCase {
         ViewHost.pump(0.4)
 
         XCTAssertNotNil(ViewHost.waitForElement(labelContains: "Send message", in: window))
+    }
+}
+
+/// iPhone sized tests
+@MainActor
+final class ControlCenterTabsTests: XCTestCase {
+    private func makeViewModel() -> (ChatViewModel, Conversation) {
+        let fixture = ChatContainerFixture()
+        let conversation = fixture.conversation()
+        let viewModel = makeContainerViewModel(
+            agents: [fixture.agent],
+            conversations: [conversation],
+            activeAgentID: fixture.agent.id,
+            activeConversationID: conversation.id
+        )
+        return (viewModel, conversation)
+    }
+
+    func testNoSnapshotMeansNoSwitch() {
+        let (viewModel, _) = makeViewModel()
+        let window = ViewHost.host(ChatShellView(viewModel: viewModel))
+
+        XCTAssertNotNil(ViewHost.element(labelContains: "Container Chat", in: window))
+        XCTAssertNil(ViewHost.element(labelContains: "Control Center", in: window))
+    }
+
+    func testSwitchingTabsKeepsThePaneMountedAndTheDraft() {
+        let (viewModel, conversation) = makeViewModel()
+        viewModel.apply(.dashboard(.page(html: "<h1>Hi</h1>")), forConversationID: conversation.id)
+        viewModel.prompt = "half-written thought"
+        let window = ViewHost.host(ChatShellView(viewModel: viewModel))
+
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "Control Center", in: window))
+        ViewHost.pump(0.2)
+        // The kit's web view speaks as "Agent Control Center"; the buttons say "Open/Collapse Control Center".
+        let webView = ViewHost.waitForElement(labelContains: "Agent Control Center", in: window)
+        XCTAssertNotNil(webView)
+
+        // "Chat" alone: other buttons, such as Add Chat, contain the word too.
+        XCTAssertTrue(activateTab(named: "Chat", in: window))
+        ViewHost.pump(0.2)
+        window.layoutIfNeeded()
+        XCTAssertEqual(viewModel.activeConversationID, conversation.id)
+        XCTAssertTrue(
+            ViewHost.element(labelContains: "Agent Control Center", in: window) === webView,
+            "the pane is shown or hidden, never rebuilt"
+        )
+        XCTAssertEqual(viewModel.prompt, "half-written thought")
+
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "Control Center", in: window))
+        ViewHost.pump(0.2)
+        XCTAssertTrue(ViewHost.element(labelContains: "Agent Control Center", in: window) === webView)
+    }
+
+    private func activateTab(named name: String, in window: UIWindow) -> Bool {
+        guard let tab = ViewHost.accessibilityElements(in: window).first(where: { $0.accessibilityLabel == name }) else {
+            return false
+        }
+        let activated = tab.accessibilityActivate()
+        ViewHost.pump()
+        return activated
+    }
+}
+
+final class ControlCenterLayoutTests: XCTestCase {
+    // contentWidth is the window less the 320-point sidebar and its divider.
+    func testPaneFitsBesideTheChatOrFallsBackToTabs() {
+        XCTAssertNil(ControlCenterLayout.paneWidth(contentWidth: 513), "11-inch iPad in portrait uses tabs")
+        XCTAssertNil(ControlCenterLayout.paneWidth(contentWidth: 679))
+        XCTAssertEqual(ControlCenterLayout.paneWidth(contentWidth: 680), 320)
+        XCTAssertEqual(ControlCenterLayout.paneWidth(contentWidth: 700), 340)
+        XCTAssertEqual(ControlCenterLayout.paneWidth(contentWidth: 873), 500, "11-inch iPad in landscape")
     }
 }
 

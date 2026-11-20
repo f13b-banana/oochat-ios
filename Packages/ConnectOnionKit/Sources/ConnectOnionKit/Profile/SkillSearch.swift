@@ -1,10 +1,3 @@
-//
-//  SkillSearch.swift
-//  ConnectOnionKit
-//
-//  Created by Kevin Chin on 30/10/2026.
-//
-
 import Foundation
 
 // Skill Search matches prefix first, then substring, then letters in order

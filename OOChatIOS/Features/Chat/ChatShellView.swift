@@ -1,3 +1,4 @@
+import ConnectOnionKit
 import SwiftUI
 import UIKit
 
@@ -10,6 +11,8 @@ struct ChatShellView: View {
     @State private var isSidebarSearchFocused = false
     @State private var dragOffset: CGFloat = 0
     @State private var activeContent: SidebarContent = .chat
+    @State private var isControlCenterOpen = true
+    @State private var agentView: OOAgentView = .chat
 
     init(
         viewModel: ChatViewModel,
@@ -43,16 +46,37 @@ struct ChatShellView: View {
     // instead of sliding over it: at iPad widths the drawer would push the chat off-screen
     // while leaving most of the display unused. Compact widths — every iPhone, and iPad
     // Slide Over — keep the drawer below.
+    // with dashboard, tabs in portrait, side by side in landscape
     private func sideBySideLayout(proxy: GeometryProxy, safeAreaInsets: EdgeInsets) -> some View {
-        HStack(spacing: 0) {
+        let contentWidth = proxy.size.width - SidebarShellMetrics.permanentSidebarWidth - 1
+        let paneWidth = ControlCenterLayout.paneWidth(contentWidth: contentWidth)
+        let dashboard = activeContent == .chat ? viewModel.activeDashboard : nil
+        return HStack(spacing: 0) {
             sidebar(safeAreaInsets: safeAreaInsets, isOpen: true)
                 .frame(width: SidebarShellMetrics.permanentSidebarWidth)
 
             Divider()
 
-            contentView(for: activeContent)
+            contentView(for: activeContent, controlCenter: controlCenter(for: dashboard, paneWidth: paneWidth))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea(contentKeyboardSafeAreaRegions, edges: .bottom)
+
+            if let dashboard, let paneWidth, isControlCenterOpen {
+                Divider()
+
+                OOControlCenterPane(
+                    dashboard: dashboard,
+                    skills: viewModel.activeAgentSkills,
+                    onRunSkill: viewModel.runControlCenterSkill,
+                    onCollapse: {
+                        withAnimation(AppMotion.stateChange(reduceMotion: reduceMotion)) {
+                            isControlCenterOpen = false
+                        }
+                    }
+                )
+                .frame(width: paneWidth)
+                .transition(.move(edge: .trailing))
+            }
         }
         .frame(width: proxy.size.width, height: proxy.size.height)
         .background(Color(.systemBackground))
@@ -75,7 +99,7 @@ struct ChatShellView: View {
                 .offset(x: reduceMotion ? 0 : -SidebarShellMetrics.sidebarParallax * (1 - progress))
                 .zIndex(0)
 
-                contentView(for: activeContent)
+                contentView(for: activeContent, controlCenter: controlCenter(for: viewModel.activeDashboard, paneWidth: nil))
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .background(Color(.systemBackground))
                 .ignoresSafeArea(contentKeyboardSafeAreaRegions, edges: .bottom)
@@ -137,14 +161,34 @@ struct ChatShellView: View {
         )
     }
 
+    // Control Center
+    private func controlCenter(for dashboard: OIPDashboard?, paneWidth: CGFloat?) -> ChatControlCenter? {
+        guard let dashboard else {
+            return nil
+        }
+        guard paneWidth == nil else {
+            return .beside(isOpen: isControlCenterOpen) {
+                withAnimation(AppMotion.stateChange(reduceMotion: reduceMotion)) {
+                    isControlCenterOpen.toggle()
+                }
+            }
+        }
+        return .tabs(
+            dashboard: dashboard,
+            selection: $agentView,
+            attention: viewModel.activeChatAwaitsReader ? .chat : nil
+        )
+    }
+
     @ViewBuilder
-    private func contentView(for content: SidebarContent) -> some View {
+    private func contentView(for content: SidebarContent, controlCenter: ChatControlCenter? = nil) -> some View {
         switch content {
         case .chat:
             ChatView(
                 viewModel: viewModel,
                 showsComposer: isRegularWidth || !isSidebarSearchFocused,
-                showsSidebarButton: !isRegularWidth
+                showsSidebarButton: !isRegularWidth,
+                controlCenter: controlCenter
             ) {
                 openSidebar()
             }
@@ -370,6 +414,22 @@ enum SidebarShellLayout {
         }
         let constant = SidebarShellMetrics.rubberBandConstant
         return (overshoot * dimension * constant) / (dimension + (constant * overshoot))
+    }
+}
+
+/// The Control Center pane
+enum ControlCenterLayout {
+    static let chatFloor: CGFloat = 360
+    static let minimumPane: CGFloat = 320
+    static let defaultPane: CGFloat = 500
+
+    /// nil when both do not fit, and the tabs are used instead.
+    static func paneWidth(contentWidth: CGFloat) -> CGFloat? {
+        let room = contentWidth - chatFloor
+        guard room >= minimumPane else {
+            return nil
+        }
+        return min(defaultPane, room)
     }
 }
 

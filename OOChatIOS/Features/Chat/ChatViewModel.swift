@@ -567,6 +567,11 @@ final class ChatViewModel: ObservableObject {
         restorePendingAttachmentDrafts()
     }
 
+    /// The skills the Control Center's buttons may run (SkillActionChecker in the kit pane).
+    var activeAgentSkills: [OIPAgentSkill]? {
+        activeAgentProfile?.skills
+    }
+
     func selectSlashSkill(_ skill: AgentSkill) {
         prompt = "/\(skill.name) "
     }

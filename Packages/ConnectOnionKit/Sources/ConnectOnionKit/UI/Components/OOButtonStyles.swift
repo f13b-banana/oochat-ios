@@ -43,12 +43,37 @@ public struct OOSecondaryButtonStyle: ButtonStyle {
     }
 }
 
+/// A text-only action for the quiet end of a card, such as Stop response
+public struct OOQuietButtonStyle: ButtonStyle {
+    private let tint: Color
+
+    public init(tint: Color = OOColor.inkSecondary) {
+        self.tint = tint
+    }
+
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, OOSpace.large)
+            .frame(minHeight: ooMinimumTarget)
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .contentShape(Rectangle())
+    }
+}
+
 public extension ButtonStyle where Self == OOPrimaryButtonStyle {
     static var ooPrimary: OOPrimaryButtonStyle { OOPrimaryButtonStyle() }
 }
 
 public extension ButtonStyle where Self == OOSecondaryButtonStyle {
     static var ooSecondary: OOSecondaryButtonStyle { OOSecondaryButtonStyle() }
+}
+
+public extension ButtonStyle where Self == OOQuietButtonStyle {
+    static func ooQuiet(tint: Color = OOColor.inkSecondary) -> OOQuietButtonStyle {
+        OOQuietButtonStyle(tint: tint)
+    }
 }
 
 public extension View {
@@ -84,6 +109,8 @@ public extension View {
                 Button("Remove agent", role: .destructive) {}
                     .buttonStyle(.ooPrimary)
             }
+            Button("Stop response") {}
+                .buttonStyle(.ooQuiet(tint: OOColor.failureText))
         }
         .frame(width: 260)
     }

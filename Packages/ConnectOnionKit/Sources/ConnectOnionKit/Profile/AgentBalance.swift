@@ -1,10 +1,3 @@
-//
-//  AgentBalance.swift
-//  ConnectOnionKit
-//
-//  Created by Kevin Chin on 30/10/2026.
-//
-
 import Foundation
 
 public enum AgentBalance {

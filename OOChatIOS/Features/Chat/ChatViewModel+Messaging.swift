@@ -41,6 +41,7 @@ extension ChatViewModel {
         deliveryCoordinator.setDeliveryEnabled(!isOffline)
         if deliveryCoordinator.retryMessage(message) {
             errorMessage = nil
+            failureByMessageID[message.id] = nil
         }
     }
 

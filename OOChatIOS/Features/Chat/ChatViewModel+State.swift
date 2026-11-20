@@ -1,3 +1,4 @@
+import Foundation
 import ConnectOnionKit
 
 extension ChatViewModel {
@@ -68,21 +69,21 @@ extension ChatViewModel {
         activeConversationID.flatMap { dashboards[$0] }
     }
 
-    /// chat header
-    var activeSessionStatusText: String {
-        SessionStatusLabel.text(state: activeSessionState, hasBookmark: activeHasBookmark, hostStatus: activeHostStatus)
+    /// The chat header's status. `connectingFor` is measured by the header,
+    /// so "Connecting…" can turn into "Can't connect" after 10 seconds.
+    func activeConnectionStatus(connectingFor: TimeInterval = 0) -> ChatConnectionStatus {
+        ChatConnectionStatus(state: activeSessionState, hostStatus: activeHostStatus, connectingFor: connectingFor)
     }
 
-    var isActiveSessionLive: Bool {
-        activeSessionState == .connected && activeHostStatus != "not_found"
+    var isActiveChatConnecting: Bool {
+        if case .connecting = activeSessionState {
+            return true
+        }
+        return false
     }
 
     private var activeHostStatus: String? {
         activeConversationID.flatMap { hostStatuses[$0] }
-    }
-
-    private var activeHasBookmark: Bool {
-        activeConversationID.flatMap { HostedAgentBookmarkStore().load(conversationID: $0) } != nil
     }
 
     // iOS socket states from kit

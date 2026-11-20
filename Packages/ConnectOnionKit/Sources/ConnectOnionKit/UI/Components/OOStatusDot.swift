@@ -1,20 +1,45 @@
 import SwiftUI
 
-/// six point dot with an optional label, green when live
+/// six point dot with an optional label: green when live, red when it failed, grey otherwise
 public struct OOStatusDot: View {
+    public enum Tone: Sendable {
+        case live, neutral, failure
+    }
+
     private let label: String?
-    private let isLive: Bool
+    private let tone: Tone
 
     public init(label: String? = nil, isLive: Bool) {
         self.label = label
-        self.isLive = isLive
+        self.tone = isLive ? .live : .neutral
+    }
+
+    /// A failure is red so it reads differently from a wait; the label still says what happened.
+    public init(label: String? = nil, tone: Tone) {
+        self.label = label
+        self.tone = tone
+    }
+
+    private var isLive: Bool {
+        tone == .live
+    }
+
+    private var fill: Color {
+        switch tone {
+        case .live:
+            return OOColor.live
+        case .failure:
+            return OOColor.failureMark
+        case .neutral:
+            // O Chat's neutral-400 is 2.48:1, and a status mark needs 3:1
+            return OOColor.inkSecondary
+        }
     }
 
     public var body: some View {
         HStack(spacing: 5) {
             Circle()
-                // O Chat's neutral-400 is 2.48:1, and a status mark needs 3:1
-                .fill(isLive ? OOColor.live : OOColor.inkSecondary)
+                .fill(fill)
                 .frame(width: 6, height: 6)
             if let label {
                 Text(label)
@@ -92,6 +117,7 @@ public struct OOToolStatus: View {
         VStack(alignment: .leading, spacing: 12) {
             OOStatusDot(label: "Running", isLive: true)
             OOStatusDot(label: "Reconnecting", isLive: false)
+            OOStatusDot(label: "Can't connect", tone: .failure)
             HStack {
                 OOToolStatus(.running)
                 OOToolStatus(.running, isAwaitingApproval: true)

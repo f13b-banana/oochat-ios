@@ -86,7 +86,6 @@ extension ChatViewModel {
 
     func dismissError() {
         errorMessage = nil
-        connectivityErrorMessage = nil
     }
 
     /// -32010 gets its own screen instead of the red banner. Returns false for every other error.
@@ -98,7 +97,6 @@ extension ChatViewModel {
         // Final: HostedAgentConnection.canResume(after:) refuses this error, so no reconnect follows.
         incompatibility = value
         errorMessage = nil
-        connectivityErrorMessage = nil
         return true
     }
 
@@ -106,7 +104,16 @@ extension ChatViewModel {
         incompatibility = nil
     }
 
-    // Show a banner for a failed delivery or reconnect.
+    /// A message didn't go through: the reason goes on that message, not in a banner.
+    func presentDeliveryError(_ error: Error, messageID: String, forConversationID conversationID: String) {
+        if activeConversationID == conversationID, presentIncompatibility(error) {
+            return
+        }
+        failureByMessageID[messageID] = HostedAgentClientError.chatFailure(for: error)
+    }
+
+    /// A reconnect failed. A lost connection shows in the chat header ("Can't connect · Retry",
+    /// ChatConnectionStatus), so only other problems get the banner, in plain words.
     func presentConnectionError(_ error: Error, forConversationID conversationID: String) {
         guard activeConversationID == conversationID else {
             return
@@ -114,24 +121,18 @@ extension ChatViewModel {
         if presentIncompatibility(error) {
             return
         }
-        let message = error.localizedDescription
-        guard HostedAgentClientError.isConnectivityFailure(error) else {
-            errorMessage = message
+        guard !HostedAgentClientError.isConnectivityFailure(error) else {
             return
         }
-        guard !isOffline else {
-            return
-        }
-        errorMessage = message
-        // Remember connectivity errors so an offline transition can dismiss duplicates.
-        connectivityErrorMessage = message
+        let agentName = activeAgent?.name ?? "the agent"
+        errorMessage = HostedAgentClientError.chatFailure(for: error).sentence(agentName: agentName)
     }
 
-    /// Dismisses a connectivity error once the app has entered its offline state.
-    func retractConnectivityError() {
-        guard errorMessage != nil, errorMessage == connectivityErrorMessage else {
-            return
+    /// The plain reason a message wasn't sent, and the raw text for "Copy error details".
+    func failure(forMessageID messageID: String) -> (reason: String, details: String?)? {
+        guard let failure = failureByMessageID[messageID] else {
+            return nil
         }
-        errorMessage = nil
+        return (failure.sentence(agentName: activeAgent?.name ?? "the agent"), failure.details)
     }
 }

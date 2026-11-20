@@ -113,6 +113,8 @@ struct ChatScreen: View {
     @State var shouldFollowLatest = true
     @State var promptFocusRequest = 0
     @State var isPromptFocused = false
+    /// When the open chat started connecting; the header turns "Connecting…" into "Can't connect" after 10 s.
+    @State var connectingSince: Date?
     let bottomAnchorID = "chat.bottomAnchor"
     let scrollCoordinateSpace = "chat.scroll"
 
@@ -385,19 +387,56 @@ struct ChatScreen: View {
     }
 
     private var sessionStatus: some View {
-        let text = viewModel.activeSessionStatusText
-        return ZStack {
-            // The longest label reserves the width, so the header doesn't resize when the status changes.
-            OOStatusDot(label: "Not Connected", isLive: false)
-                .hidden()
-
-            OOStatusDot(label: text, isLive: viewModel.isActiveSessionLive)
-                .id(text)
-                .transition(AppMotion.statusTransition(reduceMotion: reduceMotion))
+        // Ticks once a second only while connecting, to turn into "Can't connect" at 10 s.
+        TimelineView(.periodic(from: .now, by: connectingSince == nil ? 3_600 : 1)) { context in
+            statusLabel(
+                viewModel.activeConnectionStatus(
+                    connectingFor: connectingSince.map { context.date.timeIntervalSince($0) } ?? 0
+                )
+            )
         }
-        .animation(AppMotion.stateChange(reduceMotion: reduceMotion), value: text)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Session status: \(text)")
+        .onChange(of: viewModel.isActiveChatConnecting, initial: true) { _, isConnecting in
+            connectingSince = isConnecting ? (connectingSince ?? .now) : nil
+        }
+        .onChange(of: viewModel.activeConversationID) {
+            connectingSince = viewModel.isActiveChatConnecting ? .now : nil
+        }
+    }
+
+    /// Green when live, red when it failed, grey while waiting. When a retry can help,
+    /// the whole status is the Retry button.
+    @ViewBuilder
+    private func statusLabel(_ status: ChatConnectionStatus) -> some View {
+        let detail = status.detail(agentName: viewModel.activeAgent?.name ?? "the agent")
+        let mark = HStack(spacing: 4) {
+            OOStatusDot(label: status.label, tone: status.tone)
+            if status.canRetry {
+                Text("· Retry")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(OOColor.primary)
+            }
+        }
+        .animation(AppMotion.stateChange(reduceMotion: reduceMotion), value: status)
+
+        if status.canRetry {
+            Button {
+                // Same as Settings → Reconnect.
+                Task { await viewModel.reconnect() }
+            } label: {
+                // A taller tap area that takes no layout space, so the title above doesn't move.
+                mark
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                    .padding(.vertical, -12)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(detail)
+            .accessibilityHint("Tries to connect again")
+        } else {
+            mark
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(detail)
+        }
     }
 
     @ViewBuilder
@@ -471,14 +510,36 @@ struct ChatScreen: View {
 private struct WorkRoomScreen: View {
     @ObservedObject var viewModel: ChatViewModel
     let workRoomID: String
+    @StateObject private var dictation: WorkRoomDictation
+
+    init(viewModel: ChatViewModel, workRoomID: String) {
+        self.viewModel = viewModel
+        self.workRoomID = workRoomID
+        _dictation = StateObject(wrappedValue: WorkRoomDictation(controller: viewModel.voiceInputController))
+    }
 
     var body: some View {
         Group {
             if let conversationID = viewModel.activeConversationID,
-               let workRoom = viewModel.conversationState.workRoomStore(for: conversationID).workRoom(id: workRoomID) {
-                OOWorkRoomView(workRoom: workRoom)
+               case let store = viewModel.conversationState.workRoomStore(for: conversationID),
+               let workRoom = store.workRoom(id: workRoomID) {
+                OOWorkRoomView(
+                    workRoom: workRoom,
+                    onDecide: { store.decide($0, in: workRoomID) },
+                    onStop: { store.stop(in: workRoomID) },
+                    onDraftChange: { store.setDraft($0, in: workRoomID) },
+                    onSend: { store.send(in: workRoomID) },
+                    onChangePermission: { store.changePermission(to: $0, confirmRisk: $1, in: workRoomID) },
+                    mic: OOWorkRoomMic(state: dictation.micState, guidance: dictation.guidance) {
+                        dictation.toggle(in: workRoomID) { _ = store.appendDictation($0, in: workRoomID) }
+                    }
+                )
+                .onChange(of: workRoom.composer.canDictate) { _, canDictate in
+                    if !canDictate { dictation.cancel() }
+                }
             }
         }
+        .onDisappear { dictation.cancel() }
         // The heading is inside the Work Room, so the bar title stays short.
         .navigationTitle("Work Room")
         .navigationBarTitleDisplayMode(.inline)

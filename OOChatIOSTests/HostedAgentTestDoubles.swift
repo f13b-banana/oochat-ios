@@ -111,6 +111,13 @@ final class MockAgentTransport: HostedAgentTransport {
     private(set) var checkedAvailabilityAddresses: [String] = []
     private(set) var interactionResponseWaits: [(agentAddress: String, conversationID: String)] = []
     private(set) var requestedModes: [OIPPermissionMode] = []
+    // Each restart, with how many prompts had been sent before it.
+    private(set) var restartedSessions: [(conversationID: String, promptsSentBefore: Int)] = []
+    private(set) var sentConversations: [Conversation] = []
+
+    func restartSession(agentAddress: String, conversationID: String) async {
+        restartedSessions.append((conversationID, sentPrompts.count))
+    }
 
     func connect(agentAddress: String, conversation: Conversation) async throws -> HostedAgentResult {
         connectedAddresses.append(agentAddress)
@@ -167,6 +174,7 @@ final class MockAgentTransport: HostedAgentTransport {
         handlers: HostedAgentPromptHandlers
     ) async throws -> HostedAgentResult {
         sentPrompts.append(prompt.text)
+        sentConversations.append(conversation)
         sentImages.append(prompt.images)
         sentFiles.append(prompt.files)
         // The real connection reports the dispatch before the INPUT leaves.

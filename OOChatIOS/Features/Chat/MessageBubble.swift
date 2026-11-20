@@ -3,13 +3,25 @@ import ConnectOnionKit
 import UIKit
 import UniformTypeIdentifiers
 
+/// What a long-press on a message offers besides Copy.
+struct MessageMenu {
+    var canEdit = false
+    var canRetry = false
+    var onEdit: (String) -> Void = { _ in }
+    var onRetry: () -> Void = {}
+}
+
 struct MessageBubble: View {
     let message: ChatMessage
+    var menu = MessageMenu()
     /// Why a failed message wasn't sent, when the app still knows.
     var failureReason: String?
     /// The raw error, offered as "Copy error details".
     var failureDetails: String?
     var onRetry: (() -> Void)?
+    // The text being edited in place; nil while the bubble shows the sent message.
+    @State private var editDraft: String?
+    @FocusState private var isEditorFocused: Bool
     @State private var previewedImage: ChatImageAttachment?
     @State private var downloadDocument: ChatFileDocument?
     @State private var downloadFilename = "Attachment"
@@ -53,18 +65,81 @@ struct MessageBubble: View {
                 if !message.files.isEmpty {
                     fileList
                 }
-                if !message.content.isEmpty {
+                if editDraft != nil {
+                    messageEditor
+                } else if !message.content.isEmpty {
                     Text(message.content)
-                        .textSelection(.enabled)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
                         .background(
                             AppTheme.outgoingMessageBackground,
                             in: RoundedRectangle(cornerRadius: 20, style: .continuous)
                         )
+                        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .contextMenu { messageMenuItems }
                 }
                 deliveryStatus
             }
+        }
+    }
+
+    @ViewBuilder
+    private var messageMenuItems: some View {
+        Button {
+            UIPasteboard.general.string = message.content
+        } label: {
+            Label("Copy", systemImage: "doc.on.doc")
+        }
+        if menu.canEdit {
+            Button {
+                editDraft = message.content
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+        }
+        if menu.canRetry {
+            Button(action: menu.onRetry) {
+                Label("Retry", systemImage: "arrow.clockwise")
+            }
+        }
+    }
+
+    // Your message, editable where it sits. Send has the agent answer it again in place.
+    private var messageEditor: some View {
+        let draft = Binding(get: { editDraft ?? "" }, set: { editDraft = $0 })
+        let trimmed = draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let canSend = !trimmed.isEmpty && trimmed != message.content
+        return VStack(alignment: .trailing, spacing: 8) {
+            TextField("Message", text: draft, axis: .vertical)
+                .lineLimit(1...8)
+                .focused($isEditorFocused)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(
+                    AppTheme.outgoingMessageBackground,
+                    in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(OOColor.primary, lineWidth: 1.5)
+                )
+            HStack(spacing: 8) {
+                Button("Cancel") {
+                    editDraft = nil
+                }
+                .buttonStyle(CardQuietButtonStyle())
+                .fixedSize()
+                Button("Send") {
+                    menu.onEdit(trimmed)
+                    editDraft = nil
+                }
+                .buttonStyle(CardPrimaryButtonStyle())
+                .frame(width: 96)
+                .disabled(!canSend)
+            }
+        }
+        .onAppear {
+            isEditorFocused = true
         }
     }
 
@@ -160,6 +235,7 @@ struct MessageBubble: View {
 
     private var agentMessage: some View {
         MarkdownMessageView(content: message.content)
+            .contextMenu { messageMenuItems }
     }
 
     private var thinkingMessage: some View {

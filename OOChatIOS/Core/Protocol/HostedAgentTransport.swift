@@ -55,6 +55,9 @@ protocol HostedAgentConversationTransport: AnyObject {
         onEvent: @escaping @MainActor (HostedAgentEvent) -> Void
     ) async throws
     func waitForPendingInteractionResponses(agentAddress: String, conversationID: String) async
+    // Drops this chat's socket so the next send reconnects with the app's copy of the session,
+    // which the host only reads on CONNECT.
+    func restartSession(agentAddress: String, conversationID: String) async
     // Answers an ONBOARD_REQUIRED on the conversation's open socket with ONBOARD_SUBMIT.
     func submitOnboarding(agentAddress: String, conversationID: String, code: String) async throws
     func noteNetworkLost() async
@@ -63,6 +66,8 @@ protocol HostedAgentConversationTransport: AnyObject {
 
 extension HostedAgentConversationTransport {
     func applicationDidBecomeActive() {}
+
+    func restartSession(agentAddress: String, conversationID: String) async {}
 
     var onSessionUpdate: (@MainActor (String, HostedAgentSessionUpdate) -> Void)? {
         get { nil }

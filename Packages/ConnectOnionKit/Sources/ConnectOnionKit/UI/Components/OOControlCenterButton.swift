@@ -14,6 +14,7 @@ public struct OOControlCenterButton: View {
     public var body: some View {
         Button(action: action) {
             Label("Control Center", systemImage: "square.grid.2x2")
+                .labelStyle(.titleAndIcon)
         }
         .help(Self.accessibilityLabel(isOpen: isOpen))
         .accessibilityLabel(Self.accessibilityLabel(isOpen: isOpen))

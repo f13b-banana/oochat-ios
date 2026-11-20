@@ -74,6 +74,11 @@ extension ChatViewModel {
         recoveryCoordinator.retryConnectivity()
     }
 
+    /// Opens the active chat's socket so the agent's Control Center arrives (connect on open).
+    func connectActiveConversationOnOpen() {
+        recoveryCoordinator.connectOnOpen(conversationID: activeConversationID)
+    }
+
     func reconnect() async {
         errorMessage = nil
         await recoveryCoordinator.reconnectActiveConversation()

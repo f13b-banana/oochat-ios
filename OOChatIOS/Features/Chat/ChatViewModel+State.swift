@@ -94,6 +94,14 @@ extension ChatViewModel {
         }
     }
 
+    /// chat contains something the run needs
+    var activeChatAwaitsReader: Bool {
+        activePendingApproval != nil
+            || activePendingAskUser != nil
+            || activePendingPlanReview != nil
+            || activePendingUlwCheckpoint != nil
+    }
+
     func forgetDashboard(forConversationID conversationID: String) {
         dashboards[conversationID] = nil
     }

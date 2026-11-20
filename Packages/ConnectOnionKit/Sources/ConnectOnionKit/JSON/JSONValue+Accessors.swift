@@ -1,10 +1,3 @@
-//
-//  JSONValue+Accessors.swift
-//  ConnectOnionKit
-//
-//  Created by Kevin Chin on 13/10/2026.
-//
-
 // Accessors used by the OIP server frame decoder
 
 extension JSONValue {

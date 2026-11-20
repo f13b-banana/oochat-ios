@@ -281,6 +281,18 @@ final class ConversationState: ObservableObject {
         persistSelection()
     }
 
+    /// Stores a conversation (e.g. a fresh server session) without counting as activity:
+    /// no updatedAt bump, no reordering, no agent touch.
+    func replaceWithoutActivity(_ conversation: Conversation) {
+        guard let index = conversations.firstIndex(where: { $0.id == conversation.id }) else {
+            return
+        }
+        var next = conversation
+        next.updatedAt = conversations[index].updatedAt
+        conversations[index] = next
+        recordPersistence(store.upsertConversationResult(next))
+    }
+
     func upsert(
         _ conversation: Conversation,
         persistence: ConversationPersistence = .full

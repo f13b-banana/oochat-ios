@@ -1,10 +1,3 @@
-//
-//  OIPServerFrame.swift
-//  ConnectOnionKit
-//
-//  Created by Jesse on 15/10/2026.
-//
-
 import Foundation
 
 // OIP Server Frame Decoder implementation
@@ -109,6 +102,13 @@ public struct OIPAgentSkill: Equatable, Sendable {
     public let name: String
     public let description: String?
     public let location: String?
+
+    /// oublic so an app can hand skills it loaded to the Control Center Pane
+    public init(name: String, description: String? = nil, location: String? = nil) {
+        self.name = name
+        self.description = description
+        self.location = location
+    }
 }
 
 // AGENT_PROFILE

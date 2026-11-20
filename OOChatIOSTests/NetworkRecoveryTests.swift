@@ -1,7 +1,7 @@
 import Combine
-import XCTest
 import ConnectOnionKit
 import Foundation
+import XCTest
 @testable import OOChatIOS
 
 @MainActor
@@ -1704,6 +1704,24 @@ final class NetworkRecoveryTests: XCTestCase {
 
         XCTAssertEqual(viewModel.prompt, "/commit ")
         XCTAssertFalse(viewModel.shouldShowSlashSkillPicker)
+    }
+
+    // skill check and skill is a message in chat
+    func testControlCenterSkillGoesOutAsAMessageAndKeepsTheDraft() async {
+        let (viewModel, transport, _) = makeEnvironment()
+        let agent = setUpAgentAndConversation(viewModel)
+        XCTAssertNil(viewModel.activeAgentSkills)
+        transport.simulateAgentProfile(
+            makeAgentProfile(address: agent.address, skills: [(name: "deploy", description: "Ship it")])
+        )
+        XCTAssertEqual(viewModel.activeAgentSkills, [OIPAgentSkill(name: "deploy", description: "Ship it")])
+
+        viewModel.prompt = "half a thought"
+        viewModel.runControlCenterSkill("/deploy to staging")
+        await waitForSentPrompt("/deploy to staging", transport: transport)
+
+        XCTAssertEqual(viewModel.prompt, "half a thought")
+        XCTAssertNil(viewModel.errorMessage)
     }
 
     private func makeDefaults() -> UserDefaults {

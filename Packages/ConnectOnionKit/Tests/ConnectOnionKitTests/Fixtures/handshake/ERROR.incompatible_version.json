@@ -1,0 +1,13 @@
+{
+  "code": -32010,
+  "message": "Unsupported OIP protocol",
+  "protocol": {
+    "max_version": "0.1",
+    "min_version": "0.1",
+    "name": "oip",
+    "version": "0.1",
+    "websocket_path": "/ws"
+  },
+  "retryable": false,
+  "type": "ERROR"
+}

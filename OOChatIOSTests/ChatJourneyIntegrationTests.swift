@@ -1,4 +1,5 @@
 import XCTest
+import ConnectOnionKit
 @testable import OOChatIOS
 
 // end to end integration tests for chat

@@ -104,9 +104,11 @@
 		100000000000000000000340 /* ComposerMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000330 /* ComposerMetrics.swift */; };
 		100000000000000000000341 /* ChatViewModel+Messaging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000343 /* ChatViewModel+Messaging.swift */; };
 		100000000000000000000342 /* HostedAgentConnection+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000344 /* HostedAgentConnection+Lifecycle.swift */; };
+		350C44483080FFEA0041DFE0 /* IncompatibleAgentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 350C44473080FFE30041DFE0 /* IncompatibleAgentView.swift */; };
 		35AE410930777ECB004216E9 /* ConnectOnionKit in Frameworks */ = {isa = PBXBuildFile; productRef = 35AE410830777ECB004216E9 /* ConnectOnionKit */; };
 		5A17E0000000000000000002 /* IdentityStore+PrivateKeyStoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A17E0000000000000000001 /* IdentityStore+PrivateKeyStoring.swift */; };
 		990952282DCB4FEFBDD22DF3 /* AgentLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A33F8902AD24789890AE6C8 /* AgentLink.swift */; };
+		D3B60E36308525B80012C501 /* HostedAgentConnectionPoolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B60E35308525B50012C501 /* HostedAgentConnectionPoolTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -221,7 +223,9 @@
 		100000000000000000000364 /* ChatSidebarSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarSearch.swift; sourceTree = "<group>"; };
 		100000000000000000000365 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		2A33F8902AD24789890AE6C8 /* AgentLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLink.swift; sourceTree = "<group>"; };
+		350C44473080FFE30041DFE0 /* IncompatibleAgentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncompatibleAgentView.swift; sourceTree = "<group>"; };
 		5A17E0000000000000000001 /* IdentityStore+PrivateKeyStoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "IdentityStore+PrivateKeyStoring.swift"; sourceTree = "<group>"; };
+		D3B60E35308525B50012C501 /* HostedAgentConnectionPoolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentConnectionPoolTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -321,6 +325,7 @@
 		100000000000000000000308 /* Chat */ = {
 			isa = PBXGroup;
 			children = (
+				350C44473080FFE30041DFE0 /* IncompatibleAgentView.swift */,
 				100000000000000000000039 /* MarkdownMessageView.swift */,
 				100000000000000000000003 /* ChatViewModel.swift */,
 				100000000000000000000343 /* ChatViewModel+Messaging.swift */,
@@ -420,6 +425,7 @@
 		100000000000000000000314 /* OOChatIOSTests */ = {
 			isa = PBXGroup;
 			children = (
+				D3B60E35308525B50012C501 /* HostedAgentConnectionPoolTests.swift */,
 				100000000000000000000038 /* MarkdownCodeBlockLanguageTests.swift */,
 				100000000000000000000035 /* AgentQRCodePayloadTests.swift */,
 				100000000000000000000075 /* IdentityStoreErrorTests.swift */,
@@ -615,6 +621,7 @@
 				100000000000000000000208 /* ChatViewModel+AppLifecycle.swift in Sources */,
 				100000000000000000000209 /* ChatViewModel+ComposerDrafts.swift in Sources */,
 				100000000000000000000210 /* ChatViewModel+Connection.swift in Sources */,
+				350C44483080FFEA0041DFE0 /* IncompatibleAgentView.swift in Sources */,
 				100000000000000000000211 /* ChatViewModel+Interactions.swift in Sources */,
 				100000000000000000000212 /* ChatViewModel+State.swift in Sources */,
 				100000000000000000000154 /* ConversationState.swift in Sources */,
@@ -692,6 +699,7 @@
 			files = (
 				100000000000000000000134 /* MarkdownCodeBlockLanguageTests.swift in Sources */,
 				100000000000000000000131 /* AgentQRCodePayloadTests.swift in Sources */,
+				D3B60E36308525B80012C501 /* HostedAgentConnectionPoolTests.swift in Sources */,
 				100000000000000000000170 /* IdentityStoreErrorTests.swift in Sources */,
 				100000000000000000000167 /* AgentSettingsViewTests.swift in Sources */,
 				100000000000000000000127 /* AgentsFeatureTests.swift in Sources */,

@@ -101,6 +101,120 @@ final class ChatJourneyIntegrationTests: XCTestCase {
         XCTAssertFalse(reloaded.messages.contains { $0.deliveryState == .queued })
     }
 
+    // The reported bug: force-quit while the agent runs, relaunch, and the app sent the same
+    // prompt again, so the agent ran it twice. The relaunch must ask the host, not resend.
+    func testForceQuitMidRunSettlesFromHostWithoutResending() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        var viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Files", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+
+        let gate = PromptGate()
+        app.transport.sendBehavior = .wait(gate: gate, output: "never seen")
+        viewModel.prompt = "Make him a text file"
+        viewModel.sendPrompt()
+
+        // The mark must be on disk before the reply, or a kill now would resend.
+        var onDisk: MessageDeliveryState?
+        for _ in 0..<200 where onDisk != .transmitted {
+            await Task.yield()
+            onDisk = app.snapshotFromDisk()?
+                .conversations.first { $0.id == conversation.id }?
+                .messages.first { $0.role == .user }?.deliveryState
+        }
+        XCTAssertEqual(onDisk, .transmitted)
+
+        // "Force quit": the old process never gets its reply.
+        viewModel = try app.relaunch()
+        app.transport.resumeBehavior = .succeed(output: "Created smiley.txt")
+        app.monitor.simulate(online: true)
+        await viewModel.flushQueuedMessages()
+
+        XCTAssertTrue(app.transport.sentPrompts.isEmpty, "the prompt was sent again")
+        XCTAssertEqual(app.transport.resumedPrompts, ["Make him a text file"])
+        let settled = try XCTUnwrap(viewModel.conversation(withID: conversation.id))
+        XCTAssertEqual(settled.messages.map(\.role), [.user, .agent])
+        XCTAssertEqual(settled.messages.map(\.deliveryState), [.sent, .sent])
+        XCTAssertEqual(settled.messages.last?.content, "Created smiley.txt")
+        // Release the old process's stalled send only now, so it cannot race the relaunch.
+        await gate.open()
+    }
+
+    // If the host has no record of the turn, the app must not guess: the message fails
+    // with a Retry button and nothing is sent.
+    func testRelaunchWithUnknownOutcomeFailsInsteadOfResending() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        var viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Files", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+
+        let gate = PromptGate()
+        app.transport.sendBehavior = .wait(gate: gate, output: "never seen")
+        viewModel.prompt = "Delete the temp folder"
+        viewModel.sendPrompt()
+        var onDisk: MessageDeliveryState?
+        for _ in 0..<200 where onDisk != .transmitted {
+            await Task.yield()
+            onDisk = app.snapshotFromDisk()?
+                .conversations.first { $0.id == conversation.id }?
+                .messages.first { $0.role == .user }?.deliveryState
+        }
+        XCTAssertEqual(onDisk, .transmitted)
+
+        viewModel = try app.relaunch()
+        // MockAgentTransport's default resumeBehavior is .fail(.outcomeUnknown).
+        app.monitor.simulate(online: true)
+        await viewModel.flushQueuedMessages()
+
+        XCTAssertTrue(app.transport.sentPrompts.isEmpty, "the prompt was sent again")
+        XCTAssertEqual(app.transport.resumedPrompts, ["Delete the temp folder"])
+        let settled = try XCTUnwrap(viewModel.conversation(withID: conversation.id))
+        XCTAssertEqual(settled.messages.map(\.deliveryState), [.failed])
+        XCTAssertFalse(settled.messages.contains { $0.role == .thinking })
+        // Release the old process's stalled send only now, so it cannot race the relaunch.
+        await gate.open()
+    }
+
+    // A message queued behind the unsettled one still goes out once, after it.
+    func testQueuedMessageAfterTransmittedOneSendsOnceAfterSettling() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        var viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Files", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+
+        let gate = PromptGate()
+        app.transport.sendBehavior = .wait(gate: gate, output: "never seen")
+        viewModel.prompt = "first"
+        viewModel.sendPrompt()
+        viewModel.prompt = "second"
+        viewModel.sendPrompt()
+        var states: [MessageDeliveryState] = []
+        for _ in 0..<200 where states != [.transmitted, .queued] {
+            await Task.yield()
+            states = app.snapshotFromDisk()?
+                .conversations.first { $0.id == conversation.id }?
+                .messages.filter { $0.role == .user }.map(\.deliveryState) ?? []
+        }
+        XCTAssertEqual(states, [.transmitted, .queued])
+
+        viewModel = try app.relaunch()
+        app.transport.resumeBehavior = .succeed(output: "first done")
+        app.transport.sendBehavior = .succeed(output: "second done")
+        app.monitor.simulate(online: true)
+        await viewModel.flushQueuedMessages()
+
+        XCTAssertEqual(app.transport.resumedPrompts, ["first"])
+        XCTAssertEqual(app.transport.sentPrompts, ["second"])
+        let settled = try XCTUnwrap(viewModel.conversation(withID: conversation.id))
+        XCTAssertEqual(settled.messages.filter { $0.role == .user }.map(\.deliveryState), [.sent, .sent])
+        XCTAssertEqual(settled.messages.filter { $0.role == .agent }.map(\.content), ["first done", "second done"])
+        // Release the old process's stalled send only now, so it cannot race the relaunch.
+        await gate.open()
+    }
+
     // Each conversation must keep its own row
     func testConversationsWithCollidingToolIDsKeepSeparateHistories() async throws {
         let app = try AppInstallation()

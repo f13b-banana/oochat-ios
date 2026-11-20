@@ -2,7 +2,7 @@
 //  OIPServerFrame.swift
 //  ConnectOnionKit
 //
-//  Created by Jesse on 12/10/2026.
+//  Created by Jesse on 15/10/2026.
 //
 
 import Foundation
@@ -18,7 +18,6 @@ public struct OIPDescriptor: Equatable, Sendable {
     public let minVersion: String?
     public let maxVersion: String?
     public let websocketPath: String?
-    
     init?(_ value: JSONValue?) {
         guard let object = value?.objectValue else {
             return nil
@@ -42,7 +41,6 @@ public struct OIPSessionModes: Equatable, Sendable {
     public let currentMode: OIPPermissionMode?
     public let turnsLeft: Int?
     public let availableModes: [OIPModeOption]
-    
     init?(_ value: JSONValue?) {
         guard let object = value?.objectValue else {
             return nil
@@ -76,7 +74,6 @@ public struct OIPConnected: Equatable, Sendable {
 public enum OIPServerErrorCode: Equatable, Sendable {
     case int(Int)
     case string(String)
-    
     init?(_ value: JSONValue?) {
         if let string = value?.stringValue {
             self = .string(string)
@@ -130,11 +127,9 @@ public struct OIPExecResult: Equatable, Sendable {
     public let execID: String
     public let tool: String?
     public let status: String
-    
     // On failure (tool raised, not whitelisted, unknown tool): status: "error" with an error field instead of result
     public let result: String?
     public let error: String?
-    
     public let durationMS: Int?
 
     public var isSuccess: Bool {
@@ -148,7 +143,6 @@ public struct OIPOnboardRequired: Equatable, Sendable {
     public let methods: [String]
     public let paymentAmount: Double?
     public let paymentAddress: String?
-    
 }
 
 // Frame
@@ -159,19 +153,15 @@ public enum OIPServerFrame: Equatable, Sendable {
     case output(OIPOutput)
     case agentProfile(OIPAgentProfile)
     case sessionStatus(sessionID: String?, status: String)
-    
     // Unknown mode arrives as .unknown(raw), access raw string through mode.rawValue
     case modeChanged(mode: OIPPermissionMode, turnsLeft: Int?)
     case execResult(OIPExecResult)
     case onboardRequired(OIPOnboardRequired)
     case ping
-    
     // 'body' is the whole frame containing 'type' and 'id' for stream and interaction frames
     case event(type: String, id: String?, body: [String: JSONValue])
-    
     // Anything unrecognised or missing required fields
     case unknown(type: String?, body: [String: JSONValue])
-    
     // Stream Event Types
     static let streamEventTypes: Set<String> = [
         OIPFrameType.plan,
@@ -186,13 +176,11 @@ public enum OIPServerFrame: Equatable, Sendable {
         OIPFrameType.runtimeInputAck,
         OIPFrameType.onboardSuccess
     ]
-    
     // Decode
     public static func decode(_ frame: [String: JSONValue]) -> OIPServerFrame {
         guard let type = frame["type"]?.stringValue else {
             return .unknown(type: nil, body: frame)
         }
-        
         let decoded: OIPServerFrame?
         switch type {
         case OIPFrameType.connected:
@@ -220,9 +208,7 @@ public enum OIPServerFrame: Equatable, Sendable {
         }
         return decoded ?? .unknown(type: type, body: frame)
     }
-    
-    // Mark: Frame Decoders
-    
+    // Frame Decoders
     private static func decodeConnected(_ frame: [String: JSONValue]) -> OIPServerFrame? {
         guard let status = frame["status"]?.stringValue else {
             return nil
@@ -239,7 +225,6 @@ public enum OIPServerFrame: Equatable, Sendable {
             )
         )
     }
-    
     private static func decodeError(_ frame: [String: JSONValue]) -> OIPServerFrame? {
         let code = OIPServerErrorCode(frame["code"])
         let incompatible = code == .int(OIPErrorCode.incompatibleVersion)
@@ -252,7 +237,6 @@ public enum OIPServerFrame: Equatable, Sendable {
             )
         )
     }
-    
     private static func decodeOutput(_ frame: [String: JSONValue]) -> OIPServerFrame? {
         guard let result = frame["result"]?.stringValue else {
             return nil
@@ -267,7 +251,6 @@ public enum OIPServerFrame: Equatable, Sendable {
             )
         )
     }
-    
     private static func decodeAgentProfile(_ frame: [String: JSONValue]) -> OIPServerFrame? {
         .agentProfile(
             OIPAgentProfile(
@@ -281,7 +264,6 @@ public enum OIPServerFrame: Equatable, Sendable {
             )
         )
     }
-    
     private static func decodeSessionStatus(_ frame: [String: JSONValue]) -> OIPServerFrame? {
         // The client's own SESSION_STATUS request has no `status`, so it falls through to .unknown.
         guard let status = frame["status"]?.stringValue else {
@@ -327,20 +309,16 @@ public enum OIPServerFrame: Equatable, Sendable {
             )
         )
     }
-    
     // Helpers
-    
     private static func strings(_ value: JSONValue?) -> [String] {
         (value?.arrayValue ?? []).compactMap(\.stringValue)
     }
-    
     /// The spec sends `["a", "b"]`; also accepts `[{"name": "a"}]`.
     private static func names(_ value: JSONValue?) -> [String] {
         (value?.arrayValue ?? []).compactMap { item in
             item.stringValue ?? item.objectValue?["name"]?.stringValue
         }
     }
-    
     /// The spec sends `[{"name", "description", "location"}]`; also accepts bare names.
     private static func skills(_ value: JSONValue?) -> [OIPAgentSkill] {
         (value?.arrayValue ?? []).compactMap { item in

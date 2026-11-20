@@ -88,8 +88,7 @@ final class HostedAgentClient: HostedAgentTransport {
         agentAddress: String,
         conversation: Conversation,
         prompt: HostedAgentPrompt,
-        onEvent: (@MainActor (HostedAgentEvent) -> Void)?,
-        onInteraction: (@MainActor (HostedAgentInteraction) async -> HostedAgentInteractionDecision)?
+        handlers: HostedAgentPromptHandlers
     ) async throws -> HostedAgentResult {
         guard Self.isHostedAgentAddress(agentAddress) else {
             throw HostedAgentClientError.invalidAddress
@@ -100,8 +99,27 @@ final class HostedAgentClient: HostedAgentTransport {
             prompt: prompt.text,
             images: prompt.images,
             files: prompt.files,
-            onEvent: onEvent,
-            onInteraction: onInteraction
+            onEvent: handlers.onEvent,
+            onInteraction: handlers.onInteraction,
+            onInputDispatched: handlers.onInputDispatched
+        )
+    }
+
+    func resumePrompt(
+        agentAddress: String,
+        conversation: Conversation,
+        prompt: HostedAgentPrompt,
+        handlers: HostedAgentPromptHandlers
+    ) async throws -> HostedAgentResult {
+        guard Self.isHostedAgentAddress(agentAddress) else {
+            throw HostedAgentClientError.invalidAddress
+        }
+        return try await connectionPool.resumePrompt(
+            agentAddress: agentAddress,
+            conversation: conversation,
+            prompt: prompt.text,
+            onEvent: handlers.onEvent,
+            onInteraction: handlers.onInteraction
         )
     }
 

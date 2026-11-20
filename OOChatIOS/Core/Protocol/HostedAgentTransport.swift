@@ -29,6 +29,7 @@ struct HostedAgentPromptHandlers {
 
 protocol HostedAgentConversationTransport: AnyObject {
     var onConnectionStateChange: (@MainActor (String, ConversationConnectionState) -> Void)? { get set }
+    var onAgentProfile: (@MainActor (String, OIPAgentProfile) -> Void)? { get set }
     var onSessionUpdate: (@MainActor (String, HostedAgentSessionUpdate) -> Void)? { get set }
 
     func connect(agentAddress: String, conversation: Conversation) async throws -> HostedAgentResult

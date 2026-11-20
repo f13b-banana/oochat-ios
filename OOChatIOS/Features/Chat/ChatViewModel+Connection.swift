@@ -42,7 +42,6 @@ extension ChatViewModel {
             }
             let savedAgent = upsertAgent(agent)
             ensureDefaultConversation(for: savedAgent, seed: conversation)
-            skillCoordinator.loadSkillsIfNeeded(for: savedAgent, isOffline: isOffline)
             recoveryCoordinator.setConnectionState(.connected, forConversationID: conversation.id)
             isConnecting = false
             return savedAgent

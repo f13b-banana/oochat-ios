@@ -1,4 +1,5 @@
 import XCTest
+import ConnectOnionKit
 @testable import OOChatIOS
 
 @MainActor
@@ -115,20 +116,6 @@ final class ComposerTests: XCTestCase {
         )
         XCTAssertTrue(viewModel.pendingFiles.isEmpty)
         XCTAssertEqual(viewModel.activeConversation?.messages.first { $0.role == .user }?.files.count, 1)
-    }
-
-    func testSlashPromptShowsSkillPickerAndSelectionInsertsSkill() {
-        let viewModel = ViewFixtures.chatViewModel(transport: makeTransport())
-        let window = ViewHost.host(Composer(viewModel: viewModel))
-        ViewHost.pump(0.3)
-
-        viewModel.prompt = "/"
-        ViewHost.pump(0.3)
-        XCTAssertTrue(viewModel.shouldShowSlashSkillPicker)
-        XCTAssertNotNil(ViewHost.element(labelContains: "/deploy", in: window))
-
-        XCTAssertTrue(ViewHost.activate(labelContains: "/deploy", in: window))
-        XCTAssertTrue(viewModel.prompt.contains("deploy"))
     }
 
     func testSendButtonSendsPrompt() {

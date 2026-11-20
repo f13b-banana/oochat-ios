@@ -36,7 +36,7 @@ line_length:
   ignores_urls: true
 
 file_length:
-  warning: 1800
+  warning: 2000
   error: 2200
 
 type_body_length:

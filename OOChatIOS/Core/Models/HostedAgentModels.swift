@@ -1,4 +1,5 @@
 import Foundation
+import ConnectOnionKit
 
 struct AgentSkill: Identifiable, Decodable, Equatable {
     let name: String

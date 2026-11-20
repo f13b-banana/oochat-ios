@@ -1,11 +1,11 @@
 import Foundation
 
-enum Hex {
-    static func encode(_ data: Data) -> String {
+public enum Hex {
+    public static func encode(_ data: Data) -> String {
         data.map { String(format: "%02x", $0) }.joined()
     }
 
-    static func decode(_ text: String) -> Data? {
+    public static func decode(_ text: String) -> Data? {
         let clean = text.hasPrefix("0x") ? String(text.dropFirst(2)) : text
         guard clean.count.isMultiple(of: 2) else {
             return nil

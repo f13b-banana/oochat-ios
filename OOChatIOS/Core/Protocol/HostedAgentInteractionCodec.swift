@@ -1,4 +1,5 @@
 import Foundation
+import ConnectOnionKit
 
 extension ToolApprovalRequest {
     static func from(_ frame: [String: JSONValue]) -> ToolApprovalRequest? {

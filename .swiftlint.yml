@@ -1,9 +1,12 @@
 included:
   - OOChatIOS
   - OOChatIOSTests
+  - Packages/ConnectOnionKit/Sources
+  - Packages/ConnectOnionKit/Tests
 
 excluded:
   - OOChatIOS/Core/Protocol/HostedAgentClient.bak.swift
+  - Packages/ConnectOnionKit/Sources/ConnectOnionKit/Dashboard/DashboardDocument.swift
   - build
   - DerivedData
   - submodules

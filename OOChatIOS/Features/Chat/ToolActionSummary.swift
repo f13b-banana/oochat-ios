@@ -1,3 +1,5 @@
+import ConnectOnionKit
+
 enum ToolActionSummary {
     static func completed(toolName: String, arguments: [String: JSONValue]) -> String {
         summary(

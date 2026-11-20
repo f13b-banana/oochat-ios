@@ -1,3 +1,5 @@
+import ConnectOnionKit
+
 struct HostedAgentFilePayload: Codable, Equatable {
     let name: String
     let data: String

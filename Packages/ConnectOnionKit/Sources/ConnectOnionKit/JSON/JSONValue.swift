@@ -1,4 +1,16 @@
-enum JSONValue: Codable, Equatable {
+/// A type-safe representation of any valid JSON value.
+///
+/// `JSONValue` can represent JSON strings, numbers, booleans, objects,
+/// arrays, and null values.
+///
+/// Example:
+///
+///     let user: JSONValue = .object([
+///         "name": .string("Josh"),
+///         "age": .number(21),
+///         "isStudent": .bool(true)
+///     ])
+public enum JSONValue: Codable, Hashable, Sendable {
     case string(String)
     case number(Double)
     case bool(Bool)
@@ -6,7 +18,7 @@ enum JSONValue: Codable, Equatable {
     case array([JSONValue])
     case null
 
-    init(from decoder: Decoder) throws {
+   public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {
             self = .null
@@ -23,7 +35,7 @@ enum JSONValue: Codable, Equatable {
         }
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
         case .string(let value):
@@ -41,14 +53,14 @@ enum JSONValue: Codable, Equatable {
         }
     }
 
-    var stringValue: String? {
+    public var stringValue: String? {
         if case .string(let value) = self {
             return value
         }
         return nil
     }
 
-    var numberValue: Double? {
+    public var numberValue: Double? {
         if case .number(let value) = self {
             return value
         }

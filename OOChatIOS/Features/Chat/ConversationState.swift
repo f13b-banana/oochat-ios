@@ -1,4 +1,5 @@
 import Combine
+import ConnectOnionKit
 import Foundation
 
 enum ConversationPersistence {
@@ -23,6 +24,8 @@ final class ConversationState: ObservableObject {
     @Published private(set) var completedUnreadConversationIDs: Set<String> = []
 
     private var draftsByConversationID: [String: String] = [:]
+    /// One Work Room store per conversation, fed from the live frame pipeline. Session-scoped like drafts.
+    private var workRoomStoresByConversationID: [String: WorkRoomStore] = [:]
     private let store: ConversationRepository
 
     init(store: ConversationRepository) {
@@ -80,6 +83,16 @@ final class ConversationState: ObservableObject {
             return
         }
         draftsByConversationID[activeConversationID] = draft
+    }
+
+    /// Created on first use, so a view that reads it before the first provider frame observes the same store.
+    func workRoomStore(for conversationID: String) -> WorkRoomStore {
+        if let existing = workRoomStoresByConversationID[conversationID] {
+            return existing
+        }
+        let created = WorkRoomStore()
+        workRoomStoresByConversationID[conversationID] = created
+        return created
     }
 
     func agent(withID id: String) -> SavedAgent? {
@@ -179,6 +192,7 @@ final class ConversationState: ObservableObject {
             }
         }
         draftsByConversationID[conversation.id] = nil
+        workRoomStoresByConversationID[conversation.id] = nil
         failedDeliveryConversationIDs.remove(conversation.id)
         completedUnreadConversationIDs.remove(conversation.id)
         markActiveConversationViewed()
@@ -205,6 +219,7 @@ final class ConversationState: ObservableObject {
 
         for conversationID in deletedConversationIDs {
             draftsByConversationID[conversationID] = nil
+            workRoomStoresByConversationID[conversationID] = nil
             failedDeliveryConversationIDs.remove(conversationID)
             completedUnreadConversationIDs.remove(conversationID)
             recordPersistence(store.deleteConversationResult(id: conversationID))

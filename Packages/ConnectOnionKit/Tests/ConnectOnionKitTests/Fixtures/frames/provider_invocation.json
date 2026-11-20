@@ -1,6 +1,14 @@
 {
   "type": "provider_invocation",
   "invocationId": "codex:call-7",
-  "status": "cancelled",
-  "stateRevision": 5
+  "parentToolCallId": "call-7",
+  "provider": "codex",
+  "providerDisplayName": "Codex",
+  "taskTitle": "Build and verify the requested C program",
+  "currentSummary": "Working in the selected workspace",
+  "permissionMode": "manual",
+  "sessionId": "codex-session-1",
+  "status": "running",
+  "stateRevision": 1,
+  "workroomId": "codex:call-7"
 }

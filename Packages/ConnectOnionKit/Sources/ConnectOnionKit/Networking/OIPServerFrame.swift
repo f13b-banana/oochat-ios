@@ -166,6 +166,9 @@ public enum OIPServerFrame: Equatable, Sendable {
     case execResult(OIPExecResult)
     case onboardRequired(OIPOnboardRequired)
     case dashboardSnapshot(OIPDashboardSnapshot)
+    case providerInvocation(OIPProviderInvocation)
+    case providerActivity(OIPProviderActivity)
+    case providerMessage(OIPProviderMessage)
     case ping
     // 'body' is the whole frame containing 'type' and 'id' for stream and interaction frames
     case event(type: String, id: String?, body: [String: JSONValue])
@@ -193,6 +196,7 @@ public enum OIPServerFrame: Equatable, Sendable {
 
         let decoded = decodeSessionFrame(type, frame)
             ?? decodeAgentFrame(type, frame)
+            ?? decodeProviderFrame(type, frame)
             ?? decodeStreamEvent(type, frame)
         return decoded ?? .unknown(type: type, body: frame)
     }

@@ -75,6 +75,7 @@ final class MockHostedAgentTests: XCTestCase {
         XCTAssertEqual(CanonicalJSON.string(from: .number(1e20)), "1e+20")
     }
 
+    @MainActor
     func testChatTimelineGroupsOnlyConsecutiveToolCalls() {
         let firstTool = ChatMessage(
             id: "tool-read",

@@ -1,3 +1,4 @@
+import ConnectOnionKit
 import SwiftUI
 import XCTest
 @testable import OOChatIOS
@@ -55,6 +56,49 @@ final class ChatViewTests: XCTestCase {
         XCTAssertNotNil(ViewHost.element(labelContains: "Read a file and ran a command", in: window))
         XCTAssertNotNil(ViewHost.element(labelContains: "Here is the summary.", in: window))
         XCTAssertNil(ViewHost.element(labelContains: "Send message", in: window))
+    }
+
+    func testProviderInvocationShowsWorkRoomCardInPlaceOfItsToolCall() {
+        let fixture = ChatContainerFixture()
+        let conversation = fixture.conversation(
+            messages: [
+                ChatMessage(id: "user1", role: .user, content: "Build the sort program"),
+                ChatMessage(
+                    id: "call-7",
+                    role: .tool,
+                    content: "",
+                    toolName: "codex",
+                    toolArguments: ["command": .string("make test")],
+                    toolState: .running
+                ),
+                ChatMessage(id: "agent1", role: .agent, content: "Codex finished.")
+            ]
+        )
+        let viewModel = makeContainerViewModel(
+            agents: [fixture.agent],
+            conversations: [conversation],
+            activeAgentID: fixture.agent.id,
+            activeConversationID: conversation.id
+        )
+        let window = ViewHost.host(ChatView(viewModel: viewModel, showsComposer: false))
+        XCTAssertNotNil(ViewHost.element(labelContains: "Tool call: Codex", in: window))
+
+        viewModel.conversationState.workRoomStore(for: conversation.id).receive(OIPServerFrame.decode([
+            "type": .string("provider_invocation"),
+            "invocationId": .string("codex:call-7"),
+            "parentToolCallId": .string("call-7"),
+            "provider": .string("codex"),
+            "taskTitle": .string("Build and verify the requested C program"),
+            "currentSummary": .string("Working in the selected workspace"),
+            "status": .string("running"),
+            "stateRevision": .number(1),
+            "workroomId": .string("codex:call-7")
+        ]))
+
+        XCTAssertNotNil(ViewHost.waitForElement(labelContains: "Open Work Room", in: window))
+        XCTAssertNotNil(ViewHost.element(labelContains: "Build and verify the requested C program", in: window))
+        XCTAssertNil(ViewHost.element(labelContains: "Tool call: Codex", in: window))
+        XCTAssertNotNil(ViewHost.element(labelContains: "Codex finished.", in: window))
     }
 
     func testComposerRendersWhenEnabled() {

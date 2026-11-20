@@ -1,3 +1,4 @@
+import ConnectOnionKit
 import SwiftUI
 
 extension ChatScreen {
@@ -76,7 +77,8 @@ extension ChatScreen {
         ChatTimelineBuilder.entries(
             from: conversation.messages.filter {
                 shouldShowMessage($0, in: conversation.id)
-            }
+            },
+            workRooms: viewModel.conversationState.workRoomStore(for: conversation.id)
         )
     }
 
@@ -89,6 +91,9 @@ extension ChatScreen {
             }
         case .toolCallGroup(let messages):
             ToolCallGroupView(messages: messages)
+        case .workRoom(let workRoom):
+            // No-op until the Work Room screen exists; it will push onto this chat's NavigationStack.
+            OOWorkRoomCard(workRoom: workRoom) {}
         }
     }
 

@@ -40,6 +40,10 @@ enum OOHex {
     static let failureLine = OOHexPair(light: 0xFFC9C9, dark: 0x572920)
     static let failureMark = OOHexPair(light: 0xE7000B, dark: 0xE7000B)
     static let failureText = OOHexPair(light: 0xC10007, dark: 0xFF887F)
+    static let claudeCodeTint = OOHexPair(light: 0xF8ECE6, dark: 0x2C1D17)
+    static let claudeCodeTintText = OOHexPair(light: 0x9A4528, dark: 0xF2B39A)
+    static let codexTint = OOHexPair(light: 0xEDF0FA, dark: 0x1A1F2E)
+    static let codexTintText = OOHexPair(light: 0x3B4FA3, dark: 0xAEBCF2)
 }
 
 /// Colour roles.
@@ -98,6 +102,15 @@ public enum OOColor {
     public static let failureLine = dynamic(OOHex.failureLine)
     public static let failureMark = dynamic(OOHex.failureMark)
     public static let failureText = dynamic(OOHex.failureText)
+
+    /// warm clay: the Claude Code Provider on Work Room Cards and the Claude Station row.
+    /// Not amber, which stays reserved for decisions.
+    public static let claudeCodeTint = dynamic(OOHex.claudeCodeTint)
+    public static let claudeCodeTintText = dynamic(OOHex.claudeCodeTintText)
+
+    /// slate blue: the Codex Provider on Work Room Cards
+    public static let codexTint = dynamic(OOHex.codexTint)
+    public static let codexTintText = dynamic(OOHex.codexTintText)
 
     static func dynamic(_ pair: OOHexPair) -> Color {
         dynamic(light: pair.light, dark: pair.dark)

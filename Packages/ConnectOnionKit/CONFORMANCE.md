@@ -5,9 +5,9 @@ Based on the ConnectOnion host 1.8.10 Websocket spec, this is a checklist for Co
 - Spec: `connectonion/docs/network/websocket-protocol.md`, shipped in the
   [`connectonion` 1.8.10](https://github.com/openonion/connectonion/blob/v1.8.10/docs/network/websocket-protocol.md) wheel. OIP 0.1
 - Fixtures: [`Tests/ConnectOnionKitTests/Fixtures/frames/`](Tests/ConnectOnionKitTests/Fixtures/frames/). One JSON file per frame, plus a `.variant.json` where the spec shows a second shape.
-- 58 frames:
+- 60 frames:
   - 22 Client to Server
-  - 33 Server to Client
+  - 35 Server to Client
   - 3 both ways
 
 ## How to fill in a row
@@ -31,8 +31,10 @@ Each kit MR changes only the cells of the frames it implements.
 | `spec` | the spec's own example, with `...` replaced by real values |
 | `spec-text` | the spec prose names the fields; the JSON is assembled from them |
 | `host-src` | the spec names the frame only; fields are read from the 1.8.10 host source. Verify against a real host before relying on them |
+| `core-src` | the Work Room provider frames: a real example from the Work Room frame catalog, checked against Core commit 971c799 (`core/provider_events.py`) |
 
 Addresses, signatures and nonces in the fixtures are synthetic. The all-zero signatures will not verify; they exist to test shape, not cryptography.
+
 
 ## Frames
 
@@ -95,7 +97,9 @@ Addresses, signatures and nonces in the fixtures are synthetic. The all-zero sig
 | `PROVIDER_INTERRUPT_ACK` | S→C | Overview › Scoped native-provider stop | `PROVIDER_INTERRUPT_ACK.json` | spec |  | n/a | ⬜ | | `accepted: true` is not the terminal outcome; the `provider_invocation` `cancelled` event is. Reasons: `not_active`, `invalid_request`. |
 | `PROVIDER_PERMISSION_ACK` | S→C | Overview › Provider-native permission change | `PROVIDER_PERMISSION_ACK.json` | spec-text |  | n/a | ⬜ | | Fixture is the rejection form, which is fully specified. The accepted form adds a `providerPermission` object whose shape the spec does not give. |
 | `mode_changed` | S→C | Message Reference › mode_change | `mode_changed.json` | host-src | `OIPFrameType.modeChanged` (name only) | n/a | ⬜ | | Lower-case. Means the durable commit completed. Followed by `provider_invocation` frames if Work Rooms narrowed. |
-| `provider_invocation` | S→C | Overview › Provider-native permission change | `provider_invocation.json` | spec-text |  | n/a | ⬜ | | Lower-case. Spec shows no full body; fixture holds only fields the spec names (`status`, `stateRevision`, `invocationId`). Incomplete by design. |
+| `provider_invocation` | S→C | Overview › Provider-native permission change | `provider_invocation.json`<br>`provider_invocation.terminal.json` | core-src | `OIPServerFrame.providerInvocation` / `OIPProviderInvocation` | n/a | ✅ | `testProviderInvocationDecodesCatalogFixture`, `testProviderInvocationTerminalFixture`, `testProviderInvocationWithUnknownProviderIsUnknown`, `WorkRoomStoreTests` | Lower-case. Needs `invocationId`, `parentToolCallId` and `provider` (`codex` or `claude_code`), otherwise `.unknown`. Title and summaries off Core's lists (`ProviderCopy`) decode as nil. Not yet decoded: `providerPermission`, `permissionMode`, `sessionId`, `elapsedMs`, `taskSummary` (never shown). |
+| `provider_activity` | S→C | not in the spec | `provider_activity.json` | core-src | `OIPServerFrame.providerActivity` / `OIPProviderActivity` | n/a | ✅ | `testProviderActivityDecodesCatalogFixture`, `WorkRoomStoreTests` | A title and summary that are not one of Core's pairs make the whole frame `.unknown`. `files` keeps base names only, at most 128 characters, no duplicates, at most 8. |
+| `provider_message` | S→C | not in the spec | `provider_message.json` | core-src | `OIPServerFrame.providerMessage` / `OIPProviderMessage` | n/a | ✅ | `testProviderMessageDecodesCatalogFixture`, `WorkRoomStoreTests` | Text is trimmed, never blank, at most 16,000 characters before trimming; plain text only. `workroomId` and `continuationOf` on a message are ignored; its invocation decides grouping. |
 
 ## Named in the spec but not client frames
 
@@ -117,7 +121,7 @@ Host 1.8.10 accepts or sends these, but `websocket-protocol.md` does not describ
 | `PROVIDER_INPUT` / `PROVIDER_INPUT_ACK` | C→S / S→C | `ws_router/session.py` |
 | `PROVIDER_STATION_ATTACH` / `_ACK` | C→S / S→C | `ws_router/session.py` |
 | `PROVIDER_CONTROL` / `_ACK` | C→S / S→C | `ws_router/session.py` |
-| `provider_session`, `provider_activity`, `provider_artifact`, `provider_message` | S→C | `ws_router/session.py`, `provider_workroom.py` |
+| `provider_session`, `provider_artifact` | S→C | `ws_router/session.py`, `provider_workroom.py` |
 | `CONTROL_CENTER_COMMAND` | C→S | `ws_router/session.py` |
 | `REMOTE_BROWSER` | C→S | `ws_router/session.py` |
 | `RUNTIME_INPUT` | agent-internal | `ws_router/session.py` |

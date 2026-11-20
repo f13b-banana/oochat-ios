@@ -31,7 +31,8 @@ extension HostedAgentConnection {
 
     private func dispatchRemaining(_ frame: [String: JSONValue], generation: Int) async {
         switch frame["type"]?.stringValue {
-        case "tool_call", "tool_result":
+        case "tool_call", "tool_result",
+             OIPFrameType.providerInvocation, OIPFrameType.providerActivity, OIPFrameType.providerMessage:
             await handleEvent(frame)
         case "mode_changed":
             await handleModeChanged(frame)

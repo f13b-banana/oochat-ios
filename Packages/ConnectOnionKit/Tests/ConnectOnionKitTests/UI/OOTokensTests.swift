@@ -36,7 +36,12 @@ final class OOTokensTests: XCTestCase {
         Pair("ink on decision fill", OOHex.ink, OOHex.decisionFill),
         Pair("secondary on decision fill", OOHex.inkSecondary, OOHex.decisionFill),
         Pair("secondary on failure fill", OOHex.inkSecondary, OOHex.failureFill),
-        Pair("white on failure mark", OOHexPair(light: 0xFFFFFF, dark: 0xFFFFFF), OOHex.failureMark)
+        Pair("white on failure mark", OOHexPair(light: 0xFFFFFF, dark: 0xFFFFFF), OOHex.failureMark),
+        // Provider tints on Work Room Cards
+        Pair("Claude Code text on its tint", OOHex.claudeCodeTintText, OOHex.claudeCodeTint),
+        Pair("Claude Code text on paper", OOHex.claudeCodeTintText, OOHex.paper),
+        Pair("Codex text on its tint", OOHex.codexTintText, OOHex.codexTint),
+        Pair("Codex text on paper", OOHex.codexTintText, OOHex.paper)
     ]
 
     /// Controls, focus rings and status marks need 3:1.

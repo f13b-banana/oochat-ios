@@ -419,6 +419,75 @@ final class OIPServerFrameTests: XCTestCase {
         XCTAssertEqual(try decode("thinking"), .event(type: "thinking", id: nil, body: try fixture("thinking")))
     }
 
+    // MARK: Provider frames
+
+    func testProviderInvocationDecodesCatalogFixture() throws {
+        XCTAssertEqual(
+            try decode("provider_invocation"),
+            .providerInvocation(OIPProviderInvocation(
+                invocationID: "codex:call-7",
+                parentToolCallID: "call-7",
+                provider: .codex,
+                status: .running,
+                stateRevision: 1,
+                taskTitle: "Build and verify the requested C program",
+                currentSummary: "Working in the selected workspace",
+                resultSummary: nil,
+                errorSummary: nil,
+                workroomID: "codex:call-7",
+                continuationOf: nil
+            ))
+        )
+    }
+
+    func testProviderInvocationTerminalFixture() throws {
+        guard case .providerInvocation(let invocation) = try decode("provider_invocation.terminal") else {
+            return XCTFail("expected .providerInvocation")
+        }
+        XCTAssertEqual(invocation.status, .cancelled)
+        XCTAssertEqual(invocation.stateRevision, 3)
+        XCTAssertEqual(invocation.resultSummary, "The provider stopped")
+        XCTAssertNil(invocation.taskTitle)
+    }
+
+    func testProviderInvocationWithUnknownProviderIsUnknown() throws {
+        var input = try fixture("provider_invocation")
+        input["provider"] = .string("gemini")
+        XCTAssertEqual(OIPServerFrame.decode(input), .unknown(type: "provider_invocation", body: input))
+    }
+
+    func testProviderActivityDecodesCatalogFixture() throws {
+        XCTAssertEqual(
+            try decode("provider_activity"),
+            .providerActivity(OIPProviderActivity(
+                invocationID: "codex:call-7",
+                parentToolCallID: "call-7",
+                provider: .codex,
+                activityID: "create-sort",
+                sequence: 2,
+                kind: .fileChange,
+                status: .completed,
+                title: "Update workspace files",
+                summary: "Workspace files updated",
+                files: ["sort.c"]
+            ))
+        )
+    }
+
+    func testProviderMessageDecodesCatalogFixture() throws {
+        XCTAssertEqual(
+            try decode("provider_message"),
+            .providerMessage(OIPProviderMessage(
+                invocationID: "codex:call-7",
+                parentToolCallID: "call-7",
+                provider: .codex,
+                messageID: "assistant:plan",
+                role: .assistant,
+                text: "I’ll create the isolated project and verify it independently."
+            ))
+        )
+    }
+
     // MARK: Unknown
 
     func testEveryFixtureDecodesAndOnlyHandledTypesAreTyped() throws {
@@ -439,7 +508,10 @@ final class OIPServerFrameTests: XCTestCase {
             OIPFrameType.execResult,
             OIPFrameType.onboardRequired,
             OIPFrameType.dashboardSnapshot,
-            OIPFrameType.ping
+            OIPFrameType.ping,
+            OIPFrameType.providerInvocation,
+            OIPFrameType.providerActivity,
+            OIPFrameType.providerMessage
         ]).union(OIPServerFrame.streamEventTypes)
 
         for file in files {

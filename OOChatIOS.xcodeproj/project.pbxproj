@@ -105,6 +105,7 @@
 		100000000000000000000341 /* ChatViewModel+Messaging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000343 /* ChatViewModel+Messaging.swift */; };
 		100000000000000000000342 /* HostedAgentConnection+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000344 /* HostedAgentConnection+Lifecycle.swift */; };
 		35AE410930777ECB004216E9 /* ConnectOnionKit in Frameworks */ = {isa = PBXBuildFile; productRef = 35AE410830777ECB004216E9 /* ConnectOnionKit */; };
+		5A17E0000000000000000002 /* IdentityStore+PrivateKeyStoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A17E0000000000000000001 /* IdentityStore+PrivateKeyStoring.swift */; };
 		990952282DCB4FEFBDD22DF3 /* AgentLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A33F8902AD24789890AE6C8 /* AgentLink.swift */; };
 /* End PBXBuildFile section */
 
@@ -220,6 +221,7 @@
 		100000000000000000000364 /* ChatSidebarSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarSearch.swift; sourceTree = "<group>"; };
 		100000000000000000000365 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		2A33F8902AD24789890AE6C8 /* AgentLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentLink.swift; sourceTree = "<group>"; };
+		5A17E0000000000000000001 /* IdentityStore+PrivateKeyStoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "IdentityStore+PrivateKeyStoring.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -387,6 +389,7 @@
 			isa = PBXGroup;
 			children = (
 				100000000000000000000007 /* IdentityStore.swift */,
+				5A17E0000000000000000001 /* IdentityStore+PrivateKeyStoring.swift */,
 				100000000000000000000355 /* StoredIdentity.swift */,
 			);
 			path = Identity;
@@ -626,6 +629,7 @@
 				100000000000000000000200 /* HostedAgentModels.swift in Sources */,
 				100000000000000000000207 /* StoredIdentity.swift in Sources */,
 				100000000000000000000107 /* IdentityStore.swift in Sources */,
+				5A17E0000000000000000002 /* IdentityStore+PrivateKeyStoring.swift in Sources */,
 				100000000000000000000111 /* ConversationRepository.swift in Sources */,
 				100000000000000000000113 /* StoredModels.swift in Sources */,
 				100000000000000000000114 /* SwiftDataConversationRepository.swift in Sources */,

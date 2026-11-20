@@ -471,7 +471,7 @@ enum StoredModelsMigrationPlan: SchemaMigrationPlan {
             .lightweight(
                 fromVersion: StoredModelsSchemaV3.self,
                 toVersion: StoredModelsSchemaV4.self
-            ),
+            )
         ]
     }
 }

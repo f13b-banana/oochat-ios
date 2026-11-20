@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 struct MessageBubble: View {
     let message: ChatMessage
-    var onRetry: (() -> Void)? = nil
+    var onRetry: (() -> Void)?
     @State private var previewedImage: ChatImageAttachment?
     @State private var downloadDocument: ChatFileDocument?
     @State private var downloadFilename = "Attachment"

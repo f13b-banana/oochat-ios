@@ -97,7 +97,7 @@ final class MessageBubbleTests: XCTestCase {
                     name: "notes.txt",
                     data: Data("hello".utf8),
                     mimeType: "text/plain"
-                ),
+                )
             ]
         )
         let window = ViewHost.host(MessageBubble(message: fileMessage))
@@ -213,7 +213,7 @@ final class AskUserCardTests: XCTestCase {
             question: "Credentials",
             fields: [
                 AskUserField(name: "user", label: "Username", placeholder: "you@example.com"),
-                AskUserField(name: "pass", label: "Password", type: "password"),
+                AskUserField(name: "pass", label: "Password", type: "password")
             ]
         )
         let window = ViewHost.host(AskUserCard(pending: pending(request)) { _ in })
@@ -250,7 +250,7 @@ final class ApprovalCardTests: XCTestCase {
             tool: "run_command",
             arguments: [
                 "cmd": .string("ls -la"),
-                "cwd": .string("/tmp"),
+                "cwd": .string("/tmp")
             ],
             description: "Lists the directory",
             batchRemaining: [ToolApprovalBatchItem(tool: "read_file")]

@@ -1,0 +1,9 @@
+{
+  "type": "PROXY_STREAM",
+  "payload": {
+    "id": 7,
+    "op": "connect",
+    "address": "93.184.216.34",
+    "port": 443
+  }
+}

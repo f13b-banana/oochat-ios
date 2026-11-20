@@ -34,7 +34,7 @@ extension HostedAgentConnection {
             return
         }
         do {
-            try await send(["type": .string("PONG")], over: socket)
+            try await send(OIPClientFrames.pong(), over: socket)
         } catch {
             failConnection(error, generation: generation)
         }
@@ -234,7 +234,7 @@ extension HostedAgentConnection {
             ) else {
                 return
             }
-            try await send(signedCommand(frame), over: socket)
+            try await send(frame, over: socket)
         } catch {
             failConnection(error, generation: generation)
         }
@@ -257,7 +257,7 @@ extension HostedAgentConnection {
                 failConnection(HostedAgentClientError.badFrame, generation: generation)
                 return
             }
-            try await send(signedCommand(frame), over: socket)
+            try await send(frame, over: socket)
         } catch {
             failConnection(error, generation: generation)
         }
@@ -272,33 +272,16 @@ extension HostedAgentConnection {
         // superseded requests release the local gate without writing to the socket
         case (_, .superseded):
             return nil
-        case (.approval, .approval(let approval)):
-            return HostedAgentClient.approvalResponseFrame(
-                decision: approval,
-                agentAddress: key.agentAddress,
-                endpoint: endpoint
-            )
+        case (.approval(let request), .approval(let approval)):
+            return try frames.approvalResponse(requestID: request.id, decision: approval.decisionFields)
         case (.ulwCheckpoint, .ulwCheckpoint(let checkpoint)):
-            return HostedAgentClient.ulwResponseFrame(
-                decision: checkpoint,
-                agentAddress: key.agentAddress,
-                endpoint: endpoint
-            )
+            return try signedCommand(checkpoint.responseFrame)
         case (.planReview(let request), .planReview(let review)):
-            return HostedAgentClient.planReviewResponseFrame(
-                decision: review,
-                request: request,
-                agentAddress: key.agentAddress,
-                endpoint: endpoint
-            )
+            return try signedCommand(review.responseFrame(for: request))
         case (.askUser, .askUser(.cancel)):
             return nil
-        case (.askUser, .askUser(.answer(let answer))):
-            return HostedAgentClient.askUserResponseFrame(
-                answer: answer,
-                agentAddress: key.agentAddress,
-                endpoint: endpoint
-            )
+        case (.askUser(let request), .askUser(.answer(let answer))):
+            return try frames.askUserResponse(requestID: request.id, answer: answer)
         default:
             throw HostedAgentClientError.badFrame
         }
@@ -470,16 +453,14 @@ extension HostedAgentConnection {
         try await endpointResolver(agentAddress)
     }
 
+    /// iOS has always sent the top-levl 'to' direcgt or relay - host ignores it on a direct socket.
     func buildConnectFrame(conversation: Conversation) throws -> [String: JSONValue] {
-        var frame = try signer.envelope(
-            type: "CONNECT",
-            payload: signer.connectPayload(to: key.agentAddress)
+        try frames.connect(
+            direct: false,
+            sessionID: conversation.id,
+            session: .object(sessionPayload(for: conversation)),
+            lastMessageID: nil
         )
-        frame["to"] = .string(key.agentAddress)
-        frame["session_id"] = .string(conversation.id)
-        frame["session"] = .object(sessionPayload(for: conversation))
-        frame["protocol"] = .object(OIP.descriptor)
-        return frame
     }
 
     func sessionPayload(for conversation: Conversation) -> [String: JSONValue] {
@@ -490,41 +471,16 @@ extension HostedAgentConnection {
         )
     }
 
-    func buildInputFrame(
-        prompt: String,
-        images: [String],
-        files: [HostedAgentFilePayload],
-        conversation: Conversation,
-        inputID: String
-    ) throws -> [String: JSONValue] {
-        var fields: [String: JSONValue] = [
-            "session_id": .string(conversation.id),
-            "input_id": .string(inputID),
-            "prompt": .string(prompt),
-            "mode": .string(conversation.mode.rawValue)
-        ]
-        if !images.isEmpty {
-            fields["images"] = .array(images.map(JSONValue.string))
-        }
-        if !files.isEmpty {
-            fields["files"] = .array(files.map(\.jsonValue))
-        }
-        return try signer.command(type: "INPUT", fields: fields, to: key.agentAddress)
-    }
-
-    /// With 'signed_commands' on, the host runs onlyt eh signed payload, so every app frame
-    /// after CONNECT must be wrapped. PONG and SESSIONSTATUS are exempt and never come through here.
+    /// ULW and plan review answers have no named builder in pkg, so they go through generic signed command.
+    /// WIth signed_commands flag set, the host eruns only teh signed payload
     func signedCommand(_ frame: [String: JSONValue]) throws -> [String: JSONValue] {
         guard case .string(let type)? = frame["type"] else {
             throw HostedAgentClientError.badFrame
         }
 
         var fields = frame
-        for reserved in ["type", "to", "timestamp", "nonce"] {
-            fields[reserved] = nil
-        }
-
-        return try signer.command(type: type, fields: fields, to: key.agentAddress)
+        fields["type"] = nil
+        return try frames.command(type: type, fields: fields)
     }
 
     func send(_ frame: [String: JSONValue], over socket: any HostedAgentWebSocketTask) async throws {

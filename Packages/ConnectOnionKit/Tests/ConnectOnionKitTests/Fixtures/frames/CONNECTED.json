@@ -1,0 +1,32 @@
+{
+  "type": "CONNECTED",
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "new",
+  "protocol": {
+    "name": "oip",
+    "version": "0.1"
+  },
+  "session_modes": {
+    "currentModeId": "auto",
+    "turnsLeft": null,
+    "availableModes": [
+      {
+        "id": "read-only",
+        "name": "Read only"
+      },
+      {
+        "id": "auto",
+        "name": "Auto"
+      },
+      {
+        "id": "full-access",
+        "name": "Full access"
+      }
+    ]
+  },
+  "server_newer": true,
+  "session": {
+    "messages": []
+  },
+  "chat_items": []
+}

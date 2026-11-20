@@ -1,0 +1,6 @@
+{
+  "type": "ERROR",
+  "code": "STALE_ANSWER",
+  "reason": "stale",
+  "request_id": "ev-appr-0"
+}

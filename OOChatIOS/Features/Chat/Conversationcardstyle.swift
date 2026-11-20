@@ -51,24 +51,28 @@ struct CardPrimaryButtonStyle: ButtonStyle {
     }
 }
 
-// Every other choice: an outline, so it never competes with the primary one.
+// Every other choice: a filled neutral button, like the macOS .ooSecondary, so it reads
+// on the amber decision notice and never competes with the primary one.
 struct CardSecondaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
     var alignment: Alignment = .center
+    var tint: Color = OOColor.ink
+    // Red for a destructive choice (Stop response), so it reads as a button without a red fill.
+    var stroke: Color = OOColor.hairline
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(OOColor.ink)
+            .foregroundStyle(tint)
             .padding(.horizontal, OOSpace.medium)
             .frame(maxWidth: .infinity, minHeight: ooMinimumTarget, alignment: alignment)
             .background(
-                configuration.isPressed ? OOColor.currentTint : Color.clear,
+                configuration.isPressed ? OOColor.surface : OOColor.paper,
                 in: RoundedRectangle(cornerRadius: OORadius.card, style: .continuous)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: OORadius.card, style: .continuous)
-                    .stroke(OOColor.hairline, lineWidth: 1)
+                    .stroke(stroke, lineWidth: 1)
             )
             .opacity(isEnabled ? 1 : 0.38)
             .animation(AppMotion.press, value: configuration.isPressed)

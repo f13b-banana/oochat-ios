@@ -148,9 +148,18 @@ struct SidebarConversationRow: View {
                         .symbolRenderingMode(.hierarchical)
                         .frame(width: SidebarMetrics.sessionIconWidth)
 
-                    Text(conversation.title)
-                        .font(.subheadline)
-                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(conversation.title)
+                            .font(.subheadline)
+                            .lineLimit(1)
+                        // Says what the red mark means.
+                        if activityState == .failedDelivery {
+                            Text("Message not sent")
+                                .font(.caption2)
+                                .foregroundStyle(OOColor.inkSecondary)
+                                .lineLimit(1)
+                        }
+                    }
 
                     Spacer(minLength: 0)
 

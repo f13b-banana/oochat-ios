@@ -18,7 +18,7 @@ final class ChatViewTests: XCTestCase {
         )
 
         XCTAssertNotNil(ViewHost.element(labelContains: "Add your first agent", in: window))
-        XCTAssertNil(ViewHost.element(labelContains: "Not Connected", in: window))
+        XCTAssertNil(ViewHost.element(labelContains: "Not connected", in: window))
         XCTAssertTrue(ViewHost.activateButton(labelContains: "Add agent", in: window))
         XCTAssertEqual(addAgentCount, 1)
         XCTAssertTrue(ViewHost.activateButton(labelContains: "Open sidebar", in: window))
@@ -170,7 +170,7 @@ final class ChatViewTests: XCTestCase {
         XCTAssertTrue(viewModel.isActiveAgentOnline)
         XCTAssertEqual(viewModel.connectionState, .disconnected)
         XCTAssertNotNil(
-            ViewHost.element(labelContains: "Session status: Not Connected", in: window)
+            ViewHost.element(labelContains: "Not connected to \(fixture.agent.name)", in: window)
         )
     }
 

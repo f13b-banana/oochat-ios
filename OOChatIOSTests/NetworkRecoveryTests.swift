@@ -368,7 +368,9 @@ final class NetworkRecoveryTests: XCTestCase {
         let userMessage = messages.last { $0.role == .user }
         XCTAssertEqual(userMessage?.deliveryState, .failed)
         XCTAssertFalse(messages.contains { $0.role == .thinking })
-        XCTAssertNotNil(viewModel.errorMessage)
+        // The reason goes on the message, not in a banner.
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(userMessage.flatMap { viewModel.failureByMessageID[$0.id] }, .timedOut)
         XCTAssertEqual(viewModel.connectionState, .disconnected)
         XCTAssertFalse(viewModel.isProcessing)
     }
@@ -442,14 +444,16 @@ final class NetworkRecoveryTests: XCTestCase {
         XCTAssertEqual(userMessage?.deliveryState, .failed, "the failure still reaches the user on the bubble")
     }
 
-    func testGoingOfflineRetractsAConnectionErrorRaisedFirst() async {
+    func testADroppedSendShowsOnTheMessageNotABanner() async {
         let (viewModel, transport, monitor) = makeEnvironment()
         setUpAgentAndConversation(viewModel)
         transport.sendBehavior = .fail(HostedAgentClientError.closed)
         viewModel.prompt = "will drop"
         viewModel.sendPrompt()
         await viewModel.sendTask?.value
-        XCTAssertNotNil(viewModel.errorMessage, "nothing knows the network is gone yet")
+        XCTAssertNil(viewModel.errorMessage, "the failed message says why; the header offers Retry")
+        let failed = (viewModel.activeConversation?.messages ?? []).last { $0.role == .user }
+        XCTAssertEqual(failed.flatMap { viewModel.failureByMessageID[$0.id] }, .connectionClosed)
 
         monitor.simulate(online: false)
 
@@ -467,7 +471,7 @@ final class NetworkRecoveryTests: XCTestCase {
         XCTAssertEqual(viewModel.errorMessage, "That photo is larger than 10 MB.")
     }
 
-    func testAgentReportedFailureWhileOfflineStillRaisesABanner() async {
+    func testAgentReportedFailureShowsOnTheMessage() async {
         let (viewModel, transport, monitor) = makeEnvironment()
         setUpAgentAndConversation(viewModel)
         let gate = PromptGate()
@@ -482,10 +486,10 @@ final class NetworkRecoveryTests: XCTestCase {
         await gate.open()
         await viewModel.sendTask?.value
 
-        XCTAssertTrue(
-            viewModel.errorMessage?.contains("out of disk") ?? false,
-            "an agent-side failure says something the offline banner does not"
-        )
+        XCTAssertNil(viewModel.errorMessage)
+        let failed = (viewModel.activeConversation?.messages ?? []).last { $0.role == .user }
+        let reason = failed.flatMap { viewModel.failure(forMessageID: $0.id)?.reason }
+        XCTAssertTrue(reason?.contains("out of disk") ?? false, "an agent-side failure says what the agent said")
     }
 
     func testRetryResendsFailedMessage() async {
@@ -508,6 +512,7 @@ final class NetworkRecoveryTests: XCTestCase {
         XCTAssertTrue(messages.contains { $0.role == .agent && $0.content == "recovered" })
         XCTAssertEqual(transport.sentPrompts, ["flaky", "flaky"])
         XCTAssertNil(viewModel.errorMessage)
+        XCTAssertNil(viewModel.failureByMessageID[failed.id], "a retry clears the old reason")
     }
 
     func testRetryWhileOfflineRequeuesForLaterFlush() async {

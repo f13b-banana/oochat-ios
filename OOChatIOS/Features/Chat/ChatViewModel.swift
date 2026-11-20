@@ -24,6 +24,8 @@ final class ChatViewModel: ObservableObject {
     /// The code typed for onboarding, kept in memory until the agent turns out to be a Station that needs it to attach.
     var onboardingCodesByConversationID: [String: String] = [:]
     @Published var errorMessage: String?
+    /// Why each failed message didn't go through. Kept for this run of the app only.
+    @Published var failureByMessageID: [String: ChatFailure] = [:]
      /// Set when the agent answered -32010. The Incompatible screen shows while it is non-nil.
     @Published var incompatibility: OIPHandshake.Incompatibility?
     @Published var agentAddressDraft = ""
@@ -91,11 +93,6 @@ final class ChatViewModel: ObservableObject {
     private var skillChangeCancellable: AnyCancellable?
     private var conversationStateChangeCancellable: AnyCancellable?
     private var persistenceErrorCancellable: AnyCancellable?
-    private var offlineStateCancellable: AnyCancellable?
-    /// Text of the banner currently raised by a connectivity failure, so going offline can
-    /// retract it. Nothing else is retracted: a banner about a photo or the store is still
-    /// news once the network drops.
-    var connectivityErrorMessage: String?
     private var voiceInputChangeCancellable: AnyCancellable?
     var imageDraftsByConversationID: [String: [ChatImageAttachment]] = [:]
     var fileDraftsByConversationID: [String: [ChatFileAttachment]] = [:]
@@ -442,8 +439,8 @@ final class ChatViewModel: ObservableObject {
         recoveryCoordinator.onNetworkAvailabilityChange = { [weak self] isOnline in
             self?.presenceCoordinator.networkAvailabilityDidChange(isOnline: isOnline)
         }
-        deliveryCoordinator.onDeliveryError = { [weak self] conversationID, error in
-            self?.presentConnectionError(error, forConversationID: conversationID)
+        deliveryCoordinator.onDeliveryError = { [weak self] conversationID, messageID, error in
+            self?.presentDeliveryError(error, messageID: messageID, forConversationID: conversationID)
         }
         deliveryCoordinator.onDeliveriesIdle = { [weak self] in
             self?.endBackgroundDeliveryHold()
@@ -452,14 +449,6 @@ final class ChatViewModel: ObservableObject {
         deliveryCoordinator.onModeChanged = { [weak self] conversationID, mode, turnsLeft in
             self?.fullAccessTurnsLeftByConversationID[conversationID] = mode == .fullAccess ? turnsLeft : nil
         }
-        offlineStateCancellable = recoveryCoordinator.$isOffline
-            .removeDuplicates()
-            .sink { [weak self] isOffline in
-                guard isOffline else {
-                    return
-                }
-                self?.retractConnectivityError()
-            }
         persistenceErrorCancellable = conversationState.$persistenceError
             .compactMap { $0 }
             .sink { [weak self] error in

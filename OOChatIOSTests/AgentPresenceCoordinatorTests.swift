@@ -203,27 +203,33 @@ final class AgentPresenceCoordinatorTests: XCTestCase {
         setUpAgentAndConversation(viewModel)
         let conversationID = try XCTUnwrap(viewModel.activeConversationID)
 
-        XCTAssertEqual(viewModel.activeSessionStatusText, "Not Connected")
+        XCTAssertEqual(viewModel.activeConnectionStatus().label, "Not connected")
+        XCTAssertTrue(viewModel.activeConnectionStatus().canRetry)
 
         transport.simulateConnectionState(.reconnecting, conversationID: conversationID)
 
-        XCTAssertEqual(viewModel.activeSessionStatusText, "Connecting")
+        XCTAssertEqual(viewModel.activeConnectionStatus().label, "Connecting…")
+        XCTAssertTrue(viewModel.isActiveChatConnecting)
+        // Still connecting after 10 seconds: the header offers Retry.
+        XCTAssertEqual(viewModel.activeConnectionStatus(connectingFor: 10).label, "Can't connect")
+        XCTAssertTrue(viewModel.activeConnectionStatus(connectingFor: 10).canRetry)
 
         transport.simulateConnectionState(.connected, conversationID: conversationID)
         viewModel.apply(.hostStatus("running"), forConversationID: conversationID)
 
-        XCTAssertEqual(viewModel.activeSessionStatusText, "Running")
-        XCTAssertTrue(viewModel.isActiveSessionLive)
+        XCTAssertEqual(viewModel.activeConnectionStatus().label, "Working…")
+        XCTAssertTrue(viewModel.activeConnectionStatus().isLive)
 
         transport.simulateConnectionState(.reconnecting, conversationID: conversationID)
 
-        XCTAssertEqual(viewModel.activeSessionStatusText, "Reconnecting")
+        XCTAssertEqual(viewModel.activeConnectionStatus().label, "Connecting…")
 
         transport.simulateConnectionState(.connected, conversationID: conversationID)
         viewModel.apply(.hostStatus("not_found"), forConversationID: conversationID)
 
-        XCTAssertEqual(viewModel.activeSessionStatusText, "Ended")
-        XCTAssertFalse(viewModel.isActiveSessionLive)
+        XCTAssertEqual(viewModel.activeConnectionStatus().label, "Session ended")
+        XCTAssertFalse(viewModel.activeConnectionStatus().isLive)
+        XCTAssertFalse(viewModel.activeConnectionStatus().canRetry)
     }
 
     func testDashboardIsKeptPerConversation() throws {

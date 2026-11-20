@@ -19,7 +19,8 @@ final class MessageDeliveryCoordinator: ObservableObject {
     @Published private(set) var availableModesByAgentAddress: [String: [OIPPermissionMode]] = [:]
     var onConnectionStateChange: ((String, ConversationConnectionState) -> Void)?
     var connectionState: ((String) -> ConversationConnectionState)?
-    var onDeliveryError: ((String, Error) -> Void)?
+    /// Conversation ID, the failed message's ID, and the error.
+    var onDeliveryError: ((String, String, Error) -> Void)?
     var onDeliveriesIdle: (() -> Void)?
     // conversationID, the confirmed mode, and turns_left (full access only)
     var onModeChanged: ((String, OIPPermissionMode, Int?) -> Void)?
@@ -403,7 +404,7 @@ final class MessageDeliveryCoordinator: ObservableObject {
             updated.messages[index].deliveryState = .failed
         }
         conversationState.clearCompletedUnread(conversationID: conversationID)
-        onDeliveryError?(conversationID, error)
+        onDeliveryError?(conversationID, messageID, error)
         onConnectionStateChange?(conversationID, .disconnected)
         conversationState.upsert(updated)
     }

@@ -86,7 +86,12 @@ extension ChatScreen {
     func timelineView(for entry: ChatTimelineEntry) -> some View {
         switch entry {
         case .message(let message):
-            MessageBubble(message: message) {
+            let failure = message.deliveryState == .failed ? viewModel.failure(forMessageID: message.id) : nil
+            MessageBubble(
+                message: message,
+                failureReason: failure?.reason,
+                failureDetails: failure?.details
+            ) {
                 viewModel.retryMessage(message)
             }
         case .toolCallGroup(let messages):

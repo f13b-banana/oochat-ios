@@ -5,6 +5,10 @@ import UniformTypeIdentifiers
 
 struct MessageBubble: View {
     let message: ChatMessage
+    /// Why a failed message wasn't sent, when the app still knows.
+    var failureReason: String?
+    /// The raw error, offered as "Copy error details".
+    var failureDetails: String?
     var onRetry: (() -> Void)?
     @State private var previewedImage: ChatImageAttachment?
     @State private var downloadDocument: ChatFileDocument?
@@ -194,15 +198,33 @@ struct MessageBubble: View {
                 .font(.caption2)
                 .foregroundStyle(OOColor.inkSecondary)
         case .failed:
-            HStack(spacing: 8) {
-                Label("Failed", systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.red)
-                Button("Retry") {
-                    onRetry?()
+            VStack(alignment: .trailing, spacing: 2) {
+                HStack(spacing: 8) {
+                    Label("Not sent", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                    Button("Retry") {
+                        onRetry?()
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .accessibilityLabel("Retry sending message")
                 }
-                .font(.caption2.weight(.semibold))
-                .accessibilityLabel("Retry sending message")
+                if let failureReason {
+                    Text(failureReason)
+                        .font(.caption2)
+                        .foregroundStyle(OOColor.inkSecondary)
+                        .multilineTextAlignment(.trailing)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .contextMenu {
+                if let failureDetails {
+                    Button {
+                        UIPasteboard.general.string = failureDetails
+                    } label: {
+                        Label("Copy error details", systemImage: "doc.on.doc")
+                    }
+                }
             }
         case .cancelled:
             HStack(spacing: 8) {

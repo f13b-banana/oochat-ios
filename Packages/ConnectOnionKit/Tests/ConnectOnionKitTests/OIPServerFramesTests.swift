@@ -334,6 +334,44 @@ final class OIPServerFrameTests: XCTestCase {
             )
         )
     }
+    // MARK: DASHBOARD_SNAPSHOT
+
+    func testDashboardSnapshotDecodesSpecFixture() throws {
+        XCTAssertEqual(
+            try decode("DASHBOARD_SNAPSHOT"),
+            .dashboardSnapshot(OIPDashboardSnapshot(
+                html: "<!DOCTYPE html><html><body>Hi</body></html>",
+                sessionID: sessionID
+            ))
+        )
+    }
+
+    func testDashboardSnapshotWithoutSessionID() throws {
+        XCTAssertEqual(
+            try decode("DASHBOARD_SNAPSHOT.no_session"),
+            .dashboardSnapshot(OIPDashboardSnapshot(
+                html: "<!DOCTYPE html><html><body>Hi</body></html>",
+                sessionID: nil
+            ))
+        )
+    }
+
+    func testDashboardSnapshotOverOneMiBKeepsWholeHTML() throws {
+        let input = try fixture("DASHBOARD_SNAPSHOT.large")
+        let expected = try XCTUnwrap(input["html"]?.stringValue)
+        XCTAssertGreaterThan(expected.utf8.count, 1_048_576)
+        guard case .dashboardSnapshot(let snapshot) = OIPServerFrame.decode(input) else {
+            return XCTFail("expected .dashboardSnapshot")
+        }
+        XCTAssertEqual(snapshot.html, expected)
+        XCTAssertEqual(snapshot.sessionID, sessionID)
+    }
+
+    func testDashboardSnapshotMissingHTMLIsUnknown() throws {
+        let input = try fixture("DASHBOARD_SNAPSHOT.malformed")
+        XCTAssertEqual(OIPServerFrame.decode(input), .unknown(type: "DASHBOARD_SNAPSHOT", body: input))
+    }
+
     // MARK: PING
 
     func testPingDecodesSpecFixture() throws {
@@ -407,6 +445,7 @@ final class OIPServerFrameTests: XCTestCase {
             OIPFrameType.modeChanged,
             OIPFrameType.execResult,
             OIPFrameType.onboardRequired,
+            OIPFrameType.dashboardSnapshot,
             OIPFrameType.ping
         ]).union(OIPServerFrame.streamEventTypes)
 
@@ -414,8 +453,10 @@ final class OIPServerFrameTests: XCTestCase {
             let input = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: file))
             let type = try XCTUnwrap(input["type"]?.stringValue, "\(file.lastPathComponent) has no type")
             let decoded = OIPServerFrame.decode(input)
-            // SESSION_STATUS.request is the client's own frame and has no `status`.
-            let expectUnknown = !handled.contains(type) || file.lastPathComponent == "SESSION_STATUS.request.json"
+            // These two are handled types whose fixture is deliberately malformed: SESSION_STATUS.request is
+            // the client's own frame and has no `status`; DASHBOARD_SNAPSHOT.malformed has no `html`.
+            let malformed: Set<String> = ["SESSION_STATUS.request.json", "DASHBOARD_SNAPSHOT.malformed.json"]
+            let expectUnknown = !handled.contains(type) || malformed.contains(file.lastPathComponent)
             if expectUnknown {
                 XCTAssertEqual(decoded, .unknown(type: type, body: input), file.lastPathComponent)
             } else if case .unknown = decoded {

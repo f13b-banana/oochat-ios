@@ -11,6 +11,11 @@ final class HostedAgentClient: HostedAgentTransport {
         set { connectionStateObserver.handler = newValue }
     }
 
+    var onSessionUpdate: (@MainActor (String, HostedAgentSessionUpdate) -> Void)? {
+        get { connectionStateObserver.updateHandler }
+        set { connectionStateObserver.updateHandler = newValue }
+    }
+
     init(
         identityStore: IdentityStore,
         session: URLSession = .shared,

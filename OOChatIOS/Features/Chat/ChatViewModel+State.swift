@@ -1,3 +1,5 @@
+import ConnectOnionKit
+
 extension ChatViewModel {
     func upsertAgent(_ agent: SavedAgent) -> SavedAgent {
         let next = conversationState.upsertAgent(agent)
@@ -44,5 +46,16 @@ extension ChatViewModel {
 
     private func conversationBelongsToAgent(_ conversation: Conversation, _ agent: SavedAgent) -> Bool {
         conversationState.conversationBelongsToAgent(conversation, agent)
+    }
+
+    func apply(_ update: HostedAgentSessionUpdate, forConversationID conversationID: String) {
+        switch update {
+        case .dashboard(let dashboard):
+            dashboards[conversationID] = dashboard
+        }
+    }
+
+    var activeDashboard: OIPDashboard? {
+        activeConversationID.flatMap { dashboards[$0] }
     }
 }

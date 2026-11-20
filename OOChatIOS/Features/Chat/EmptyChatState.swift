@@ -3,89 +3,90 @@ import SwiftUI
 
 struct EmptyChatState: View {
     let agentName: String
-    let showsSuggestions: Bool
-    let onSelectSuggestion: (ChatStarterSuggestion) -> Void
+    /// The agent's own skills, already in starter order. Empty while the profile loads or when it has none.
+    let skills: [OIPAgentSkill]
+    let showsSkills: Bool
+    let onSelectSkill: (OIPAgentSkill) -> Void
+    let onShowAllSkills: () -> Void
+
+    /// Chips on screen. With more skills than this, the last place opens the full list instead.
+    static let starterSlots = 4
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var logoPulse = false
+
+    private var hasSkills: Bool {
+        showsSkills && !skills.isEmpty
+    }
+
+    private var starterSkills: [OIPAgentSkill] {
+        skills.count > Self.starterSlots
+            ? Array(skills.prefix(Self.starterSlots - 1))
+            : skills
+    }
 
     var body: some View {
         VStack(spacing: EmptyChatMetrics.sectionSpacing) {
             VStack(spacing: EmptyChatMetrics.headingSpacing) {
                 brandMark
 
-                Text("What can we work on")
-                    .font(.headline.weight(.medium))
+                Text(agentName)
+                    .font(.headline.weight(.semibold))
                     .foregroundStyle(EmptyChatPalette.heading)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .frame(maxWidth: EmptyChatMetrics.headingMaximumWidth)
+                    .accessibilityAddTraits(.isHeader)
+
+                Text(hasSkills ? "Pick a skill or type a message." : "Type a message to start.")
+                    .font(.subheadline)
+                    .foregroundStyle(OOColor.inkSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: EmptyChatMetrics.headingMaximumWidth)
             }
 
-            if showsSuggestions {
+            if hasSkills {
                 LazyVGrid(columns: suggestionColumns, spacing: EmptyChatMetrics.chipSpacing) {
-                    ForEach(ChatStarterSuggestion.defaults) { suggestion in
-                        suggestionButton(for: suggestion)
+                    ForEach(starterSkills, id: \.name) { skill in
+                        Button {
+                            onSelectSkill(skill)
+                        } label: {
+                            chip("/\(skill.name)", leadingSymbol: "command")
+                        }
+                        .buttonStyle(EmptyChatSuggestionButtonStyle())
+                        .accessibilityHint(skillHint(skill))
+                    }
+
+                    if skills.count > starterSkills.count {
+                        Button(action: onShowAllSkills) {
+                            chip("All \(skills.count) skills", trailingSymbol: "chevron.right")
+                        }
+                        .buttonStyle(EmptyChatSuggestionButtonStyle())
+                        .accessibilityHint("Shows every skill this agent has")
                     }
                 }
                 .frame(maxWidth: EmptyChatMetrics.suggestionGroupMaximumWidth)
+                .transition(AppMotion.materialize(reduceMotion: reduceMotion))
             }
         }
+        .animation(AppMotion.stateChange(reduceMotion: reduceMotion), value: hasSkills)
         .padding(.top, EmptyChatMetrics.topOffset)
         .padding(.vertical, EmptyChatMetrics.verticalPadding)
-        .accessibilityLabel("Start with \(agentName)")
         .accessibilityElement(children: .contain)
     }
 
+    private func skillHint(_ skill: OIPAgentSkill) -> String {
+        let action = "Adds /\(skill.name) to the message field"
+        guard let description = skill.description, !description.isEmpty else {
+            return action
+        }
+        return "\(description). \(action)"
+    }
+
+    // A still mark: the logo over one soft backlight, with no pulse and no aura layers.
     private var brandMark: some View {
-        return ZStack {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            AppTheme.primary.opacity(
-                                EmptyChatMetrics.logoOuterAuraCoreOpacity(for: colorScheme)
-                            ),
-                            AppTheme.primary.opacity(
-                                EmptyChatMetrics.logoOuterAuraEdgeOpacity(for: colorScheme)
-                            ),
-                            AppTheme.primary.opacity(0)
-                        ],
-                        center: .center,
-                        startRadius: EmptyChatMetrics.logoOuterAuraStartRadius,
-                        endRadius: EmptyChatMetrics.logoOuterAuraEndRadius
-                    )
-                )
-                .frame(
-                    width: EmptyChatMetrics.logoOuterAuraSize,
-                    height: EmptyChatMetrics.logoOuterAuraSize
-                )
-                .blur(radius: EmptyChatMetrics.logoOuterAuraBlur)
-
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            AppTheme.primary.opacity(
-                                EmptyChatMetrics.logoAuraCoreOpacity(for: colorScheme)
-                            ),
-                            AppTheme.primary.opacity(
-                                EmptyChatMetrics.logoAuraEdgeOpacity(for: colorScheme)
-                            ),
-                            AppTheme.primary.opacity(0)
-                        ],
-                        center: .center,
-                        startRadius: EmptyChatMetrics.logoAuraStartRadius,
-                        endRadius: EmptyChatMetrics.logoAuraEndRadius
-                    )
-                )
-                .frame(
-                    width: EmptyChatMetrics.logoAuraSize,
-                    height: EmptyChatMetrics.logoAuraSize
-                )
-                .blur(radius: EmptyChatMetrics.logoAuraBlur)
-
+        ZStack {
             Circle()
                 .fill(
                     RadialGradient(
@@ -116,34 +117,16 @@ struct EmptyChatState: View {
                 .offset(y: EmptyChatMetrics.logoImageVerticalOffset)
                 .shadow(
                     color: EmptyChatPalette.logoShadow.opacity(
-                        EmptyChatMetrics.logoShadowOpacity(
-                            isActive: logoPulse,
-                            colorScheme: colorScheme
-                        )
+                        EmptyChatMetrics.logoShadowOpacity(for: colorScheme)
                     ),
-                    radius: logoPulse ? EmptyChatMetrics.logoActiveShadowRadius : EmptyChatMetrics.logoIdleShadowRadius,
-                    y: logoPulse ? EmptyChatMetrics.logoActiveShadowOffset : EmptyChatMetrics.logoIdleShadowOffset
+                    radius: EmptyChatMetrics.logoShadowRadius,
+                    y: EmptyChatMetrics.logoShadowOffset
                 )
         }
         .frame(
             width: EmptyChatMetrics.logoStageSize,
             height: EmptyChatMetrics.logoStageSize
         )
-        .scaleEffect(logoPulse && !reduceMotion ? 1.015 : 1)
-        // Pulse must start via withAnimation, not a subtree-level .animation(value:):
-        // a repeat-forever subtree animation also captures coincident layout moves,
-        // leaving the logo oscillating sideways (seen on regular-width first runs).
-        .onAppear {
-            guard !reduceMotion else {
-                return
-            }
-            withAnimation(
-                .easeInOut(duration: EmptyChatMetrics.logoPulseDuration)
-                    .repeatForever(autoreverses: true)
-            ) {
-                logoPulse = true
-            }
-        }
         .accessibilityHidden(true)
     }
 
@@ -158,38 +141,32 @@ struct EmptyChatState: View {
         ]
     }
 
-    private func suggestionButton(for suggestion: ChatStarterSuggestion) -> some View {
-        Button {
-            onSelectSuggestion(suggestion)
-        } label: {
-            suggestionChip(suggestion)
-        }
-        .buttonStyle(EmptyChatSuggestionButtonStyle())
-        .accessibilityHint("\(suggestion.detail). Adds this starter to the message field")
-    }
-
-    private func suggestionChip(_ suggestion: ChatStarterSuggestion) -> some View {
+    private func chip(
+        _ title: String,
+        leadingSymbol: String? = nil,
+        trailingSymbol: String? = nil
+    ) -> some View {
         let chipShape = RoundedRectangle(
             cornerRadius: EmptyChatMetrics.chipCornerRadius,
             style: .continuous
         )
 
         return HStack(spacing: EmptyChatMetrics.chipContentSpacing) {
-            Image(systemName: suggestion.systemImage)
-                .font(.footnote.weight(.regular))
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(EmptyChatPalette.chipIcon)
-                .frame(
-                    width: EmptyChatMetrics.chipIconSize,
-                    height: EmptyChatMetrics.chipIconSize
-                )
+            if let leadingSymbol {
+                chipSymbol(leadingSymbol)
+            }
 
-            Text(suggestion.title)
+            Text(title)
                 .font(.subheadline.weight(.regular))
                 .foregroundStyle(EmptyChatPalette.chipText)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                .truncationMode(.middle)
 
             Spacer(minLength: 0)
+
+            if let trailingSymbol {
+                chipSymbol(trailingSymbol)
+            }
         }
         .padding(.horizontal, EmptyChatMetrics.chipHorizontalPadding)
         .frame(
@@ -215,6 +192,17 @@ struct EmptyChatState: View {
         )
         .contentShape(chipShape)
         .accessibilityElement(children: .combine)
+    }
+
+    private func chipSymbol(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(EmptyChatPalette.chipIcon)
+            .frame(
+                width: EmptyChatMetrics.chipIconSize,
+                height: EmptyChatMetrics.chipIconSize
+            )
+            .accessibilityHidden(true)
     }
 }
 
@@ -249,43 +237,4 @@ private struct EmptyChatSuggestionButtonStyle: ButtonStyle {
             .animation(AppMotion.press, value: configuration.isPressed)
             .animation(AppMotion.press, value: isEnabled)
     }
-}
-
-struct ChatStarterSuggestion: Identifiable, Equatable {
-    let id: String
-    let title: String
-    let detail: String
-    let systemImage: String
-    let prompt: String
-
-    static let defaults = [
-        ChatStarterSuggestion(
-            id: "plan-feature",
-            title: "Plan a feature",
-            detail: "Shape an idea into clear next steps",
-            systemImage: "checklist",
-            prompt: "Help me plan a feature. Ask for the goal and constraints, then give me a focused implementation plan."
-        ),
-        ChatStarterSuggestion(
-            id: "review-code",
-            title: "Review code",
-            detail: "Find concrete issues and improvements",
-            systemImage: "doc.text.magnifyingglass",
-            prompt: "Review the relevant code for correctness, clarity, and maintainability. Prioritize concrete issues."
-        ),
-        ChatStarterSuggestion(
-            id: "debug-problem",
-            title: "Debug issue",
-            detail: "Trace the cause and smallest fix",
-            systemImage: "wrench.adjustable",
-            prompt: "Help me debug a problem. Start by asking for the symptoms and expected behavior."
-        ),
-        ChatStarterSuggestion(
-            id: "explain-project",
-            title: "Explain project",
-            detail: "Map the architecture and data flow",
-            systemImage: "square.stack.3d.up",
-            prompt: "Explain this project's architecture and trace the main data flow in plain language."
-        )
-    ]
 }

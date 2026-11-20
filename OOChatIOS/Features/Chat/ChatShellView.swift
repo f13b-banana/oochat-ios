@@ -13,6 +13,9 @@ struct ChatShellView: View {
     @State private var activeContent: SidebarContent = .chat
     @State private var isControlCenterOpen = true
     @State private var agentView: OOAgentView = .chat
+    @State private var workRoomPath: [String] = []
+    // Bumped by the chat's empty state; the sidebar owns the Add Agent form and opens it.
+    @State private var addAgentRequest = 0
 
     init(
         viewModel: ChatViewModel,
@@ -40,6 +43,10 @@ struct ChatShellView: View {
             }
             .ignoresSafeArea()
         }
+        // A Work Room belongs to its chat; another chat starts at its own timeline.
+        .onChange(of: viewModel.activeConversationID) {
+            workRoomPath = []
+        }
     }
 
     // On a regular-width canvas the sidebar is permanent and sits beside the content
@@ -61,7 +68,8 @@ struct ChatShellView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea(contentKeyboardSafeAreaRegions, edges: .bottom)
 
-            if let dashboard, let paneWidth, isControlCenterOpen {
+            // The Control Center is absent inside a Work Room; isControlCenterOpen is left as it was.
+            if let dashboard, let paneWidth, isControlCenterOpen, workRoomPath.isEmpty {
                 Divider()
 
                 OOControlCenterPane(
@@ -157,7 +165,8 @@ struct ChatShellView: View {
             },
             onSettings: {
                 showContentFromSidebar(.settings)
-            }
+            },
+            addAgentRequest: addAgentRequest
         )
     }
 
@@ -188,10 +197,11 @@ struct ChatShellView: View {
                 viewModel: viewModel,
                 showsComposer: isRegularWidth || !isSidebarSearchFocused,
                 showsSidebarButton: !isRegularWidth,
-                controlCenter: controlCenter
-            ) {
-                openSidebar()
-            }
+                controlCenter: controlCenter,
+                workRoomPath: $workRoomPath,
+                onAddAgent: { addAgentRequest += 1 },
+                onOpenSidebar: { openSidebar() }
+            )
         case .settings:
             SettingsView(viewModel: viewModel) {
                 returnToSidebar()
@@ -274,9 +284,10 @@ struct ChatShellView: View {
     }
 
     // The drawer only exists in compact widths; when the sidebar is permanent there is
-    // nothing to open, so the edge drag and the toolbar button both stand down.
+    // nothing to open, so the edge drag and the toolbar button both stand down. Inside a Work Room
+    // the same edge swipe goes Back, so the drawer stands down there too.
     private var canOpenSidebar: Bool {
-        !isRegularWidth
+        !isRegularWidth && workRoomPath.isEmpty
     }
 
     // Only the drawer hides the content behind a search keyboard; side by side, the chat

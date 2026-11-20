@@ -13,6 +13,7 @@ enum ConversationActivityState: Hashable {
 @MainActor
 final class ChatViewModel: ObservableObject {
     @Published var identity: StoredIdentity?
+    @Published private(set) var agentProfilesByAddress: [String: OIPAgentProfile] = [:]
     // Request mode per conversation: Remains set until mode_changed confirms it.
     @Published private(set) var pendingModeByConversationID: [String: ChatMode] = [:]
     // Server reported full access turns budget, keyed by conversation.
@@ -136,6 +137,13 @@ final class ChatViewModel: ObservableObject {
 
     var activeAgent: SavedAgent? {
         conversationState.activeAgent
+    }
+
+    var activeAgentProfile: OIPAgentProfile? {
+        guard let address = activeAgent?.address else {
+            return nil
+        }
+        return agentProfilesByAddress[address.lowercased()]
     }
 
     var activeConversation: Conversation? {
@@ -354,7 +362,7 @@ final class ChatViewModel: ObservableObject {
             interactionCoordinator: interactionCoordinator,
             transport: transport
         )
-        let skillCoordinator = SkillLoadingCoordinator(transport: transport)
+        let skillCoordinator = SkillLoadingCoordinator()
         let presenceCoordinator = AgentPresenceCoordinator(
             availabilityChecker: transport,
             agentAddresses: { conversationState.agents.map(\.address) }
@@ -402,14 +410,19 @@ final class ChatViewModel: ObservableObject {
 
     /// Connects coordinator updates after all stored properties are ready.
     private func observeCoordinators() {
+        client.onAgentProfile = { [weak self] address, profile in
+            guard let self else {
+                return
+            }
+
+            self.agentProfilesByAddress[address.lowercased()] = profile
+            self.skillCoordinator.updateProfile(profile, for: address)
+        }
         client.onSessionUpdate = { [weak self] conversationID, update in
             self?.apply(update, forConversationID: conversationID)
         }
         recoveryCoordinator.onRecoveryError = { [weak self] conversationID, error in
             self?.presentConnectionError(error, forConversationID: conversationID)
-        }
-        recoveryCoordinator.onReconnect = { [weak self] agent in
-            self?.skillCoordinator.refreshSkills(for: agent)
         }
         recoveryCoordinator.onNetworkAvailabilityChange = { [weak self] isOnline in
             self?.presenceCoordinator.networkAvailabilityDidChange(isOnline: isOnline)
@@ -475,7 +488,6 @@ final class ChatViewModel: ObservableObject {
         prompt = conversationState.activeDraft
         restorePendingAttachmentDrafts()
         agentAddressDraft = agent.address
-        skillCoordinator.loadSkillsIfNeeded(for: agent, isOffline: isOffline)
     }
 
     func selectConversation(_ conversation: Conversation) {
@@ -484,7 +496,6 @@ final class ChatViewModel: ObservableObject {
         restorePendingAttachmentDrafts()
         if let agent = agent(for: conversation) {
             agentAddressDraft = agent.address
-            skillCoordinator.loadSkillsIfNeeded(for: agent, isOffline: isOffline)
         }
     }
 
@@ -554,21 +565,6 @@ final class ChatViewModel: ObservableObject {
             _ = createConversation(for: agent)
         }
         restorePendingAttachmentDrafts()
-        skillCoordinator.loadSkillsIfNeeded(for: agent, isOffline: isOffline)
-    }
-
-    func promptDidChange() {
-        guard skillCoordinator.isSlashQuery(prompt), let activeAgent else {
-            return
-        }
-        skillCoordinator.loadSkillsIfNeeded(for: activeAgent, isOffline: isOffline)
-    }
-
-    func prefetchActiveAgentSkills() {
-        guard let activeAgent else {
-            return
-        }
-        skillCoordinator.loadSkillsIfNeeded(for: activeAgent, isOffline: isOffline)
     }
 
     func selectSlashSkill(_ skill: AgentSkill) {

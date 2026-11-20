@@ -1,4 +1,5 @@
 import SwiftUI
+import ConnectOnionKit
 
 struct ChatView: View {
     @ObservedObject var viewModel: ChatViewModel
@@ -46,6 +47,10 @@ struct ChatScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if showsComposer {
+                    balanceNotice
+                }
+
             if let conversation = viewModel.activeConversation {
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -262,6 +267,72 @@ struct ChatScreen: View {
                 // pushing the title and status pill right of screen center.
                 trailingBalanceItem
             }
+        }
+    }
+
+    @ViewBuilder
+    private var balanceNotice: some View {
+        if let profile = viewModel.activeAgentProfile,
+           let notice = AgentBalance.notice(for: profile.balanceUSD) {
+
+            let message = AgentBalance.message(for: notice)
+
+            let background = Color(
+                red: 42.0 / 255.0,
+                green: 32.0 / 255.0,
+                blue: 25.0 / 255.0
+            )
+
+            let border = Color(
+                red: 58.0 / 255.0,
+                green: 37.0 / 255.0,
+                blue: 29.0 / 255.0
+            )
+
+            let textColor = Color(
+                red: 253.0 / 255.0,
+                green: 142.0 / 255.0,
+                blue: 134.0 / 255.0
+            )
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    Text(message)
+                        .multilineTextAlignment(.center)
+
+                    addCreditsLink(color: textColor)
+                }
+
+                VStack(spacing: 4) {
+                    Text(message)
+                        .multilineTextAlignment(.center)
+
+                    addCreditsLink(color: textColor)
+                }
+            }
+            .font(.system(size: 11))
+            .foregroundStyle(textColor)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(background)
+            .overlay(alignment: .top) {
+                border.frame(height: 1)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func addCreditsLink(color: Color) -> some View {
+        if let address = viewModel.activeAgent?.address,
+           let url = AgentBalance.topUpURL(agentAddress: address) {
+            Link(destination: url) {
+                Text("Add credits")
+                    .fontWeight(.semibold)
+                    .underline()
+                    .foregroundStyle(color)
+            }
+            .frame(minHeight: 24)
         }
     }
 }

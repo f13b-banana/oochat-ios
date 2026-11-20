@@ -11,6 +11,11 @@ final class HostedAgentClient: HostedAgentTransport {
         set { connectionStateObserver.handler = newValue }
     }
 
+    var onAgentProfile: (@MainActor (String, OIPAgentProfile) -> Void)? {
+        get { connectionStateObserver.profileHandler }
+        set { connectionStateObserver.profileHandler = newValue }
+    }
+
     var onSessionUpdate: (@MainActor (String, HostedAgentSessionUpdate) -> Void)? {
         get { connectionStateObserver.updateHandler }
         set { connectionStateObserver.updateHandler = newValue }

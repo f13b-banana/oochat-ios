@@ -1,19 +1,22 @@
 import Combine
 import Foundation
+import ConnectOnionKit
 
+// SkillLoadingCoordinator now uses the kit decoded profile skills instead of /info
 @MainActor
 final class SkillLoadingCoordinator: ObservableObject {
     @Published private var skillsByAgentAddress: [String: [AgentSkill]] = [:]
 
-    private var fetchTasksByAgentAddress: [String: Task<Void, Never>] = [:]
-    private let transport: AgentMetadataProviding
+    func updateProfile(_ profile: OIPAgentProfile, for agentAddress: String) {
+        let skills = profile.skills.map { skill in
+            AgentSkill(
+                name: skill.name,
+                description: skill.description ?? "",
+                location: skill.location
+            )
+        }
 
-    init(transport: AgentMetadataProviding) {
-        self.transport = transport
-    }
-
-    deinit {
-        fetchTasksByAgentAddress.values.forEach { $0.cancel() }
+        skillsByAgentAddress[agentAddress.lowercased()] = skills
     }
 
     func suggestions(prompt: String, agentAddress: String?) -> [AgentSkill] {
@@ -21,15 +24,20 @@ final class SkillLoadingCoordinator: ObservableObject {
               let agentAddress else {
             return []
         }
-        let skills = skillsByAgentAddress[agentAddress] ?? []
+
+        let skills = skillsByAgentAddress[agentAddress.lowercased()] ?? []
+
         guard !query.isEmpty else {
             return skills
         }
-        return skills.filter {
-            $0.name.range(
-                of: query,
-                options: [.anchored, .caseInsensitive, .diacriticInsensitive]
-            ) != nil
+
+        let rankedNames = SkillSearch.rank(
+            skills.map(\.name),
+            query: query
+        )
+
+        return rankedNames.compactMap { name in
+            skills.first { $0.name == name }
         }
     }
 
@@ -44,52 +52,17 @@ final class SkillLoadingCoordinator: ObservableObject {
         slashQuery(in: prompt) != nil
     }
 
-    func loadSkillsIfNeeded(
-        for agent: SavedAgent,
-        isOffline: Bool,
-        allowWhileOffline: Bool = false
-    ) {
-        let address = agent.address
-        guard allowWhileOffline || !isOffline,
-              HostedAgentClient.isHostedAgentAddress(address),
-              skillsByAgentAddress[address] == nil,
-              fetchTasksByAgentAddress[address] == nil else {
-            return
-        }
-
-        let transport = transport
-        fetchTasksByAgentAddress[address] = Task { [weak self, transport] in
-            defer {
-                self?.fetchTasksByAgentAddress[address] = nil
-            }
-            do {
-                let skills = try await transport.fetchSkills(agentAddress: address)
-                guard !Task.isCancelled else {
-                    return
-                }
-                self?.skillsByAgentAddress[address] = skills.sorted {
-                    $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-                }
-            } catch {
-                // Slash discovery is optional. Leave the command editable and retry
-                // the next time the user invokes the picker.
-            }
-        }
-    }
-
-    func refreshSkills(for agent: SavedAgent) {
-        skillsByAgentAddress[agent.address] = nil
-        loadSkillsIfNeeded(for: agent, isOffline: false, allowWhileOffline: true)
-    }
-
     private func slashQuery(in prompt: String) -> String? {
         guard prompt.hasPrefix("/") else {
             return nil
         }
+
         let query = String(prompt.dropFirst())
+
         guard !query.contains(where: { $0.isWhitespace }) else {
             return nil
         }
+
         return query
     }
 }

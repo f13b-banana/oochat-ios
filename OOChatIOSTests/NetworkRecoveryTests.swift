@@ -1,5 +1,7 @@
 import Combine
 import XCTest
+import ConnectOnionKit
+import Foundation
 @testable import OOChatIOS
 
 @MainActor
@@ -1560,102 +1562,148 @@ final class NetworkRecoveryTests: XCTestCase {
         return (viewModel, transport, monitor)
     }
 
-    func testSlashPickerLoadsSortsAndFiltersServerSkills() async {
-        let (viewModel, transport, _) = makeEnvironment()
-        setUpAgentAndConversation(viewModel)
-        transport.availableSkills = [
-            AgentSkill(name: "Review", description: "Review current changes"),
-            AgentSkill(name: "commit", description: "Create a commit"),
-            AgentSkill(name: "release", description: "Prepare a release")
+    private func makeAgentProfile(
+        address: String,
+        skills: [(name: String, description: String)] = [],
+        balance: Double? = 2.0
+    ) -> OIPAgentProfile {
+        var frame: [String: JSONValue] = [
+            "type": .string("AGENT_PROFILE"),
+            "address": .string(address),
+            "name": .string("Test Agent"),
+            "skills": .array(
+                skills.map { skill in
+                    .object([
+                        "name": .string(skill.name),
+                        "description": .string(skill.description)
+                    ])
+                }
+            )
         ]
 
-        viewModel.prompt = "/"
-        viewModel.promptDidChange()
-        await waitForSkillFetch(on: viewModel, transport: transport)
-
-        XCTAssertEqual(viewModel.slashSkillSuggestions.map(\.name), ["commit", "release", "Review"])
-        XCTAssertTrue(viewModel.shouldShowSlashSkillPicker)
-
-        viewModel.prompt = "/RE"
-        viewModel.promptDidChange()
-        XCTAssertEqual(viewModel.slashSkillSuggestions.map(\.name), ["release", "Review"])
-
-        viewModel.prompt = "/review details"
-        viewModel.promptDidChange()
-        XCTAssertTrue(viewModel.slashSkillSuggestions.isEmpty)
-        XCTAssertFalse(viewModel.shouldShowSlashSkillPicker)
-        XCTAssertEqual(transport.fetchedSkillAddresses.count, 1)
-    }
-
-    func testSkillLoadingPublishesThroughViewModelFacade() async {
-        let (viewModel, transport, _) = makeEnvironment()
-        setUpAgentAndConversation(viewModel)
-        transport.availableSkills = [AgentSkill(name: "review")]
-        viewModel.prompt = "/"
-        var didPublish = false
-        let cancellable = viewModel.objectWillChange.sink {
-            didPublish = true
+        if let balance {
+            frame["balance_usd"] = .number(balance)
         }
 
-        viewModel.promptDidChange()
-        await waitForSkillFetch(on: viewModel, transport: transport)
+        guard case .agentProfile(let profile) = OIPServerFrame.decode(frame) else {
+            fatalError("Failed to decode test AGENT_PROFILE")
+        }
 
-        XCTAssertTrue(didPublish)
-        withExtendedLifetime(cancellable) {}
+        return profile
     }
 
-    func testSelectingSlashSkillInsertsCommandWithArgumentSpace() async {
-        let (viewModel, transport, _) = makeEnvironment()
-        setUpAgentAndConversation(viewModel)
-        transport.availableSkills = [AgentSkill(name: "commit", description: "Create a commit")]
-        viewModel.prompt = "/"
-        viewModel.promptDidChange()
-        await waitForSkillFetch(on: viewModel, transport: transport)
+    func testSlashPickerUsesSkillsFromAgentProfile() {
+        let coordinator = SkillLoadingCoordinator()
 
-        viewModel.selectSlashSkill(viewModel.slashSkillSuggestions[0])
+        let profile = makeAgentProfile(
+            address: address,
+            skills: [
+                (name: "Review", description: "Review current changes"),
+                (name: "commit", description: "Create a commit"),
+                (name: "release", description: "Prepare a release")
+            ]
+        )
+
+        coordinator.updateProfile(profile, for: address)
+
+        XCTAssertEqual(
+            coordinator.suggestions(prompt: "/", agentAddress: address).map(\.name),
+            ["Review", "commit", "release"]
+        )
+
+        XCTAssertTrue(
+            coordinator.shouldShowSuggestions(prompt: "/", agentAddress: address)
+        )
+    }
+
+    func testSlashPickerFiltersSkillsFromAgentProfile() {
+        let coordinator = SkillLoadingCoordinator()
+
+        let profile = makeAgentProfile(
+            address: address,
+            skills: [
+                (name: "review", description: "Review changes"),
+                (name: "release", description: "Prepare release"),
+                (name: "commit", description: "Create commit")
+            ]
+        )
+
+        coordinator.updateProfile(profile, for: address)
+
+        let suggestions = coordinator.suggestions(
+            prompt: "/rev",
+            agentAddress: address
+        )
+
+        XCTAssertEqual(suggestions.map(\.name), ["review"])
+    }
+
+    func testSlashSuggestionsAreIsolatedBetweenAgents() {
+        let coordinator = SkillLoadingCoordinator()
+
+        let secondAddress = "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+
+        coordinator.updateProfile(
+            makeAgentProfile(
+                address: address,
+                skills: [(name: "first", description: "First agent skill")]
+            ),
+            for: address
+        )
+
+        coordinator.updateProfile(
+            makeAgentProfile(
+                address: secondAddress,
+                skills: [(name: "second", description: "Second agent skill")]
+            ),
+            for: secondAddress
+        )
+
+        XCTAssertEqual(
+            coordinator.suggestions(prompt: "/", agentAddress: address).map(\.name),
+            ["first"]
+        )
+
+        XCTAssertEqual(
+            coordinator.suggestions(prompt: "/", agentAddress: secondAddress).map(\.name),
+            ["second"]
+        )
+    }
+
+    func testSlashPickerDoesNotShowForOrdinaryTextOrInvalidQuery() {
+        let coordinator = SkillLoadingCoordinator()
+
+        coordinator.updateProfile(
+            makeAgentProfile(
+                address: address,
+                skills: [(name: "review", description: "Review changes")]
+            ),
+            for: address
+        )
+
+        XCTAssertFalse(
+            coordinator.shouldShowSuggestions(prompt: "hello", agentAddress: address)
+        )
+
+        XCTAssertFalse(
+            coordinator.shouldShowSuggestions(prompt: "/review details", agentAddress: address)
+        )
+
+        XCTAssertTrue(
+            coordinator.suggestions(prompt: "/review details", agentAddress: address).isEmpty
+        )
+    }
+
+    func testSelectingSlashSkillInsertsCommandWithArgumentSpace() {
+        let (viewModel, _, _) = makeEnvironment()
+        setUpAgentAndConversation(viewModel)
+
+        viewModel.selectSlashSkill(
+            AgentSkill(name: "commit", description: "Create a commit")
+        )
 
         XCTAssertEqual(viewModel.prompt, "/commit ")
         XCTAssertFalse(viewModel.shouldShowSlashSkillPicker)
-    }
-
-    func testSlashDiscoveryFailureKeepsRawCommandSendable() async {
-        let (viewModel, transport, _) = makeEnvironment()
-        setUpAgentAndConversation(viewModel)
-        transport.skillFetchError = HostedAgentClientError.server("metadata unavailable")
-        viewModel.prompt = "/unknown"
-        viewModel.promptDidChange()
-        await waitForSkillFetchAttempt(transport: transport)
-
-        XCTAssertFalse(viewModel.shouldShowSlashSkillPicker)
-        XCTAssertNil(viewModel.errorMessage)
-
-        viewModel.sendPrompt()
-        await waitForSentPrompt(transport: transport)
-        XCTAssertEqual(transport.sentPrompts, ["/unknown"])
-    }
-
-    func testSlashSuggestionsFollowActiveAgentWithoutStaleResults() async {
-        let (viewModel, transport, _) = makeEnvironment()
-        let first = setUpAgentAndConversation(viewModel)
-        let secondAddress = "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
-        let second = viewModel.saveAgent(name: "Second", address: secondAddress)!
-        _ = viewModel.createConversation(for: second)
-        transport.skillsByAddress = [
-            first.address: [AgentSkill(name: "first")],
-            second.address: [AgentSkill(name: "second")]
-        ]
-
-        viewModel.prompt = "/"
-        viewModel.promptDidChange()
-        await waitForSkillFetch(on: viewModel, transport: transport)
-        XCTAssertEqual(viewModel.slashSkillSuggestions.map(\.name), ["second"])
-
-        viewModel.selectAgent(first)
-        XCTAssertTrue(viewModel.prompt.isEmpty)
-        viewModel.prompt = "/"
-        viewModel.promptDidChange()
-        await waitForSkillFetch(on: viewModel, transport: transport, address: first.address)
-        XCTAssertEqual(viewModel.slashSkillSuggestions.map(\.name), ["first"])
     }
 
     private func makeDefaults() -> UserDefaults {

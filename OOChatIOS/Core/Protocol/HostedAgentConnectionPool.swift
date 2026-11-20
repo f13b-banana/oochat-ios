@@ -20,6 +20,8 @@ final class HostedAgentConnectionStateObserver: @unchecked Sendable {
     private let lock = NSLock()
     private var storedHandler: (@MainActor (String, ConversationConnectionState) -> Void)?
     private var sequenceByConversationID: [String: Int] = [:]
+    private var storedProfileHandler: (@MainActor (String, OIPAgentProfile) -> Void)?
+    private var profileSequenceByAgentAddress: [String: Int] = [:]
     private var storedUpdateHandler: (@MainActor (String, HostedAgentSessionUpdate) -> Void)?
 
     var updateHandler: (@MainActor (String, HostedAgentSessionUpdate) -> Void)? {
@@ -70,6 +72,19 @@ final class HostedAgentConnectionStateObserver: @unchecked Sendable {
         }
     }
 
+    var profileHandler: (@MainActor (String, OIPAgentProfile) -> Void)? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return storedProfileHandler
+        }
+        set {
+            lock.lock()
+            storedProfileHandler = newValue
+            lock.unlock()
+        }
+    }
+
     func notify(conversationID: String, state: ConversationConnectionState) {
         lock.lock()
         let sequence = (sequenceByConversationID[conversationID] ?? 0) + 1
@@ -85,6 +100,35 @@ final class HostedAgentConnectionStateObserver: @unchecked Sendable {
             }
             handler(conversationID, state)
         }
+    }
+
+    func notifyProfile(agentAddress: String, profile: OIPAgentProfile) {
+        lock.lock()
+        let sequence = (profileSequenceByAgentAddress[agentAddress] ?? 0) + 1
+        profileSequenceByAgentAddress[agentAddress] = sequence
+        lock.unlock()
+
+        Task { @MainActor [weak self] in
+            guard let handler = self?.currentProfileHandler(
+                agentAddress: agentAddress,
+                sequence: sequence
+            ) else {
+                return
+            }
+            handler(agentAddress, profile)
+        }
+    }
+
+    private func currentProfileHandler(
+        agentAddress: String,
+        sequence: Int
+    ) -> (@MainActor (String, OIPAgentProfile) -> Void)? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard profileSequenceByAgentAddress[agentAddress] == sequence else {
+            return nil
+        }
+        return storedProfileHandler
     }
 
     private func currentHandler(

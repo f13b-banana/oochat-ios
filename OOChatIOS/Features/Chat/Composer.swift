@@ -39,9 +39,6 @@ struct Composer: View {
         .padding(.bottom, ComposerMetrics.outerBottomPadding)
         .frame(maxWidth: ChatReadableWidth.maximum)
         .frame(maxWidth: .infinity)
-        .onChange(of: viewModel.prompt) {
-            viewModel.promptDidChange()
-        }
         .onChange(of: viewModel.activeConversationID) {
             viewModel.stopVoiceInput()
             isPromptFocused = viewModel.activeConversationID != nil
@@ -65,9 +62,6 @@ struct Composer: View {
             Task {
                 await importSelectedPhotos(items, for: conversationID)
             }
-        }
-        .onAppear {
-            viewModel.prefetchActiveAgentSkills()
         }
         .onDisappear {
             viewModel.stopVoiceInput()

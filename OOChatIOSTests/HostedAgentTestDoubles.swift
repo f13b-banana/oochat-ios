@@ -55,6 +55,19 @@ final class MockAgentTransport: HostedAgentTransport {
     var connectBehavior: Behavior = .succeed(output: "")
     var sendBehavior: Behavior = .succeed(output: "mock reply")
     var onConnectionStateChange: (@MainActor (String, ConversationConnectionState) -> Void)?
+
+    var onAgentProfile: (@MainActor (String, OIPAgentProfile) -> Void)?
+
+    @MainActor
+    func simulateAgentProfile(_ profile: OIPAgentProfile) {
+        guard let address = profile.address else {
+            XCTFail("Test profile must contain an agent address")
+            return
+        }
+
+        onAgentProfile?(address, profile)
+    }
+
     var onSessionUpdate: (@MainActor (String, HostedAgentSessionUpdate) -> Void)?
     var sendBehaviorsByPrompt: [String: Behavior] = [:]
     var streamedEvents: [HostedAgentEvent] = []

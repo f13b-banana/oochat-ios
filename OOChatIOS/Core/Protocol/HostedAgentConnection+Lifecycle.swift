@@ -13,12 +13,15 @@ extension HostedAgentConnection {
         await dispatch(frame, generation: generation)
     }
 
+    // swiftlint:disable:next cyclomatic_complexity
     private func dispatch(_ frame: [String: JSONValue], generation: Int) async {
         switch frame["type"]?.stringValue {
         case "PING":
             await handlePing(generation: generation)
         case "CONNECTED":
             await handleConnected(frame, generation: generation)
+        case "AGENT_PROFILE":
+            handleAgentProfile(frame)
         case "OUTPUT":
             handleOutput(frame)
         case "EXEC_RESULT":
@@ -36,6 +39,22 @@ extension HostedAgentConnection {
         default:
             break
         }
+    }
+
+    private func handleAgentProfile(_ frame: [String: JSONValue]) {
+        guard case .agentProfile(let profile) = OIPServerFrame.decode(frame) else {
+            return
+        }
+
+        if let address = profile.address,
+           address.caseInsensitiveCompare(key.agentAddress) != .orderedSame {
+            return
+        }
+
+        connectionStateObserver.notifyProfile(
+            agentAddress: key.agentAddress,
+            profile: profile
+        )
     }
 
     static let interactionFrameTypes: Set<String> = [

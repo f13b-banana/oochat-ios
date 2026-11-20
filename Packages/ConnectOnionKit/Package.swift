@@ -10,6 +10,7 @@ let package = Package(
     targets: [
         .target(
             name: "ConnectOnionKit",
+            resources: [.process("Resources")],
             swiftSettings: [.enableExperimentalFeature("StrictConcurrency")]
         ),
         .testTarget(

@@ -1,0 +1,49 @@
+{
+  "type": "CONNECTED",
+  "status": "connected",
+  "session_id": "11111111-2222-3333-4444-555555555555",
+  "server_newer": true,
+  "chat_items": [
+    {
+      "id": "msg-0",
+      "type": "user",
+      "content": "Build and test a sort"
+    },
+    {
+      "id": "codex:call-7",
+      "type": "provider_invocation",
+      "invocationId": "codex:call-7",
+      "parentToolCallId": "call-7",
+      "provider": "codex",
+      "status": "running",
+      "stateRevision": 3,
+      "taskTitle": "Build and verify the requested C program",
+      "currentSummary": "Working in the selected workspace",
+      "workroomId": "codex:call-7",
+      "activities": [
+        {
+          "id": "create-sort",
+          "sequence": 2,
+          "kind": "file_change",
+          "status": "completed",
+          "title": "Update workspace files",
+          "summary": "Workspace files updated",
+          "files": ["sort.c"],
+          "legacy": false
+        }
+      ],
+      "messages": [
+        {
+          "id": "user:initial",
+          "role": "user",
+          "text": "Build and test a sort"
+        },
+        {
+          "id": "assistant:plan",
+          "role": "assistant",
+          "text": "I will create the project and verify it."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "type": "provider_invocation",
+  "provider": "claude_code",
+  "providerDisplayName": "Claude Code",
+  "invocationId": "claude_code:station:station-session",
+  "parentToolCallId": "claude_station:station-session",
+  "workroomId": "claude_code:station:station-session",
+  "sessionId": "",
+  "resumeReady": false,
+  "taskTitle": "Claude Code session",
+  "status": "running",
+  "currentSummary": "Session ready in the terminal",
+  "stateRevision": 1
+}

@@ -21,6 +21,16 @@ final class HostedAgentClient: HostedAgentTransport {
         set { connectionStateObserver.updateHandler = newValue }
     }
 
+    var onProviderUpdate: (@MainActor (String, HostedAgentProviderUpdate) -> Void)? {
+        get { connectionStateObserver.providerHandler }
+        set { connectionStateObserver.providerHandler = newValue }
+    }
+
+    var ownsApproval: (@MainActor (String, [String: JSONValue]) -> Bool)? {
+        get { connectionStateObserver.ownsApprovalHandler }
+        set { connectionStateObserver.ownsApprovalHandler = newValue }
+    }
+
     init(
         identityStore: IdentityStore,
         session: URLSession = .shared,
@@ -148,6 +158,10 @@ final class HostedAgentClient: HostedAgentTransport {
             conversation: conversation,
             mode: mode,
             onEvent: onEvent)
+    }
+
+    func submitOnboarding(agentAddress: String, conversationID: String, code: String) async throws {
+        try await connectionPool.submitOnboarding(agentAddress: agentAddress, conversationID: conversationID, code: code)
     }
 
     func waitForPendingInteractionResponses(agentAddress: String, conversationID: String) async {

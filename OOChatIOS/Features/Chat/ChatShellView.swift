@@ -17,6 +17,10 @@ struct ChatShellView: View {
     // Bumped by the chat's empty state; the sidebar owns the Add Agent form and opens it.
     @State private var addAgentRequest = 0
 
+    private var isStationShown: Bool {
+        viewModel.activeAgent.map(viewModel.isStation) ?? false
+    }
+
     init(
         viewModel: ChatViewModel,
         startsSidebarOpen: Bool = false,
@@ -57,7 +61,7 @@ struct ChatShellView: View {
     private func sideBySideLayout(proxy: GeometryProxy, safeAreaInsets: EdgeInsets) -> some View {
         let contentWidth = proxy.size.width - SidebarShellMetrics.permanentSidebarWidth - 1
         let paneWidth = ControlCenterLayout.paneWidth(contentWidth: contentWidth)
-        let dashboard = activeContent == .chat ? viewModel.activeDashboard : nil
+        let dashboard = activeContent == .chat && !isStationShown ? viewModel.activeDashboard : nil
         return HStack(spacing: 0) {
             sidebar(safeAreaInsets: safeAreaInsets, isOpen: true)
                 .frame(width: SidebarShellMetrics.permanentSidebarWidth)
@@ -107,7 +111,7 @@ struct ChatShellView: View {
                 .offset(x: reduceMotion ? 0 : -SidebarShellMetrics.sidebarParallax * (1 - progress))
                 .zIndex(0)
 
-                contentView(for: activeContent, controlCenter: controlCenter(for: viewModel.activeDashboard, paneWidth: nil))
+                contentView(for: activeContent, controlCenter: controlCenter(for: drawerDashboard, paneWidth: nil))
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .background(OOColor.paper)
                 .ignoresSafeArea(contentKeyboardSafeAreaRegions, edges: .bottom)
@@ -145,6 +149,10 @@ struct ChatShellView: View {
             .clipped()
     }
 
+    private var drawerDashboard: OIPDashboard? {
+        isStationShown ? nil : viewModel.activeDashboard
+    }
+
     private func sidebar(safeAreaInsets: EdgeInsets, isOpen: Bool) -> some View {
         ChatSidebarView(
             viewModel: viewModel,
@@ -166,7 +174,11 @@ struct ChatShellView: View {
             onSettings: {
                 showContentFromSidebar(.settings)
             },
-            addAgentRequest: addAgentRequest
+            addAgentRequest: addAgentRequest,
+            onSelectStation: { agent in
+                viewModel.selectStation(agent)
+                showContentFromSidebar(.chat)
+            }
         )
     }
 
@@ -192,6 +204,15 @@ struct ChatShellView: View {
     @ViewBuilder
     private func contentView(for content: SidebarContent, controlCenter: ChatControlCenter? = nil) -> some View {
         switch content {
+        case .chat where viewModel.activeOnboarding != nil:
+            OnboardingPaneView(viewModel: viewModel, showsSidebarButton: !isRegularWidth) {
+                openSidebar()
+            }
+        case .chat where isStationShown:
+            // A Station's Work Room is the pane itself, so the Control Center has no place beside it.
+            StationPaneView(viewModel: viewModel, showsSidebarButton: !isRegularWidth) {
+                openSidebar()
+            }
         case .chat:
             ChatView(
                 viewModel: viewModel,

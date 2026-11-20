@@ -14,27 +14,35 @@ public struct OOAvatarTile: View {
     private let address: String?
     private let isOnline: Bool
     private let tileSize: Size
+    private let isStation: Bool
 
     @ScaledMetric(relativeTo: .subheadline) private var regular: CGFloat = 32
     @ScaledMetric(relativeTo: .title3) private var large: CGFloat = 48
 
-    public init(name: String, address: String? = nil, isOnline: Bool = false, size: Size = .regular) {
+    /// `isStation` draws the Claude Station variant: the Claude Code clay tint and a hairline, never amber.
+    public init(
+        name: String, address: String? = nil, isOnline: Bool = false, size: Size = .regular, isStation: Bool = false
+    ) {
         self.name = name
         self.address = address
         self.isOnline = isOnline
         self.tileSize = size
+        self.isStation = isStation
     }
 
     public var body: some View {
         let isLarge = tileSize == .large
+        let shape = RoundedRectangle(cornerRadius: isLarge ? OORadius.large : OORadius.medium, style: .continuous)
         Text(Self.initial(of: name, address: address))
             .font(isLarge ? .title3.weight(.semibold) : .subheadline.weight(.semibold))
-            .foregroundStyle(OOColor.tintText)
+            .foregroundStyle(isStation ? OOColor.claudeCodeTintText : OOColor.tintText)
             .frame(width: isLarge ? large : regular, height: isLarge ? large : regular)
-            .background(
-                OOColor.currentTint,
-                in: RoundedRectangle(cornerRadius: isLarge ? OORadius.large : OORadius.medium, style: .continuous)
-            )
+            .background(isStation ? OOColor.claudeCodeTint : OOColor.currentTint, in: shape)
+            .overlay {
+                if isStation {
+                    shape.stroke(OOColor.claudeCodeTintText.opacity(0.4), lineWidth: 1)
+                }
+            }
             .overlay(alignment: .bottomTrailing) {
                 if isOnline {
                     Circle()
@@ -66,6 +74,7 @@ public struct OOAvatarTile: View {
             OOAvatarTile(name: "research", isOnline: true)
             OOAvatarTile(name: "", address: "0x3f9a")
             OOAvatarTile(name: "writer", isOnline: true, size: .large)
+            OOAvatarTile(name: "my laptop", isOnline: true, isStation: true)
         }
     }
 }

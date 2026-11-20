@@ -19,6 +19,10 @@ final class ChatViewModel: ObservableObject {
     // Server reported full access turns budget, keyed by conversation.
     @Published private(set) var fullAccessTurnsLeftByConversationID: [String: Int] = [:]
     @Published var isConnecting = false
+    /// An agent asked for an invite code on this conversation's connection; the pane shows a prompt until it is granted.
+    @Published var onboardingByConversationID: [String: OnboardingPrompt] = [:]
+    /// The code typed for onboarding, kept in memory until the agent turns out to be a Station that needs it to attach.
+    var onboardingCodesByConversationID: [String: String] = [:]
     @Published var errorMessage: String?
      /// Set when the agent answered -32010. The Incompatible screen shows while it is non-nil.
     @Published var incompatibility: OIPHandshake.Incompatibility?
@@ -418,10 +422,19 @@ final class ChatViewModel: ObservableObject {
             }
 
             self.agentProfilesByAddress[address.lowercased()] = profile
+            Self.rememberStation(profile, address: address)
+            self.attachRememberedOnboardingCodes(address: address, isStation: profile.isClaudeStation)
             self.skillCoordinator.updateProfile(profile, for: address)
         }
         client.onSessionUpdate = { [weak self] conversationID, update in
             self?.apply(update, forConversationID: conversationID)
+        }
+        client.onProviderUpdate = { [weak self] conversationID, update in
+            self?.conversationState.applyProviderUpdate(update, forConversationID: conversationID)
+            self?.noteStationHost(conversationID: conversationID)
+        }
+        client.ownsApproval = { [weak self] conversationID, body in
+            self?.conversationState.ownsApproval(body, forConversationID: conversationID) ?? false
         }
         recoveryCoordinator.onRecoveryError = { [weak self] conversationID, error in
             self?.presentConnectionError(error, forConversationID: conversationID)

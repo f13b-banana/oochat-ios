@@ -1274,6 +1274,325 @@ final class HostedAgentConnectionTests: XCTestCase {
         await connection.close()
     }
 
+    func testProviderFrameWithNoPromptPendingReachesTheWorkRoomStore() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let observer = HostedAgentConnectionStateObserver()
+        let store = WorkRoomStore()
+        observer.providerHandler = { _, update in
+            if case .frame(let frame) = update {
+                store.receive(frame)
+            }
+        }
+        let connection = makeConnection(factory: factory, observer: observer)
+        let conversation = makeConversation(id: "c-provider")
+        let task = Task { try await connection.ensureConnected(conversation: conversation) }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        try socket.enqueueFrame(["type": .string("CONNECTED"), "session_id": .string("c-provider"), "status": .string("connected")])
+        _ = try await task.value
+
+        try socket.enqueueFrame([
+            "type": .string("provider_invocation"),
+            "invocationId": .string("codex:call-7"),
+            "parentToolCallId": .string("call-7"),
+            "provider": .string("codex"),
+            "status": .string("running"),
+            "stateRevision": .number(2),
+            "workroomId": .string("codex:call-7")
+        ])
+        for _ in 0..<50 where store.workRoom(forToolCallID: "call-7") == nil {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(store.workRoom(forToolCallID: "call-7")?.status, .running)
+        await connection.close()
+    }
+
+    private func providerApprovalFrame() -> [String: JSONValue] {
+        [
+            "type": .string("approval_needed"),
+            "id": .string("provider-approval"),
+            "tool": .string("codex"),
+            "provider": .string("codex"),
+            "invocationId": .string("codex:call-7"),
+            "parentToolCallId": .string("call-7"),
+            "providerApproval": .object([
+                "action": .string("Inspect the workspace"),
+                "scope": .string("This Work Room only"),
+                "reason": .string("Check the requested workspace result before continuing"),
+                "scopeClassification": .string("workroom"),
+                "allowOnce": .bool(true),
+                "allowSession": .bool(false)
+            ])
+        ]
+    }
+
+    func testOwnedProviderApprovalGetsNoOuterCardButAGenericApprovalDoes() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let observer = HostedAgentConnectionStateObserver()
+        let store = WorkRoomStore()
+        observer.providerHandler = { _, update in
+            if case .frame(let frame) = update {
+                store.receive(frame)
+            }
+        }
+        observer.ownsApprovalHandler = { _, body in store.ownsApproval(body) }
+        let connection = makeConnection(factory: factory, observer: observer)
+        let conversation = makeConversation(id: "c-owned")
+        var interactions: [String] = []
+        let promptTask = Task {
+            try await connection.sendPrompt(
+                conversation: conversation, prompt: "go", images: [], files: [], onEvent: { _ in },
+                onInteraction: {
+                    if case .approval(let request) = $0 {
+                        interactions.append(request.id)
+                    }
+                    return .approval(.allowOnce)
+                }
+            )
+        }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        try socket.enqueueFrame(["type": .string("CONNECTED"), "session_id": .string("c-owned"), "status": .string("connected")])
+        _ = try await socket.waitForSentFrame(type: "INPUT")
+
+        try socket.enqueueFrame([
+            "type": .string("provider_invocation"),
+            "invocationId": .string("codex:call-7"),
+            "parentToolCallId": .string("call-7"),
+            "provider": .string("codex"),
+            "status": .string("awaiting_approval"),
+            "stateRevision": .number(2),
+            "workroomId": .string("codex:call-7")
+        ])
+        try socket.enqueueFrame(providerApprovalFrame())
+        try socket.enqueueFrame(
+            ["type": .string("approval_needed"), "id": .string("generic-approval"), "tool": .string("shell")]
+        )
+        let response = try await socket.waitForSentFrame(type: "APPROVAL_RESPONSE")
+        XCTAssertEqual(try signedPayload(of: response)["request_id"], .string("generic-approval"))
+        await connection.waitForPendingInteractionResponses()
+        XCTAssertEqual(interactions, ["generic-approval"])
+        XCTAssertEqual(store.workRoom(forToolCallID: "call-7")?.approval?.action, "Inspect the workspace")
+
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("done")])
+        _ = try await promptTask.value
+        await connection.close()
+    }
+
+    func testStaleAnswerErrorReachesTheStoreAndDoesNotFailThePrompt() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let observer = HostedAgentConnectionStateObserver()
+        var frames: [OIPServerFrame] = []
+        observer.providerHandler = { _, update in
+            if case .frame(let frame) = update {
+                frames.append(frame)
+            }
+        }
+        let connection = makeConnection(factory: factory, observer: observer)
+        let conversation = makeConversation(id: "stale-answer")
+        let promptTask = Task {
+            try await connection.sendPrompt(
+                conversation: conversation, prompt: "go", images: [], files: [], onEvent: nil, onInteraction: nil
+            )
+        }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        try socket.enqueueFrame(["type": .string("CONNECTED"), "session_id": .string("stale-answer"), "status": .string("connected")])
+        _ = try await socket.waitForSentFrame(type: "INPUT")
+
+        try socket.enqueueFrame(["type": .string("ERROR"), "code": .string("STALE_ANSWER"), "message": .string("Already answered")])
+        try await waitUntil { !frames.isEmpty }
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("done")])
+
+        _ = try await promptTask.value
+        await connection.close()
+    }
+
+    func testProviderInterruptAckReachesTheStoreAndLeavesThePromptPending() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let observer = HostedAgentConnectionStateObserver()
+        var frames: [OIPServerFrame] = []
+        observer.providerHandler = { _, update in
+            if case .frame(let frame) = update {
+                frames.append(frame)
+            }
+        }
+        let connection = makeConnection(factory: factory, observer: observer)
+        let conversation = makeConversation(id: "interrupt-ack")
+        let promptTask = Task {
+            try await connection.sendPrompt(
+                conversation: conversation, prompt: "go", images: [], files: [], onEvent: nil, onInteraction: nil
+            )
+        }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        try socket.enqueueFrame(["type": .string("CONNECTED"), "session_id": .string("interrupt-ack"), "status": .string("connected")])
+        _ = try await socket.waitForSentFrame(type: "INPUT")
+
+        try socket.enqueueFrame([
+            "type": .string("PROVIDER_INTERRUPT_ACK"),
+            "requestId": .string("interrupt-1"),
+            "invocationId": .string("codex:call-7"),
+            "accepted": .bool(true),
+            "stateRevision": .number(2)
+        ])
+        try await waitUntil { !frames.isEmpty }
+        guard case .providerInterruptAck = frames[0] else {
+            return XCTFail("expected an interrupt ack, got \(frames[0])")
+        }
+
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("done")])
+        let result = try await promptTask.value
+        XCTAssertEqual(result.output, "done")
+        await connection.close()
+    }
+
+    func testProviderInputAckReachesTheStoreAndLeavesThePromptPending() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let observer = HostedAgentConnectionStateObserver()
+        var frames: [OIPServerFrame] = []
+        observer.providerHandler = { _, update in
+            if case .frame(let frame) = update {
+                frames.append(frame)
+            }
+        }
+        let connection = makeConnection(factory: factory, observer: observer)
+        let conversation = makeConversation(id: "input-ack")
+        let promptTask = Task {
+            try await connection.sendPrompt(
+                conversation: conversation, prompt: "go", images: [], files: [], onEvent: nil, onInteraction: nil
+            )
+        }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        try socket.enqueueFrame(["type": .string("CONNECTED"), "session_id": .string("input-ack"), "status": .string("connected")])
+        _ = try await socket.waitForSentFrame(type: "INPUT")
+
+        try socket.enqueueFrame([
+            "type": .string("PROVIDER_INPUT_ACK"),
+            "requestId": .string("input-1"),
+            "invocationId": .string("codex:call-7"),
+            "accepted": .bool(true),
+            "stateRevision": .number(2)
+        ])
+        try await waitUntil { !frames.isEmpty }
+        guard case .providerInputAck = frames[0] else {
+            return XCTFail("expected an input ack, got \(frames[0])")
+        }
+
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("done")])
+        let result = try await promptTask.value
+        XCTAssertEqual(result.output, "done")
+        await connection.close()
+    }
+
+    func testProviderPermissionAckReachesTheStoreAndLeavesThePromptPending() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let observer = HostedAgentConnectionStateObserver()
+        var frames: [OIPServerFrame] = []
+        observer.providerHandler = { _, update in
+            if case .frame(let frame) = update {
+                frames.append(frame)
+            }
+        }
+        let connection = makeConnection(factory: factory, observer: observer)
+        let conversation = makeConversation(id: "permission-ack")
+        let promptTask = Task {
+            try await connection.sendPrompt(
+                conversation: conversation, prompt: "go", images: [], files: [], onEvent: nil, onInteraction: nil
+            )
+        }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        try socket.enqueueFrame(["type": .string("CONNECTED"), "session_id": .string("permission-ack"), "status": .string("connected")])
+        _ = try await socket.waitForSentFrame(type: "INPUT")
+
+        try socket.enqueueFrame([
+            "type": .string("PROVIDER_PERMISSION_ACK"),
+            "requestId": .string("permission-1"),
+            "invocationId": .string("codex:call-7"),
+            "accepted": .bool(true),
+            "stateRevision": .number(2)
+        ])
+        try await waitUntil { !frames.isEmpty }
+        guard case .providerPermissionAck = frames[0] else {
+            return XCTFail("expected a permission ack, got \(frames[0])")
+        }
+
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("done")])
+        let result = try await promptTask.value
+        XCTAssertEqual(result.output, "done")
+        await connection.close()
+    }
+
+    func testProviderStationAttachAckReachesTheStoreAndLeavesThePromptPending() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let observer = HostedAgentConnectionStateObserver()
+        var frames: [OIPServerFrame] = []
+        observer.providerHandler = { _, update in
+            if case .frame(let frame) = update {
+                frames.append(frame)
+            }
+        }
+        let connection = makeConnection(factory: factory, observer: observer)
+        let conversation = makeConversation(id: "attach-ack")
+        let promptTask = Task {
+            try await connection.sendPrompt(
+                conversation: conversation, prompt: "go", images: [], files: [], onEvent: nil, onInteraction: nil
+            )
+        }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        try socket.enqueueFrame(["type": .string("CONNECTED"), "session_id": .string("attach-ack"), "status": .string("connected")])
+        _ = try await socket.waitForSentFrame(type: "INPUT")
+
+        try socket.enqueueFrame(KitFixtures.frame("PROVIDER_STATION_ATTACH_ACK"))
+        try await waitUntil { !frames.isEmpty }
+        guard case .providerStationAttachAck = frames[0] else {
+            return XCTFail("expected an attach ack, got \(frames[0])")
+        }
+
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("done")])
+        let result = try await promptTask.value
+        XCTAssertEqual(result.output, "done")
+        await connection.close()
+    }
+
+    func testProviderSessionControlAckAndArtifactReachTheStoreAndLeaveThePromptPending() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let observer = HostedAgentConnectionStateObserver()
+        var frames: [OIPServerFrame] = []
+        observer.providerHandler = { _, update in
+            if case .frame(let frame) = update {
+                frames.append(frame)
+            }
+        }
+        let connection = makeConnection(factory: factory, observer: observer)
+        let conversation = makeConversation(id: "control-frames")
+        let promptTask = Task {
+            try await connection.sendPrompt(
+                conversation: conversation, prompt: "go", images: [], files: [], onEvent: nil, onInteraction: nil
+            )
+        }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        try socket.enqueueFrame(["type": .string("CONNECTED"), "session_id": .string("control-frames"), "status": .string("connected")])
+        _ = try await socket.waitForSentFrame(type: "INPUT")
+
+        try socket.enqueueFrame(KitFixtures.frame("provider_session"))
+        try socket.enqueueFrame(KitFixtures.frame("PROVIDER_CONTROL_ACK"))
+        try socket.enqueueFrame(KitFixtures.frame("provider_artifact"))
+        try await waitUntil { frames.count == 3 }
+        guard case .providerSession = frames[0], case .providerControlAck = frames[1], case .providerArtifact = frames[2] else {
+            return XCTFail("expected a session, a control ack, then an artifact, got \(frames)")
+        }
+
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("done")])
+        let result = try await promptTask.value
+        XCTAssertEqual(result.output, "done")
+        await connection.close()
+    }
+
     func testModeChangedAnswersTheRequestOnceAndFreesItsSlot() async throws {
         let factory = MockHostedAgentSocketFactory()
         let connection = makeConnection(factory: factory)

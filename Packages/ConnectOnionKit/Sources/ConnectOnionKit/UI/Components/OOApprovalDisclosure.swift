@@ -72,6 +72,17 @@ public enum OOApprovalDisclosure {
         }
     }
 
+    /// What happens if the person decides a verified Provider approval. Allow is only ever once, and only
+    /// inside the Work Room; for any other scope there is no Allow to describe.
+    public static func providerConsequence(_ scope: OIPProviderApproval.Scope) -> String {
+        switch scope {
+        case .workroom:
+            return "Allow once lets the Provider do this one thing in this Work Room. It asks again for anything else."
+        case .elevated, .unknown:
+            return "Allow is not offered because this request is not limited to this Work Room."
+        }
+    }
+
     /// Said for every tool the app does not recognise. It makes no claim about what the tool does.
     public static let unrecognisedConsequence =
         "The app does not recognise this tool, so it cannot say what it will change. Review the parameters before you allow it."

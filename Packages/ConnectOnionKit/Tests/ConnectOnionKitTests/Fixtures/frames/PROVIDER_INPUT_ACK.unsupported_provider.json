@@ -1,0 +1,8 @@
+{
+  "type": "PROVIDER_INPUT_ACK",
+  "requestId": "input-1",
+  "invocationId": "codex:call-7",
+  "accepted": false,
+  "stateRevision": 2,
+  "reason": "unsupported_provider"
+}

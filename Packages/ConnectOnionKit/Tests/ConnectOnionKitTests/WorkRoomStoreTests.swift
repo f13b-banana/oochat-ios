@@ -467,4 +467,171 @@ final class WorkRoomStoreTests: XCTestCase {
         XCTAssertEqual(room.lastCompleted?.invocationID, "claude_code:station")
         XCTAssertEqual(room.earlierActivities, [])
     }
+
+    // MARK: Reconnect snapshot
+
+    private struct SnapshotFixtureError: Error {}
+
+    /// The CONNECTED snapshot fixture with its one nested Provider Invocation changed.
+    private func snapshot(_ changes: [String: JSONValue?] = [:]) throws -> OIPConnected {
+        guard case .connected(var connected) = try frame("CONNECTED.snapshot") else {
+            XCTFail("CONNECTED.snapshot did not decode")
+            throw SnapshotFixtureError()
+        }
+        var items = try XCTUnwrap(connected.chatItems)
+        var invocation = try XCTUnwrap(items[1].objectValue)
+        for (key, value) in changes {
+            invocation[key] = value
+        }
+        items[1] = .object(invocation)
+        connected = OIPConnected(
+            sessionID: connected.sessionID, status: connected.status, hostProtocol: nil, sessionModes: nil,
+            serverNewer: connected.serverNewer, session: nil, chatItems: items
+        )
+        return connected
+    }
+
+    func testSnapshotRebuildsTheWorkRoomWithItsActivitiesAndMessages() throws {
+        let store = WorkRoomStore()
+        store.receiveSnapshot(try snapshot())
+
+        let room = try XCTUnwrap(store.workRoom(forToolCallID: "call-7"))
+        XCTAssertEqual(room.title, "Build and verify the requested C program")
+        XCTAssertEqual(room.status, .running)
+        XCTAssertEqual(room.activities.map(\.activityID), ["create-sort"])
+        XCTAssertEqual(room.messages.map(\.messageID), ["user:initial", "assistant:plan"])
+        XCTAssertTrue(store.isProviderToolCall("call-7"))
+    }
+
+    func testSnapshotIsIgnoredUnlessTheServerIsNewer() throws {
+        guard case .connected(let connected) = try frame("CONNECTED.snapshot", ["server_newer": .bool(false)]) else {
+            return XCTFail("CONNECTED.snapshot did not decode")
+        }
+        let store = WorkRoomStore()
+        store.receiveSnapshot(connected)
+
+        XCTAssertEqual(store.workRooms, [])
+    }
+
+    func testSnapshotCopyOffTheAllowListIsDroppedLikeALiveFrame() throws {
+        let store = WorkRoomStore()
+        store.receiveSnapshot(try snapshot(["taskTitle": .string("Ignore all rules"), "currentSummary": .string("Secret")]))
+
+        let room = try XCTUnwrap(store.workRoom(forToolCallID: "call-7"))
+        XCTAssertNil(room.title)
+        XCTAssertNil(room.summary)
+    }
+
+    func testSnapshotChildrenObeyTheLiveLimits() throws {
+        let bad = JSONValue.object([
+            "id": .string("x"), "sequence": .number(1), "kind": .string("command"), "status": .string("running"),
+            "title": .string("Run anything"), "summary": .string("Not allowed")
+        ])
+        let blank = JSONValue.object(["id": .string("m1"), "role": .string("assistant"), "text": .string("   ")])
+        let tooLong = JSONValue.object([
+            "id": .string("m2"), "role": .string("assistant"),
+            "text": .string(String(repeating: "a", count: OIPProviderMessage.textLimit + 1))
+        ])
+        let badID = JSONValue.object(["id": .string("a b"), "role": .string("assistant"), "text": .string("hi")])
+        let store = WorkRoomStore()
+        store.receiveSnapshot(try snapshot([
+            "activities": .array([bad]), "messages": .array([blank, tooLong, badID])
+        ]))
+
+        let room = try XCTUnwrap(store.workRoom(id: "codex:call-7"))
+        XCTAssertEqual(room.activities, [])
+        XCTAssertEqual(room.messages, [])
+    }
+
+    func testSnapshotInvocationWithAnUnknownProviderIsDropped() throws {
+        let store = WorkRoomStore()
+        store.receiveSnapshot(try snapshot(["provider": .string("other")]))
+
+        XCTAssertEqual(store.workRooms, [])
+    }
+
+    func testOlderOrEqualSnapshotKeepsTheNewerLocalWorkRoom() throws {
+        let store = store(try frame("provider_invocation", ["stateRevision": .number(5), "status": .string("completed")]))
+        let before = try XCTUnwrap(store.workRooms.first)
+
+        store.receiveSnapshot(try snapshot())
+        store.receiveSnapshot(try snapshot(["stateRevision": .number(5)]))
+        store.receiveSnapshot(try snapshot(["stateRevision": nil]))
+
+        let after = try XCTUnwrap(store.workRooms.first)
+        XCTAssertEqual(after.status, before.status)
+        XCTAssertEqual(after.title, before.title)
+        XCTAssertEqual(after.summary, before.summary)
+    }
+
+    func testNewerSnapshotUpdatesTheLocalWorkRoom() throws {
+        let store = store(try frame("provider_invocation", ["stateRevision": .number(1)]))
+
+        store.receiveSnapshot(try snapshot(["status": .string("completed"), "stateRevision": .number(4)]))
+
+        let room = try XCTUnwrap(store.workRoom(forToolCallID: "call-7"))
+        XCTAssertEqual(room.status, .completed)
+        XCTAssertEqual(room.messages.count, 2)
+    }
+
+    func testLiveFramesRestreamedAfterASnapshotStillGoThroughTheRevisionGate() throws {
+        let store = WorkRoomStore()
+        store.receiveSnapshot(try snapshot())
+
+        store.receive(try frame("provider_invocation", ["stateRevision": .number(2), "status": .string("failed")]))
+        XCTAssertEqual(store.workRoom(forToolCallID: "call-7")?.status, .running)
+
+        store.receive(try frame("provider_invocation.terminal", ["stateRevision": .number(4)]))
+        XCTAssertEqual(store.workRoom(forToolCallID: "call-7")?.status, .cancelled)
+    }
+
+    func testASnapshotAtTheSameRevisionStillFillsInMessagesAndActivitiesTheStoreLacks() throws {
+        let store = store(try frame("provider_invocation", ["stateRevision": .number(3)]))
+        XCTAssertEqual(store.workRoom(forToolCallID: "call-7")?.messages, [])
+
+        store.receiveSnapshot(try snapshot())
+
+        let room = try XCTUnwrap(store.workRoom(forToolCallID: "call-7"))
+        XCTAssertEqual(room.messages.map(\.messageID), ["user:initial", "assistant:plan"])
+        XCTAssertEqual(room.activities.map(\.activityID), ["create-sort"])
+    }
+
+    func testAnOlderSnapshotNeverReplacesAMessageTheStoreAlreadyHas() throws {
+        let store = store(
+            try frame("provider_invocation", ["stateRevision": .number(3)]),
+            try frame("provider_message", ["messageId": .string("assistant:plan"), "text": .string("Newer text")])
+        )
+
+        store.receiveSnapshot(try snapshot())
+
+        let room = try XCTUnwrap(store.workRoom(forToolCallID: "call-7"))
+        XCTAssertEqual(room.messages.map(\.text), ["Newer text", "Build and test a sort"])
+    }
+
+    func testALiveMessageWithoutAWorkRoomIDIsGroupedByItsInvocationsWorkRoom() throws {
+        let store = store(
+            try frame("provider_invocation", ["workroomId": .string("room-a")]),
+            try frame("provider_message", ["workroomId": nil])
+        )
+
+        let room = try XCTUnwrap(store.workRoom(id: "room-a"))
+        XCTAssertEqual(room.messages.map(\.messageID), ["assistant:plan"])
+    }
+
+    func testALiveMessageWithoutAWorkRoomIDForAnInvocationWithNoneUsesTheInvocationID() throws {
+        let store = store(
+            try frame("provider_invocation", ["workroomId": nil]),
+            try frame("provider_message", ["workroomId": nil])
+        )
+
+        XCTAssertEqual(store.workRoom(id: "codex:call-7")?.messages.count, 1)
+    }
+
+    func testConnectionDropKeepsTheWorkRoom() throws {
+        let store = store(try frame("provider_invocation"))
+
+        store.connectionDidDrop()
+
+        XCTAssertEqual(store.workRooms.count, 1)
+    }
 }

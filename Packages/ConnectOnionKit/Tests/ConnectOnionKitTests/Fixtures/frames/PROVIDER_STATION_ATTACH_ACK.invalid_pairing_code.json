@@ -1,0 +1,7 @@
+{
+  "type": "PROVIDER_STATION_ATTACH_ACK",
+  "requestId": "attach-1",
+  "request_id": "attach-1",
+  "accepted": false,
+  "reason": "invalid_pairing_code"
+}

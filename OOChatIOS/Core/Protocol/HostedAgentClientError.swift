@@ -9,6 +9,8 @@ enum HostedAgentClientError: LocalizedError {
     case closed
     case timeout
     case busy
+    /// The agent asked for an invite code first, so a message cannot be sent yet.
+    case onboardingRequired
     /// A message sent before the app closed has no recorded result on the host.
     case outcomeUnknown
 
@@ -33,6 +35,8 @@ enum HostedAgentClientError: LocalizedError {
             return "The agent didn't reply in time. Try again."
         case .busy:
             return "The agent is still working on your previous message in this conversation. Wait for it to finish, then try again."
+        case .onboardingRequired:
+            return "This agent needs an invite code before you can chat. Enter it first."
         case.incompatibleProtocol(let incompatibility):
             return incompatibility.message
         case .outcomeUnknown:
@@ -56,7 +60,7 @@ enum HostedAgentClientError: LocalizedError {
         switch clientError {
         case .closed, .timeout, .invalidURL:
             return true
-        case .invalidAddress, .badFrame, .server, .busy, .incompatibleProtocol, .outcomeUnknown:
+        case .invalidAddress, .badFrame, .server, .busy, .onboardingRequired, .incompatibleProtocol, .outcomeUnknown:
             return false
         }
     }

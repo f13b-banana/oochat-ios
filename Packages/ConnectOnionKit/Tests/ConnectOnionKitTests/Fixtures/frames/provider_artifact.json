@@ -1,0 +1,11 @@
+{
+  "type": "provider_artifact",
+  "provider": "codex",
+  "invocationId": "codex:call-7",
+  "parentToolCallId": "call-7",
+  "artifactId": "latest-2",
+  "kind": "screenshot",
+  "stateRevision": 2,
+  "alt": "Latest provider workspace view",
+  "thumbnailDataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP436AARAwQCgAw7gZ9vw2nHQAAAABJRU5ErkJggg=="
+}

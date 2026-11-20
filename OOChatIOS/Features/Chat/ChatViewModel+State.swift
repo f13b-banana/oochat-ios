@@ -59,6 +59,8 @@ extension ChatViewModel {
             dashboards[conversationID] = dashboard
         case .modeChanged(let mode, let turnsLeft):
             deliveryCoordinator.apply(.modeChanged(mode: mode, turnsLeft: turnsLeft), toConversationID: conversationID)
+        case .onboarding(let onboarding):
+            applyOnboarding(onboarding, forConversationID: conversationID)
         }
     }
 

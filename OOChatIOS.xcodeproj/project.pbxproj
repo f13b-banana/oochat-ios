@@ -61,9 +61,16 @@
 		100000000000000000000159 /* ChatSidebarHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000064 /* ChatSidebarHeaderView.swift */; };
 		100000000000000000000160 /* ChatSidebarFooterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000065 /* ChatSidebarFooterView.swift */; };
 		100000000000000000000161 /* ChatSidebarRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000066 /* ChatSidebarRows.swift */; };
+		900000000000000000000103 /* StationPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 900000000000000000000104 /* StationPaneView.swift */; };
+		910000000000000000000205 /* OnboardingPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 910000000000000000000206 /* OnboardingPaneView.swift */; };
+		910000000000000000000203 /* ChatViewModel+Onboarding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 910000000000000000000204 /* ChatViewModel+Onboarding.swift */; };
 		100000000000000000000162 /* ViewTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000067 /* ViewTestSupport.swift */; };
 		100000000000000000000163 /* ChatCardViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000068 /* ChatCardViewTests.swift */; };
 		100000000000000000000164 /* ComposerToolCallViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000069 /* ComposerToolCallViewTests.swift */; };
+		000100000000000000009002 /* WorkRoomDictationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000100000000000000009003 /* WorkRoomDictationTests.swift */; };
+		910000000000000000000209 /* ChatViewModelOnboardingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 910000000000000000000210 /* ChatViewModelOnboardingTests.swift */; };
+		910000000000000000000207 /* HostedAgentOnboardingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 910000000000000000000208 /* HostedAgentOnboardingTests.swift */; };
+		000100000000000000009012 /* ConversationBarrierScopeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000100000000000000009013 /* ConversationBarrierScopeTests.swift */; };
 		100000000000000000000165 /* HostedAgentConnectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000070 /* HostedAgentConnectionTests.swift */; };
 		100000000000000000000166 /* SidebarComponentViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000071 /* SidebarComponentViewTests.swift */; };
 		100000000000000000000167 /* AgentSettingsViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000072 /* AgentSettingsViewTests.swift */; };
@@ -84,7 +91,9 @@
 		100000000000000000000207 /* StoredIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000355 /* StoredIdentity.swift */; };
 		100000000000000000000208 /* ChatViewModel+AppLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000356 /* ChatViewModel+AppLifecycle.swift */; };
 		100000000000000000000209 /* ChatViewModel+ComposerDrafts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000357 /* ChatViewModel+ComposerDrafts.swift */; };
+		000100000000000000009000 /* WorkRoomDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000100000000000000009001 /* WorkRoomDictation.swift */; };
 		100000000000000000000210 /* ChatViewModel+Connection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000358 /* ChatViewModel+Connection.swift */; };
+		900000000000000000000101 /* ChatViewModel+Station.swift in Sources */ = {isa = PBXBuildFile; fileRef = 900000000000000000000102 /* ChatViewModel+Station.swift */; };
 		100000000000000000000211 /* ChatViewModel+Interactions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000359 /* ChatViewModel+Interactions.swift */; };
 		100000000000000000000212 /* ChatViewModel+State.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000360 /* ChatViewModel+State.swift */; };
 		100000000000000000000213 /* HostedAgentTestDoubles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000361 /* HostedAgentTestDoubles.swift */; };
@@ -104,6 +113,7 @@
 		100000000000000000000340 /* ComposerMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000330 /* ComposerMetrics.swift */; };
 		100000000000000000000341 /* ChatViewModel+Messaging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000343 /* ChatViewModel+Messaging.swift */; };
 		100000000000000000000342 /* HostedAgentConnection+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000344 /* HostedAgentConnection+Lifecycle.swift */; };
+		910000000000000000000201 /* HostedAgentConnection+Onboarding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 910000000000000000000202 /* HostedAgentConnection+Onboarding.swift */; };
 		350C44483080FFEA0041DFE0 /* IncompatibleAgentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 350C44473080FFE30041DFE0 /* IncompatibleAgentView.swift */; };
 		35AE410930777ECB004216E9 /* ConnectOnionKit in Frameworks */ = {isa = PBXBuildFile; productRef = 35AE410830777ECB004216E9 /* ConnectOnionKit */; };
 		5A17E0000000000000000002 /* IdentityStore+PrivateKeyStoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A17E0000000000000000001 /* IdentityStore+PrivateKeyStoring.swift */; };
@@ -182,9 +192,16 @@
 		100000000000000000000064 /* ChatSidebarHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarHeaderView.swift; sourceTree = "<group>"; };
 		100000000000000000000065 /* ChatSidebarFooterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarFooterView.swift; sourceTree = "<group>"; };
 		100000000000000000000066 /* ChatSidebarRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarRows.swift; sourceTree = "<group>"; };
+		900000000000000000000104 /* StationPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationPaneView.swift; sourceTree = "<group>"; };
+		910000000000000000000206 /* OnboardingPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPaneView.swift; sourceTree = "<group>"; };
+		910000000000000000000204 /* ChatViewModel+Onboarding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatViewModel+Onboarding.swift"; sourceTree = "<group>"; };
 		100000000000000000000067 /* ViewTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewTestSupport.swift; sourceTree = "<group>"; };
 		100000000000000000000068 /* ChatCardViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCardViewTests.swift; sourceTree = "<group>"; };
 		100000000000000000000069 /* ComposerToolCallViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerToolCallViewTests.swift; sourceTree = "<group>"; };
+		000100000000000000009003 /* WorkRoomDictationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkRoomDictationTests.swift; sourceTree = "<group>"; };
+		910000000000000000000210 /* ChatViewModelOnboardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModelOnboardingTests.swift; sourceTree = "<group>"; };
+		910000000000000000000208 /* HostedAgentOnboardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentOnboardingTests.swift; sourceTree = "<group>"; };
+		000100000000000000009013 /* ConversationBarrierScopeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationBarrierScopeTests.swift; sourceTree = "<group>"; };
 		100000000000000000000070 /* HostedAgentConnectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentConnectionTests.swift; sourceTree = "<group>"; };
 		100000000000000000000071 /* SidebarComponentViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarComponentViewTests.swift; sourceTree = "<group>"; };
 		100000000000000000000072 /* AgentSettingsViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSettingsViewTests.swift; sourceTree = "<group>"; };
@@ -205,6 +222,7 @@
 		100000000000000000000330 /* ComposerMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerMetrics.swift; sourceTree = "<group>"; };
 		100000000000000000000343 /* ChatViewModel+Messaging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatViewModel+Messaging.swift"; sourceTree = "<group>"; };
 		100000000000000000000344 /* HostedAgentConnection+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HostedAgentConnection+Lifecycle.swift"; sourceTree = "<group>"; };
+		910000000000000000000202 /* HostedAgentConnection+Onboarding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HostedAgentConnection+Onboarding.swift"; sourceTree = "<group>"; };
 		100000000000000000000345 /* AgentPresenceCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPresenceCoordinator.swift; sourceTree = "<group>"; };
 		100000000000000000000346 /* HostedAgentTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentTransport.swift; sourceTree = "<group>"; };
 		100000000000000000000347 /* HostedAgentWebSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentWebSocket.swift; sourceTree = "<group>"; };
@@ -217,7 +235,9 @@
 		100000000000000000000355 /* StoredIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredIdentity.swift; sourceTree = "<group>"; };
 		100000000000000000000356 /* ChatViewModel+AppLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatViewModel+AppLifecycle.swift"; sourceTree = "<group>"; };
 		100000000000000000000357 /* ChatViewModel+ComposerDrafts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatViewModel+ComposerDrafts.swift"; sourceTree = "<group>"; };
+		000100000000000000009001 /* WorkRoomDictation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorkRoomDictation.swift"; sourceTree = "<group>"; };
 		100000000000000000000358 /* ChatViewModel+Connection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatViewModel+Connection.swift"; sourceTree = "<group>"; };
+		900000000000000000000102 /* ChatViewModel+Station.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatViewModel+Station.swift"; sourceTree = "<group>"; };
 		100000000000000000000359 /* ChatViewModel+Interactions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatViewModel+Interactions.swift"; sourceTree = "<group>"; };
 		100000000000000000000360 /* ChatViewModel+State.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatViewModel+State.swift"; sourceTree = "<group>"; };
 		100000000000000000000361 /* HostedAgentTestDoubles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostedAgentTestDoubles.swift; sourceTree = "<group>"; };
@@ -338,7 +358,9 @@
 				100000000000000000000343 /* ChatViewModel+Messaging.swift */,
 				100000000000000000000356 /* ChatViewModel+AppLifecycle.swift */,
 				100000000000000000000357 /* ChatViewModel+ComposerDrafts.swift */,
+				000100000000000000009001 /* WorkRoomDictation.swift */,
 				100000000000000000000358 /* ChatViewModel+Connection.swift */,
+				900000000000000000000102 /* ChatViewModel+Station.swift */,
 				100000000000000000000359 /* ChatViewModel+Interactions.swift */,
 				100000000000000000000360 /* ChatViewModel+State.swift */,
 				100000000000000000000059 /* ConversationState.swift */,
@@ -354,6 +376,9 @@
 				100000000000000000000064 /* ChatSidebarHeaderView.swift */,
 				100000000000000000000065 /* ChatSidebarFooterView.swift */,
 				100000000000000000000066 /* ChatSidebarRows.swift */,
+				900000000000000000000104 /* StationPaneView.swift */,
+				910000000000000000000206 /* OnboardingPaneView.swift */,
+				910000000000000000000204 /* ChatViewModel+Onboarding.swift */,
 				100000000000000000000050 /* SidebarButtonStyles.swift */,
 				100000000000000000000024 /* Composer.swift */,
 				100000000000000000000326 /* ComposerInputBar.swift */,
@@ -393,6 +418,7 @@
 				100000000000000000000055 /* HostedAgentConnectionPool.swift */,
 				100000000000000000000056 /* HostedAgentConnection.swift */,
 				100000000000000000000344 /* HostedAgentConnection+Lifecycle.swift */,
+				910000000000000000000202 /* HostedAgentConnection+Onboarding.swift */,
 			);
 			path = Protocol;
 			sourceTree = "<group>";
@@ -444,6 +470,10 @@
 				100000000000000000000074 /* ChatContainerViewTests.swift */,
 				100000000000000000000073 /* ChatSidebarViewTests.swift */,
 				100000000000000000000069 /* ComposerToolCallViewTests.swift */,
+				000100000000000000009003 /* WorkRoomDictationTests.swift */,
+				910000000000000000000210 /* ChatViewModelOnboardingTests.swift */,
+				910000000000000000000208 /* HostedAgentOnboardingTests.swift */,
+				000100000000000000009013 /* ConversationBarrierScopeTests.swift */,
 				100000000000000000000013 /* MockHostedAgentTests.swift */,
 				100000000000000000000034 /* NetworkRecoveryTests.swift */,
 				100000000000000000000071 /* SidebarComponentViewTests.swift */,
@@ -629,7 +659,9 @@
 				100000000000000000000341 /* ChatViewModel+Messaging.swift in Sources */,
 				100000000000000000000208 /* ChatViewModel+AppLifecycle.swift in Sources */,
 				100000000000000000000209 /* ChatViewModel+ComposerDrafts.swift in Sources */,
+				000100000000000000009000 /* WorkRoomDictation.swift in Sources */,
 				100000000000000000000210 /* ChatViewModel+Connection.swift in Sources */,
+				900000000000000000000101 /* ChatViewModel+Station.swift in Sources */,
 				350C44483080FFEA0041DFE0 /* IncompatibleAgentView.swift in Sources */,
 				100000000000000000000211 /* ChatViewModel+Interactions.swift in Sources */,
 				100000000000000000000212 /* ChatViewModel+State.swift in Sources */,
@@ -664,6 +696,7 @@
 				100000000000000000000150 /* HostedAgentConnectionPool.swift in Sources */,
 				100000000000000000000151 /* HostedAgentConnection.swift in Sources */,
 				100000000000000000000342 /* HostedAgentConnection+Lifecycle.swift in Sources */,
+				910000000000000000000201 /* HostedAgentConnection+Onboarding.swift in Sources */,
 				100000000000000000000119 /* ChatView.swift in Sources */,
 				100000000000000000000331 /* ChatScreenHelpers.swift in Sources */,
 				100000000000000000000332 /* ChatScreenBackdrop.swift in Sources */,
@@ -676,6 +709,9 @@
 				100000000000000000000159 /* ChatSidebarHeaderView.swift in Sources */,
 				100000000000000000000160 /* ChatSidebarFooterView.swift in Sources */,
 				100000000000000000000161 /* ChatSidebarRows.swift in Sources */,
+				900000000000000000000103 /* StationPaneView.swift in Sources */,
+				910000000000000000000205 /* OnboardingPaneView.swift in Sources */,
+				910000000000000000000203 /* ChatViewModel+Onboarding.swift in Sources */,
 				100000000000000000000145 /* SidebarButtonStyles.swift in Sources */,
 				100000000000000000000120 /* Composer.swift in Sources */,
 				100000000000000000000336 /* ComposerInputBar.swift in Sources */,
@@ -719,6 +755,10 @@
 				100000000000000000000169 /* ChatContainerViewTests.swift in Sources */,
 				100000000000000000000168 /* ChatSidebarViewTests.swift in Sources */,
 				100000000000000000000164 /* ComposerToolCallViewTests.swift in Sources */,
+				000100000000000000009002 /* WorkRoomDictationTests.swift in Sources */,
+				910000000000000000000209 /* ChatViewModelOnboardingTests.swift in Sources */,
+				910000000000000000000207 /* HostedAgentOnboardingTests.swift in Sources */,
+				000100000000000000009012 /* ConversationBarrierScopeTests.swift in Sources */,
 				100000000000000000000110 /* MockHostedAgentTests.swift in Sources */,
 				100000000000000000000130 /* NetworkRecoveryTests.swift in Sources */,
 				100000000000000000000190 /* ChatJourneyIntegrationTests.swift in Sources */,

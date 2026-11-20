@@ -1,0 +1,66 @@
+{
+  "type": "provider_invocation",
+  "invocationId": "claude_code:call-9",
+  "parentToolCallId": "call-9",
+  "provider": "claude_code",
+  "providerDisplayName": "Claude Code",
+  "taskTitle": "Implement and verify the requested change",
+  "currentSummary": "Working in the selected workspace",
+  "status": "running",
+  "stateRevision": 1,
+  "workroomId": "claude_code:call-9",
+  "providerPermission": {
+    "provider": "claude_code",
+    "activeOptionId": "claude:default",
+    "appliesTo": "subsequent_turn",
+    "effectiveRevision": 1,
+    "options": [
+      {
+        "id": "claude:plan",
+        "nativeProfileId": "plan",
+        "reviewer": "user",
+        "label": "Plan",
+        "description": "Plan only, no edits",
+        "risk": "standard",
+        "selectable": true
+      },
+      {
+        "id": "claude:default",
+        "nativeProfileId": "default",
+        "reviewer": "user",
+        "label": "Default",
+        "description": "Ask before each change",
+        "risk": "standard",
+        "selectable": true
+      },
+      {
+        "id": "claude:accept-edits",
+        "nativeProfileId": "acceptEdits",
+        "reviewer": "provider",
+        "label": "Accept edits",
+        "description": "Apply file edits without asking",
+        "risk": "standard",
+        "selectable": true
+      },
+      {
+        "id": "claude:auto",
+        "nativeProfileId": "auto",
+        "reviewer": "auto",
+        "label": "Auto",
+        "description": "Let the reviewer approve for you",
+        "risk": "standard",
+        "selectable": true
+      },
+      {
+        "id": "claude:bypass-permissions",
+        "nativeProfileId": "bypassPermissions",
+        "reviewer": "auto",
+        "label": "Bypass permissions",
+        "description": "Skip permission checks",
+        "risk": "elevated",
+        "selectable": false,
+        "disabledReason": "Host permission ceiling is Auto."
+      }
+    ]
+  }
+}

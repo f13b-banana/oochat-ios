@@ -11,6 +11,7 @@ struct SidebarAgentRow: View {
     let onAddChat: () -> Void
     let onShowQRCode: (URL) -> Void
     let onDelete: () -> Void
+    var isStation = false
 
     var body: some View {
         HStack(spacing: SidebarMetrics.agentRowSpacing) {
@@ -70,14 +71,19 @@ struct SidebarAgentRow: View {
 
                 HStack(spacing: SidebarMetrics.agentAvatarSpacing) {
                     // The tile carries the live dot on its corner, as in O Chat's sidebar.
-                    OOAvatarTile(name: avatarName, address: agent.address, isOnline: isOnline)
+                    OOAvatarTile(name: avatarName, address: agent.address, isOnline: isOnline, isStation: isStation)
 
-                    Text(sidebarAgentName(for: agent))
-                        .font(.body)
-                        .foregroundStyle(OOColor.ink)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(sidebarAgentName(for: agent))
+                            .font(.body)
+                            .foregroundStyle(OOColor.ink)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        if isStation {
+                            OOStationCaption()
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityValue(isOnline ? "Online" : "")

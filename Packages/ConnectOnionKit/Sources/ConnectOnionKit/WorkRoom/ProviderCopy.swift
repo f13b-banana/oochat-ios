@@ -78,6 +78,45 @@ public enum ProviderCopy {
         ]
     ]
 
+    /// Core's approval action copy (codex.py command and non-command approvals, claude_code.py file edit).
+    static let approvalActions: Set<String> = [
+        "Run a workspace command",
+        "Compile the requested C11 program",
+        "Compile the requested C program",
+        "Compile and run the requested tests",
+        "Run the requested tests",
+        "Run the requested program",
+        "Inspect the workspace",
+        "Make workspace file changes",
+        "Expand provider permissions",
+        "Perform a provider action"
+    ]
+
+    /// Core's approval reason copy, including the Claude Code fallback.
+    static let approvalReasons: Set<String> = [
+        "Codex requested approval to continue",
+        "Claude Code requested approval to continue",
+        "Compile the requested workspace files before continuing",
+        "Verify the requested workspace changes before continuing",
+        "Verify the requested program before continuing",
+        "Check the requested workspace result before continuing",
+        "Apply the requested workspace file changes",
+        "Review the requested permission expansion"
+    ]
+
+    /// provider_events._SAFE_ARTIFACT_ALTS: the only descriptions a preview may carry. Matched exactly, as Core does.
+    static let artifactAlts: Set<String> = [
+        "Latest provider workspace view",
+        "Latest provider browser view"
+    ]
+
+    /// The one scope text Core pairs with each `scopeClassification`.
+    static let approvalScopes: [String: String] = [
+        "workroom": "This Work Room only",
+        "elevated": "Outside this Work Room",
+        "unknown": "Boundary could not be verified"
+    ]
+
     /// The trimmed title if it is allowed, otherwise nil.
     static func taskTitle(_ value: String?) -> String? {
         allowed(value, in: taskTitles)
@@ -86,6 +125,16 @@ public enum ProviderCopy {
     /// The trimmed summary if it is allowed, otherwise nil.
     static func summary(_ value: String?) -> String? {
         allowed(value, in: summaries)
+    }
+
+    /// The trimmed approval action if it is allowed, otherwise nil.
+    static func approvalAction(_ value: String?) -> String? {
+        allowed(value, in: approvalActions)
+    }
+
+    /// The trimmed approval reason if it is allowed, otherwise nil.
+    static func approvalReason(_ value: String?) -> String? {
+        allowed(value, in: approvalReasons)
     }
 
     /// The trimmed pair if Core sends exactly this title with this summary, otherwise nil.

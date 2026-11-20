@@ -1,16 +1,20 @@
 import SwiftUI
 
 /// The Work Room Card: the timeline entry that stands for a Provider Invocation.
-/// It shows only the Provider, the allowed task title, the status and one allowed summary,
-/// never prompts, commands, paths, ids or output, and has exactly one action.
+/// It shows only the Provider, the allowed task title, the status, one allowed summary and at most one small
+/// real preview, never prompts, commands, paths, ids or output, and has exactly one action.
 public struct OOWorkRoomCard: View {
     private let workRoom: WorkRoom
     private let onOpen: () -> Void
+    private let onDecide: ((WorkRoomDecision) -> Void)?
 
-    /// `onOpen` is the app's navigation to the Work Room: a push on iOS, the detail pane on macOS.
-    public init(workRoom: WorkRoom, onOpen: @escaping () -> Void) {
+    /// `onOpen` is the app's navigation to the Work Room: a push on iOS, the detail pane on macOS. It is also
+    /// what the Decision Strip's "Review details in Work Room" does. `onDecide` is the app's answer to the
+    /// store (`WorkRoomStore.decide`); without it the card never shows a Decision Strip.
+    public init(workRoom: WorkRoom, onOpen: @escaping () -> Void, onDecide: ((WorkRoomDecision) -> Void)? = nil) {
         self.workRoom = workRoom
         self.onOpen = onOpen
+        self.onDecide = onDecide
     }
 
     public var body: some View {
@@ -37,14 +41,28 @@ public struct OOWorkRoomCard: View {
                     .foregroundStyle(OOColor.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Button("Open Work Room", action: onOpen)
-                .buttonStyle(.ooSecondary)
-                .accessibilityLabel("Open Work Room")
-                .accessibilityHint("\(workRoom.provider.displayName): \(title)")
+            if let preview = workRoom.preview {
+                OOWorkRoomPreview(screenshot: preview)
+                    .frame(maxWidth: 160)
+            }
+            if let approval = strip, let onDecide {
+                OODecisionStrip(approval: approval, onDecide: onDecide, onReview: onOpen)
+            } else {
+                Button("Open Work Room", action: onOpen)
+                    .buttonStyle(.ooSecondary)
+                    .accessibilityLabel("Open Work Room")
+                    .accessibilityHint("\(workRoom.provider.displayName): \(title)")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .ooCard()
         .accessibilityElement(children: .contain)
+    }
+
+    /// Only a verified Work Room scope that can be allowed once gets a Decision Strip. Anything else keeps the
+    /// plain card: the card never offers an Allow it cannot back, and the decision happens in the Work Room.
+    private var strip: WorkRoomApproval? {
+        workRoom.approval.flatMap { $0.offersAllow ? $0 : nil }
     }
 
     private var title: String {

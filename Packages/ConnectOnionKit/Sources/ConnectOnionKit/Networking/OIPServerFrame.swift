@@ -11,6 +11,9 @@ public struct OIPDescriptor: Equatable, Sendable {
     public let minVersion: String?
     public let maxVersion: String?
     public let websocketPath: String?
+    /// The extensions the host negotiated, by name with the version it speaks. Only a host that was asked
+    /// for one in CONNECT lists it.
+    public let extensions: [String: String]
     init?(_ value: JSONValue?) {
         guard let object = value?.objectValue else {
             return nil
@@ -20,6 +23,7 @@ public struct OIPDescriptor: Equatable, Sendable {
         minVersion = object["min_version"]?.stringValue
         maxVersion = object["max_version"]?.stringValue
         websocketPath = object["websocket_path"]?.stringValue
+        extensions = (object["extensions"]?.objectValue ?? [:]).compactMapValues { $0.stringValue }
     }
 }
 
@@ -84,6 +88,12 @@ public struct OIPServerError: Equatable, Sendable {
     public let message: String?
     public let reason: String?
     public let requestID: String?
+
+    /// The host is a Claude Station and refused an outer INPUT or EXEC. It marks the agent as a Station;
+    /// it is not a connection failure.
+    public var isProviderStationOnly: Bool {
+        code == .string(OIPErrorCode.providerStationOnly)
+    }
 }
 
 // SESSION_STATUS, mode_changed (with turns_left), PING, stream events and unknown
@@ -120,6 +130,14 @@ public struct OIPAgentProfile: Equatable, Sendable {
     public let tools: [String]
     public let skills: [OIPAgentSkill]
     public let balanceUSD: Double?
+    /// The Provider whose terminal this agent exposes (`provider_station`), nil for an ordinary agent or a
+    /// value this client does not know.
+    public let providerStation: OIPProvider?
+
+    /// This agent is a Claude Station: a developer's own Claude Code terminal shared through a host.
+    public var isClaudeStation: Bool {
+        providerStation == .claudeCode
+    }
 }
 
 // EXEC_RESULT
@@ -169,6 +187,13 @@ public enum OIPServerFrame: Equatable, Sendable {
     case providerInvocation(OIPProviderInvocation)
     case providerActivity(OIPProviderActivity)
     case providerMessage(OIPProviderMessage)
+    case providerArtifact(OIPProviderArtifact)
+    case providerSession(OIPProviderSession)
+    case providerInterruptAck(OIPProviderAck)
+    case providerInputAck(OIPProviderAck)
+    case providerPermissionAck(OIPProviderAck)
+    case providerStationAttachAck(OIPProviderStationAttachAck)
+    case providerControlAck(OIPProviderControlAck)
     case ping
     // 'body' is the whole frame containing 'type' and 'id' for stream and interaction frames
     case event(type: String, id: String?, body: [String: JSONValue])
@@ -269,7 +294,7 @@ public enum OIPServerFrame: Equatable, Sendable {
                 code: code,
                 message: frame["message"]?.stringValue,
                 reason: frame["reason"]?.stringValue,
-                requestID: frame["request_id"]?.stringValue
+                requestID: (frame["request_id"] ?? frame["requestId"])?.stringValue
             )
         )
     }
@@ -296,7 +321,8 @@ public enum OIPServerFrame: Equatable, Sendable {
                 model: frame["model"]?.stringValue,
                 tools: names(frame["tools"]),
                 skills: skills(frame["skills"]),
-                balanceUSD: frame["balance_usd"]?.numberValue
+                balanceUSD: frame["balance_usd"]?.numberValue,
+                providerStation: frame["provider_station"]?.stringValue.flatMap(OIPProvider.init(rawValue:))
             )
         )
     }

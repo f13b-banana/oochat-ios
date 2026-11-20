@@ -80,7 +80,7 @@ final class MessageDeliveryCoordinator: ObservableObject {
 
         conversation.agentID = agent.id
         conversation.agentAddress = agent.address
-        if conversation.title == Conversation.defaultTitle {
+        if conversation.isUntitled {
             conversation.title = Self.title(
                 from: text,
                 imageCount: images.count,
@@ -505,19 +505,18 @@ final class MessageDeliveryCoordinator: ObservableObject {
         conversationState.upsert(conversation, persistence: persistence)
     }
 
+    /// The first real message names the chat, stored whole so the row does the truncating. A
+    /// slash command doesn't: the chat stays "New chat" until a real message comes.
     private static func title(from text: String, imageCount: Int, fileCount: Int) -> String {
-        guard !text.isEmpty else {
-            if imageCount > 0, fileCount > 0 {
-                return "Attachments"
-            }
-            if imageCount > 0 {
-                return imageCount == 1 ? "Photo" : "\(imageCount) Photos"
-            }
-            return fileCount == 1 ? "File" : "\(fileCount) Files"
+        guard text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ChatTitle.from(text) ?? Conversation.defaultTitle
         }
-        if text.count > 38 {
-            return String(text.prefix(35)) + "..."
+        if imageCount > 0, fileCount > 0 {
+            return "Attachments"
         }
-        return text
+        if imageCount > 0 {
+            return imageCount == 1 ? "Photo" : "\(imageCount) Photos"
+        }
+        return fileCount == 1 ? "File" : "\(fileCount) Files"
     }
 }

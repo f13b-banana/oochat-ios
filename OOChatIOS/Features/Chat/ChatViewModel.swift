@@ -254,6 +254,18 @@ final class ChatViewModel: ObservableObject {
         return nil
     }
 
+    /// What the chat's sidebar row says in place of its time. A pending approval says Approve;
+    /// a question, plan or checkpoint says Reply, since there's nothing to approve.
+    func sidebarStatus(forConversationID conversationID: String) -> SidebarChatStatus? {
+        guard let state = activityState(forConversationID: conversationID) else {
+            return nil
+        }
+        if state == .actionRequired {
+            return interactionCoordinator.hasPendingApproval(for: conversationID) ? .approval : .reply
+        }
+        return state.sidebarStatus
+    }
+
     var backgroundActivityState: ConversationActivityState? {
         let backgroundConversationIDs = conversations.lazy
             .map(\.id)

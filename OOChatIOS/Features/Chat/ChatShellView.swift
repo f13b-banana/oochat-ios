@@ -476,8 +476,8 @@ private enum SidebarShellMetrics {
     static let shadowRadius: CGFloat = 16
     static let shadowOffset = CGSize(width: -2, height: 0)
     static let sidebarParallax: CGFloat = 18
-    static let scrimOpacity: Double = 0.025
-    static let reducedTransparencyScrimOpacity: Double = 0.05
+    static let scrimOpacity: Double = 0.3
+    static let reducedTransparencyScrimOpacity: Double = 0.45
     static let dragMinimumDistance: CGFloat = 16
     static let openEdgeWidth: CGFloat = 24
     static let closeThreshold: CGFloat = 0.40

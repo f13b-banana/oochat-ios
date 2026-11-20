@@ -32,9 +32,9 @@ enum SidebarMetrics {
     static let agentsHeaderBottomPadding: CGFloat = 10
     static let sectionHeaderHorizontalPadding: CGFloat = 10
     static let minimumRowHeight: CGFloat = 0
-    static let footerButtonSize: CGFloat = 50
-    static let footerTopPadding: CGFloat = 12
-    static let footerBottomPadding: CGFloat = 20
+    static let footerButtonSize: CGFloat = 44
+    static let footerTopPadding: CGFloat = 4
+    static let footerBottomPadding: CGFloat = 8
     static let footerOverlayHeight = footerTopPadding + footerButtonSize + footerBottomPadding
     static let footerButtonHorizontalPadding: CGFloat = 18
     static let settingsButtonStrokeOpacity: Double = 0.20
@@ -54,7 +54,9 @@ enum SidebarMetrics {
 
     static let primaryRowInsets = EdgeInsets(top: 2, leading: compactRowLeading, bottom: 2, trailing: compactRowTrailing)
     static let emptyRowInsets = EdgeInsets(top: 8, leading: rowLeading, bottom: 8, trailing: outerTrailing)
-    static let agentRowInsets = EdgeInsets(top: 4, leading: rowLeading, bottom: 4, trailing: 14)
-    static let conversationRowInsets = EdgeInsets(top: 0, leading: rowLeading, bottom: 0, trailing: compactRowTrailing)
-    static let emptySessionRowInsets = EdgeInsets(top: 6, leading: conversationTextLeading, bottom: 6, trailing: outerTrailing)
+    static let agentRowInsets = EdgeInsets(top: 12, leading: compactRowLeading, bottom: 0, trailing: compactRowTrailing)
+    static let conversationRowInsets = EdgeInsets(top: 0, leading: compactRowLeading, bottom: 0, trailing: compactRowTrailing)
+    /// An open agent lists this many chats, then "Show all (n)" (spec D2).
+    static let chatsBeforeShowAll = 5
+    static let emptySessionRowInsets = EdgeInsets(top: 6, leading: compactRowLeading + 24, bottom: 6, trailing: outerTrailing)
 }

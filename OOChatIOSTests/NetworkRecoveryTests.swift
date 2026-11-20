@@ -32,6 +32,25 @@ final class NetworkRecoveryTests: XCTestCase {
         XCTAssertTrue(transport.connectedAddresses.isEmpty)
     }
 
+    // Story 182: named once by the first real message, never by a slash command.
+    func testAChatIsNamedByItsFirstRealMessageNotASlashCommand() {
+        let (viewModel, _, monitor) = makeEnvironment()
+        _ = setUpAgentAndConversation(viewModel)
+        monitor.simulate(online: false)
+
+        viewModel.prompt = "/hello"
+        viewModel.sendPrompt()
+        XCTAssertEqual(viewModel.activeConversation?.title, "New chat")
+
+        viewModel.prompt = "Fix the parser\nIt crashes on empty input"
+        viewModel.sendPrompt()
+        XCTAssertEqual(viewModel.activeConversation?.title, "Fix the parser")
+
+        viewModel.prompt = "List my home directory"
+        viewModel.sendPrompt()
+        XCTAssertEqual(viewModel.activeConversation?.title, "Fix the parser", "named once")
+    }
+
     // queueing while offline
     func testSendWhileOfflineQueuesMessageWithoutNetworkCall() {
         let (viewModel, transport, monitor) = makeEnvironment()

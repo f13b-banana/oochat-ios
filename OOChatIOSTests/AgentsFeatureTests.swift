@@ -107,7 +107,7 @@ final class AgentsFeatureTests: XCTestCase {
 
         XCTAssertEqual(conversation.agentID, agent.id)
         XCTAssertEqual(conversation.agentAddress, agent.address)
-        XCTAssertEqual(conversation.title, "New mobile session")
+        XCTAssertEqual(conversation.title, "New chat")
         XCTAssertFalse(conversation.id.isEmpty)
         XCTAssertTrue(conversation.messages.isEmpty)
         XCTAssertTrue(view.prompt.isEmpty)

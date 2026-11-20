@@ -171,6 +171,14 @@ final class InteractionCoordinator: ObservableObject {
         !(interactionsByConversationID[conversationID] ?? []).isEmpty
     }
 
+    /// A tool approval specifically, as opposed to a question, plan or checkpoint to answer.
+    func hasPendingApproval(for conversationID: String) -> Bool {
+        (interactionsByConversationID[conversationID] ?? []).contains {
+            if case .approval = $0 { return true }
+            return false
+        }
+    }
+
     func hasPendingInteraction(excluding conversationID: String?) -> Bool {
         interactionsByConversationID.contains { key, interactions in
             key != conversationID && !interactions.isEmpty

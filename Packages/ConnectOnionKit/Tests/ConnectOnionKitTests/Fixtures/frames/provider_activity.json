@@ -1,0 +1,13 @@
+{
+  "type": "provider_activity",
+  "provider": "codex",
+  "activityId": "create-sort",
+  "sequence": 2,
+  "kind": "file_change",
+  "status": "completed",
+  "title": "Update workspace files",
+  "summary": "Workspace files updated",
+  "files": ["sort.c"],
+  "parentToolCallId": "call-7",
+  "invocationId": "codex:call-7"
+}

@@ -1,0 +1,10 @@
+{
+  "type": "provider_invocation",
+  "invocationId": "codex:call-7",
+  "parentToolCallId": "call-7",
+  "provider": "codex",
+  "status": "cancelled",
+  "currentSummary": "The provider stopped",
+  "resultSummary": "The provider stopped",
+  "stateRevision": 3
+}

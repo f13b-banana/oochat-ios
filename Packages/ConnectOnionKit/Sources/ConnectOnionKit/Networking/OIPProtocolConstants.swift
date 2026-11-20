@@ -84,6 +84,8 @@ public enum OIPFrameType {
     public static let providerPermissionAck = "PROVIDER_PERMISSION_ACK"
     public static let modeChanged = "mode_changed"
     public static let providerInvocation = "provider_invocation"
+    public static let providerActivity = "provider_activity"
+    public static let providerMessage = "provider_message"
 
     // Both directions
     public static let sessionStatus = "SESSION_STATUS"

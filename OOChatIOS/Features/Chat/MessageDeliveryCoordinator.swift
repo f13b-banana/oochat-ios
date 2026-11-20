@@ -277,6 +277,11 @@ final class MessageDeliveryCoordinator: ObservableObject {
         let conversationState = conversationState
         return HostedAgentPromptHandlers(
             onEvent: { [weak self] event in
+                // Provider frames feed the conversation's Work Room store, not its messages.
+                if case .providerFrame(let frame) = event {
+                    conversationState.workRoomStore(for: conversationID).receive(frame)
+                    return
+                }
                 self?.apply(event, toConversationID: conversationID)
             },
             onInteraction: { interaction in
@@ -475,7 +480,7 @@ final class MessageDeliveryCoordinator: ObservableObject {
             )
             onModeChanged?(conversationID, protocolMode, turnsLeft)
             persistence = .metadata
-        case .modeChangeFailed, .modeChangeTimedOut:
+        case .modeChangeFailed, .modeChangeTimedOut, .providerFrame:
             return
         }
 

@@ -1,0 +1,10 @@
+{
+  "type": "provider_message",
+  "provider": "codex",
+  "invocationId": "codex:call-7",
+  "parentToolCallId": "call-7",
+  "messageId": "assistant:plan",
+  "role": "assistant",
+  "text": "I’ll create the isolated project and verify it independently.",
+  "workroomId": "codex:call-7"
+}

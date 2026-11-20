@@ -21,6 +21,11 @@ actor HostedAgentConnection {
         let files: [HostedAgentFilePayload]
         // A reconnect may resend input only when the original frame was not delivered.
         var inputDelivered = false
+        // Set for a prompt sent by an earlier run of the app: a finished turn counts only
+        // if the host's last user message is this prompt.
+        var requiresMatchingUserTurn = false
+        // Called just before each INPUT write, so the app can save that it may have been sent.
+        var onInputDispatched: (@MainActor () -> Void)?
     }
 
     let key: HostedAgentConnectionKey
@@ -34,7 +39,10 @@ actor HostedAgentConnection {
     let livenessCheckInterval: TimeInterval
     let resumeAttemptLimit: Int
     let resumeRetryDelay: TimeInterval
+    let bookmarkStore: HostedAgentBookmarkStore
+    let reconnectPolicy: ReconnectPolicy
 
+    var eventLedger = EventLedger()
     var state: State = .disconnected
     var socket: (any HostedAgentWebSocketTask)?
     var endpoint: ResolvedEndpoint?
@@ -66,7 +74,8 @@ actor HostedAgentConnection {
         livenessTimeout: TimeInterval = 75,
         livenessCheckInterval: TimeInterval = 10,
         resumeAttemptLimit: Int = 3,
-        resumeRetryDelay: TimeInterval = 1
+        resumeRetryDelay: TimeInterval = 1,
+        bookmarkStore: HostedAgentBookmarkStore = HostedAgentBookmarkStore()
     ) {
         self.key = key
         self.identityStore = identityStore
@@ -81,6 +90,8 @@ actor HostedAgentConnection {
         self.livenessCheckInterval = livenessCheckInterval
         self.resumeAttemptLimit = resumeAttemptLimit
         self.resumeRetryDelay = resumeRetryDelay
+        self.bookmarkStore = bookmarkStore
+        self.reconnectPolicy = ReconnectPolicy(maxAttempts: resumeAttemptLimit + 1, baseDelay: resumeRetryDelay)
     }
 
     // Share one connection attempt across callers for this conversation.
@@ -129,7 +140,8 @@ actor HostedAgentConnection {
         images: [String] = [],
         files: [HostedAgentFilePayload] = [],
         onEvent: (@MainActor (HostedAgentEvent) -> Void)?,
-        onInteraction: (@MainActor (HostedAgentInteraction) async -> HostedAgentInteractionDecision)?
+        onInteraction: (@MainActor (HostedAgentInteraction) async -> HostedAgentInteractionDecision)?,
+        onInputDispatched: (@MainActor () -> Void)? = nil
     ) async throws -> HostedAgentResult {
         try Task.checkCancellation()
         _ = try await ensureConnected(conversation: conversation)
@@ -150,7 +162,8 @@ actor HostedAgentConnection {
                     onInteraction: onInteraction,
                     prompt: prompt,
                     images: images,
-                    files: files
+                    files: files,
+                    onInputDispatched: onInputDispatched
                 )
                 guard !Task.isCancelled else {
                     disconnect(with: CancellationError(), closeCode: .goingAway)
@@ -164,6 +177,65 @@ actor HostedAgentConnection {
                         conversation: conversation,
                         promptID: promptID
                     )
+                }
+            }
+        } onCancel: {
+            Task { [weak self] in
+                await self?.cancelPrompt(promptID)
+            }
+        }
+    }
+
+    // Settles a prompt that an earlier run of the app may already have sent, without
+    // sending INPUT again. The CONNECTED frame decides: "running" streams the rest of the
+    // turn here, a finished turn is read from chat_items (only if its user message is this
+    // prompt), and anything else fails with .outcomeUnknown so the user decides on a retry.
+    func resumePrompt(
+        conversation: Conversation,
+        prompt: String,
+        onEvent: (@MainActor (HostedAgentEvent) -> Void)?,
+        onInteraction: (@MainActor (HostedAgentInteraction) async -> HostedAgentInteractionDecision)?
+    ) async throws -> HostedAgentResult {
+        try Task.checkCancellation()
+        guard pendingPrompt == nil else {
+            throw HostedAgentClientError.busy
+        }
+        // Only a fresh CONNECTED says what happened to the earlier INPUT.
+        if state == .connected {
+            disconnect(with: HostedAgentClientError.closed, closeCode: .goingAway)
+        }
+        resumeAttemptsUsed = 0
+        // Send no turn history: the host then always counts its own copy as newer and
+        // returns chat_items, even if another reconnect already updated our copy.
+        let probe: Conversation = {
+            var copy = conversation
+            copy.serverSession = nil
+            return copy
+        }()
+
+        let promptID = UUID()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                pendingPrompt = PendingPrompt(
+                    id: promptID,
+                    inputID: UUID().uuidString,
+                    continuation: continuation,
+                    onEvent: onEvent,
+                    onInteraction: onInteraction,
+                    prompt: prompt,
+                    images: [],
+                    files: [],
+                    inputDelivered: true,
+                    requiresMatchingUserTurn: true
+                )
+                guard !Task.isCancelled else {
+                    disconnect(with: CancellationError(), closeCode: .goingAway)
+                    return
+                }
+                Task { [weak self] in
+                    // CONNECTED settles the prompt in resumePendingPrompt; a failed connect
+                    // settles it through disconnect(with:), so the result is not needed here.
+                    _ = try? await self?.ensureConnected(conversation: probe)
                 }
             }
         } onCancel: {
@@ -309,6 +381,16 @@ actor HostedAgentConnection {
                 images: images,
                 files: files.map(\.jsonValue)
             )
+            // Save "may have reached the host" before the bytes leave. If the app is killed
+            // after this, the relaunch asks the host instead of sending the INPUT again.
+            if let onInputDispatched = pending.onInputDispatched {
+                await onInputDispatched()
+                // The await let other work run. Send only on the socket and prompt we
+                // started with; a resume attempt sends again after its CONNECTED.
+                guard pendingPrompt?.id == promptID, self.socket === socket else {
+                    return
+                }
+            }
             try await send(inputFrame, over: socket)
             if pendingPrompt?.id == promptID {
                 pendingPrompt?.inputDelivered = true

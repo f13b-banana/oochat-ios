@@ -482,8 +482,8 @@ final class MockHostedAgentTests: XCTestCase {
     }
 
     @MainActor
-    func testSaveAgentUpdatesEndpointAndClearsSessions() {
-        let viewModel = makeViewModel()
+    func testSaveAgentUpdatesEndpointAndClearsSessions() throws {
+        let viewModel = try makeViewModel()
         let agent = viewModel.saveAgent(name: "Primary", address: endpointA)
         XCTAssertNotNil(agent)
         let conversation = viewModel.createConversation(for: agent!)
@@ -504,8 +504,8 @@ final class MockHostedAgentTests: XCTestCase {
     }
 
     @MainActor
-    func testDuplicateEndpointsRemainDistinctConfigurations() {
-        let viewModel = makeViewModel()
+    func testDuplicateEndpointsRemainDistinctConfigurations() throws {
+        let viewModel = try makeViewModel()
 
         let first = viewModel.saveAgent(name: "First", address: endpointA)
         let second = viewModel.saveAgent(name: "Second", address: endpointA)
@@ -516,8 +516,8 @@ final class MockHostedAgentTests: XCTestCase {
     }
 
     @MainActor
-    func testDeletingAgentRemovesAgentAndConversations() {
-        let viewModel = makeViewModel()
+    func testDeletingAgentRemovesAgentAndConversations() throws {
+        let viewModel = try makeViewModel()
         let first = viewModel.saveAgent(name: "First", address: endpointA)!
         let second = viewModel.saveAgent(name: "Second", address: endpointB)!
         let deletedConversation = viewModel.createConversation(for: first)
@@ -532,8 +532,8 @@ final class MockHostedAgentTests: XCTestCase {
     }
 
     @MainActor
-    func testSwitchToAgentForChatCreatesConversationWhenMissing() {
-        let viewModel = makeViewModel()
+    func testSwitchToAgentForChatCreatesConversationWhenMissing() throws {
+        let viewModel = try makeViewModel()
         let agent = viewModel.saveAgent(name: "Primary", address: endpointA)!
 
         viewModel.switchToAgentForChat(agent)
@@ -635,12 +635,138 @@ final class MockHostedAgentTests: XCTestCase {
         return (viewModel, transport)
     }
 
+    // MARK: - Redo the latest turn in place
+
+    private struct RedoChat {
+        let viewModel: ChatViewModel
+        let transport: MockAgentTransport
+        let conversation: Conversation
+    }
+
     @MainActor
-    private func makeViewModel() -> ChatViewModel {
+    func testRetryReplacesTheLatestReplyInPlace() async throws {
+        let chat = try makeChatWithTwoTurns()
+        let viewModel = chat.viewModel
+        let transport = chat.transport
+        let conversation = chat.conversation
+        let yourMessage = conversation.messages[2]
+
+        viewModel.retryLatestReply()
+        await viewModel.sendTask?.value
+
+        let messages = viewModel.activeConversation?.messages ?? []
+        XCTAssertEqual(messages.map(\.content), ["First", "First reply", "Second", "mock reply"])
+        XCTAssertEqual(messages[2].id, yourMessage.id, "your message stays where it was")
+        XCTAssertEqual(messages[2].deliveryState, .sent)
+        XCTAssertEqual(transport.sentPrompts, ["Second"])
+    }
+
+    @MainActor
+    func testEditReplacesYourLatestMessageAndItsReply() async throws {
+        let chat = try makeChatWithTwoTurns()
+        let viewModel = chat.viewModel
+        let transport = chat.transport
+        let conversation = chat.conversation
+        viewModel.prompt = "Half-written draft"
+
+        viewModel.editLatestMessage(to: "  Second, edited ")
+        await viewModel.sendTask?.value
+
+        let messages = viewModel.activeConversation?.messages ?? []
+        XCTAssertEqual(messages.map(\.content), ["First", "First reply", "Second, edited", "mock reply"])
+        XCTAssertEqual(messages[2].id, conversation.messages[2].id)
+        XCTAssertEqual(transport.sentPrompts, ["Second, edited"])
+        XCTAssertEqual(viewModel.prompt, "Half-written draft", "your draft is left alone")
+    }
+
+    // The host only reads the app's copy of the session on CONNECT, so the socket has to be
+    // restarted before the message goes out, with the session cut back to before it.
+    @MainActor
+    func testRedoReconnectsWithTheRewoundSessionBeforeSending() async throws {
+        let chat = try makeChatWithTwoTurns()
+        let viewModel = chat.viewModel
+        let transport = chat.transport
+        let conversation = chat.conversation
+
+        viewModel.retryLatestReply()
+        await viewModel.sendTask?.value
+
+        XCTAssertEqual(transport.restartedSessions.map(\.conversationID), [conversation.id])
+        XCTAssertEqual(transport.restartedSessions.map(\.promptsSentBefore), [0])
+        let sentSession = transport.sentConversations.first?.serverSession
+        XCTAssertEqual(sentSession?["messages"], .array([
+            .object(["role": .string("user"), "content": .string("First")]),
+            .object(["role": .string("assistant"), "content": .string("First reply")])
+        ]))
+    }
+
+    @MainActor
+    func testOfflineRedoWaitsInTheQueue() throws {
+        let monitor = MockNetworkMonitor()
+        let chat = try makeChatWithTwoTurns(monitor: monitor)
+        let viewModel = chat.viewModel
+        let transport = chat.transport
+        monitor.simulate(online: false)
+
+        viewModel.retryLatestReply()
+
+        let messages = viewModel.activeConversation?.messages ?? []
+        XCTAssertEqual(messages.map(\.content), ["First", "First reply", "Second"])
+        XCTAssertEqual(messages.last?.deliveryState, .queued)
+        XCTAssertTrue(transport.sentPrompts.isEmpty)
+    }
+
+    @MainActor
+    func testNothingChangesWhenTheSessionCannotBeRewound() throws {
+        let chat = try makeChatWithTwoTurns(hostSession: nil)
+        let viewModel = chat.viewModel
+        let transport = chat.transport
+        let conversation = chat.conversation
+
+        viewModel.retryLatestReply()
+
+        XCTAssertEqual(viewModel.activeConversation?.messages, conversation.messages)
+        XCTAssertNotNil(viewModel.errorMessage)
+        XCTAssertTrue(transport.sentPrompts.isEmpty)
+    }
+
+    @MainActor
+    private func makeChatWithTwoTurns(
+        monitor: MockNetworkMonitor = MockNetworkMonitor(),
+        hostSession: [String: JSONValue]? = [
+            "messages": .array([
+                .object(["role": .string("user"), "content": .string("First")]),
+                .object(["role": .string("assistant"), "content": .string("First reply")]),
+                .object(["role": .string("user"), "content": .string("Second")]),
+                .object(["role": .string("assistant"), "content": .string("Second reply")])
+            ]),
+            "iteration": .number(1)
+        ]
+    ) throws -> RedoChat {
+        let transport = MockAgentTransport()
+        let viewModel = try makeViewModel(transport: transport, monitor: monitor)
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Primary", address: endpointA))
+        var conversation = viewModel.createConversation(for: agent)
+        conversation.messages = [
+            ChatMessage(role: .user, content: "First"),
+            ChatMessage(role: .agent, content: "First reply"),
+            ChatMessage(role: .user, content: "Second"),
+            ChatMessage(role: .agent, content: "Second reply")
+        ]
+        conversation.serverSession = hostSession
+        viewModel.upsertForTesting(conversation)
+        return RedoChat(viewModel: viewModel, transport: transport, conversation: conversation)
+    }
+
+    @MainActor
+    private func makeViewModel(
+        transport: MockAgentTransport? = nil,
+        monitor: MockNetworkMonitor? = nil
+    ) throws -> ChatViewModel {
         let suiteName = "OOChatIOSTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defaults.removePersistentDomain(forName: suiteName)
-        let store = try! SwiftDataConversationRepository(inMemory: true, defaults: defaults)
-        return ChatViewModel(store: store)
+        let store = try SwiftDataConversationRepository(inMemory: true, defaults: defaults)
+        return ChatViewModel(store: store, client: transport, networkMonitor: monitor)
     }
 }

@@ -111,6 +111,8 @@ struct ChatScreen: View {
     @State var bottomAnchorY: CGFloat = 0
     @State var scrollViewportHeight: CGFloat = 0
     @State var shouldFollowLatest = true
+    // Something new arrived while you were scrolled up; shown as a dot on Jump to latest.
+    @State var hasUnseenLatest = false
     @State var promptFocusRequest = 0
     @State var isPromptFocused = false
     /// When the open chat started connecting; the header turns "Connecting…" into "Can't connect" after 10 s.
@@ -127,122 +129,126 @@ struct ChatScreen: View {
             if let conversation = viewModel.activeConversation {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 20) {
-                            if shouldShowEmptyState(for: conversation) {
-                                EmptyChatState(
-                                    agentName: viewModel.activeAgent?.name ?? "Your agent",
-                                    skills: StarterSkills.ordered(
-                                        viewModel.activeAgentSkills ?? [],
-                                        dashboard: viewModel.activeDashboard
-                                    ),
-                                    showsSkills: showsComposer
-                                ) { skill in
-                                    viewModel.prompt = "/\(skill.name) "
-                                    promptFocusRequest += 1
-                                } onShowAllSkills: {
-                                    // A lone "/" opens the composer's skill picker.
-                                    viewModel.prompt = "/"
-                                    promptFocusRequest += 1
-                                }
-                                .frame(
-                                    maxWidth: .infinity,
-                                    minHeight: max(0, scrollViewportHeight - 32),
-                                    alignment: .bottom
-                                )
-                                .transition(AppMotion.materialize(reduceMotion: reduceMotion))
-                            }
-
-                            ForEach(timelineEntries(for: conversation)) { entry in
-                                timelineView(for: entry)
-                                    .id(entry.id)
+                        VStack(spacing: 0) {
+                            LazyVStack(alignment: .leading, spacing: 20) {
+                                if shouldShowEmptyState(for: conversation) {
+                                    EmptyChatState(
+                                        agentName: viewModel.activeAgent?.name ?? "Your agent",
+                                        skills: StarterSkills.ordered(
+                                            viewModel.activeAgentSkills ?? [],
+                                            dashboard: viewModel.activeDashboard
+                                        ),
+                                        showsSkills: showsComposer
+                                    ) { skill in
+                                        viewModel.prompt = "/\(skill.name) "
+                                        promptFocusRequest += 1
+                                    } onShowAllSkills: {
+                                        // A lone "/" opens the composer's skill picker.
+                                        viewModel.prompt = "/"
+                                        promptFocusRequest += 1
+                                    }
+                                    .frame(
+                                        maxWidth: .infinity,
+                                        minHeight: max(0, scrollViewportHeight - 32),
+                                        alignment: .bottom
+                                    )
                                     .transition(AppMotion.materialize(reduceMotion: reduceMotion))
+                                }
+
+                                ForEach(timelineEntries(for: conversation)) { entry in
+                                    timelineView(for: entry)
+                                        .id(entry.id)
+                                        .transition(AppMotion.materialize(reduceMotion: reduceMotion))
+                                }
+                                .environment(
+                                    \.toolAwaitingApprovalID,
+                                    viewModel.toolAwaitingApprovalID(in: conversation.id)
+                                )
+
+                                if let approval = viewModel.activePendingApproval {
+                                    ApprovalCard(approval: approval) {
+                                        viewModel.allowPendingApprovalOnce(id: approval.id)
+                                    } onTrustSession: {
+                                        viewModel.trustPendingApprovalForSession(id: approval.id)
+                                    } onSkip: {
+                                        viewModel.skipPendingApproval(id: approval.id)
+                                    } onStop: {
+                                        viewModel.stopPendingApproval(id: approval.id)
+                                    } onExplain: {
+                                        viewModel.explainPendingApproval(id: approval.id)
+                                    }
+                                    .id("pendingApproval")
+                                    .transition(AppMotion.materialize(reduceMotion: reduceMotion))
+                                }
+
+                                if let checkpoint = viewModel.activePendingUlwCheckpoint {
+                                    UlwCheckpointCard(checkpoint: checkpoint) {
+                                        viewModel.continueUlw(id: checkpoint.id)
+                                    } onAcceptEdits: {
+                                        viewModel.switchModeFromUlwCheckpoint(id: checkpoint.id, to: .accept)
+                                    } onSafeMode: {
+                                        viewModel.switchModeFromUlwCheckpoint(id: checkpoint.id, to: .safe)
+                                    }
+                                    .id("pendingUlwCheckpoint")
+                                    .transition(AppMotion.materialize(reduceMotion: reduceMotion))
+                                }
+
+                                if let review = viewModel.activePendingPlanReview {
+                                    PlanReviewCard(review: review) {
+                                        viewModel.approvePendingPlan(id: review.id)
+                                    } onRequestChanges: { feedback in
+                                        viewModel.requestPlanChanges(id: review.id, feedback: feedback)
+                                    }
+                                    .id("pendingPlanReview")
+                                    .transition(AppMotion.materialize(reduceMotion: reduceMotion))
+                                }
+
+                                if let pending = viewModel.activePendingAskUser {
+                                    AskUserCard(pending: pending) { answer in
+                                        viewModel.answerPendingAskUser(id: pending.id, answer: answer)
+                                    }
+                                    .id("pendingAskUser")
+                                    .transition(AppMotion.materialize(reduceMotion: reduceMotion))
+                                }
                             }
-                            .environment(
-                                \.toolAwaitingApprovalID,
-                                viewModel.toolAwaitingApprovalID(in: conversation.id)
+                            .id(conversation.id)
+                            .transition(conversationTransition)
+                            .padding(.horizontal)
+                            .padding(.vertical, 16)
+                            .frame(maxWidth: ChatReadableWidth.maximum)
+                            .frame(maxWidth: .infinity)
+                            .animation(
+                                AppMotion.contentArrival(reduceMotion: reduceMotion),
+                                value: conversation.messages.map(\.id)
                             )
-
-                            if let approval = viewModel.activePendingApproval {
-                                ApprovalCard(approval: approval) {
-                                    viewModel.allowPendingApprovalOnce(id: approval.id)
-                                } onTrustSession: {
-                                    viewModel.trustPendingApprovalForSession(id: approval.id)
-                                } onSkip: {
-                                    viewModel.skipPendingApproval(id: approval.id)
-                                } onStop: {
-                                    viewModel.stopPendingApproval(id: approval.id)
-                                } onExplain: {
-                                    viewModel.explainPendingApproval(id: approval.id)
-                                }
-                                .id("pendingApproval")
-                                .transition(AppMotion.materialize(reduceMotion: reduceMotion))
-                            }
-
-                            if let checkpoint = viewModel.activePendingUlwCheckpoint {
-                                UlwCheckpointCard(checkpoint: checkpoint) {
-                                    viewModel.continueUlw(id: checkpoint.id)
-                                } onAcceptEdits: {
-                                    viewModel.switchModeFromUlwCheckpoint(id: checkpoint.id, to: .accept)
-                                } onSafeMode: {
-                                    viewModel.switchModeFromUlwCheckpoint(id: checkpoint.id, to: .safe)
-                                }
-                                .id("pendingUlwCheckpoint")
-                                .transition(AppMotion.materialize(reduceMotion: reduceMotion))
-                            }
-
-                            if let review = viewModel.activePendingPlanReview {
-                                PlanReviewCard(review: review) {
-                                    viewModel.approvePendingPlan(id: review.id)
-                                } onRequestChanges: { feedback in
-                                    viewModel.requestPlanChanges(id: review.id, feedback: feedback)
-                                }
-                                .id("pendingPlanReview")
-                                .transition(AppMotion.materialize(reduceMotion: reduceMotion))
-                            }
-
-                            if let pending = viewModel.activePendingAskUser {
-                                AskUserCard(pending: pending) { answer in
-                                    viewModel.answerPendingAskUser(id: pending.id, answer: answer)
-                                }
-                                .id("pendingAskUser")
-                                .transition(AppMotion.materialize(reduceMotion: reduceMotion))
-                            }
+                            .animation(
+                                AppMotion.contentArrival(reduceMotion: reduceMotion),
+                                value: viewModel.pendingInteractionID
+                            )
+                            // Outside the lazy stack so it is always laid out: inside, it is dropped when you scroll
+                            // far up, its position reads 0, and the chat wrongly thinks you are at the bottom.
                             Color.clear
                                 .frame(height: 1)
                                 .id(bottomAnchorID)
-                                .background {
-                                    GeometryReader { geometry in
-                                        Color.clear.preference(
-                                            key: ChatBottomAnchorPreferenceKey.self,
-                                            value: geometry.frame(
-                                                in: .named(scrollCoordinateSpace)
-                                            ).maxY
-                                        )
-                                    }
+                                .onGeometryChange(for: CGFloat.self) { geometry in
+                                    geometry.frame(in: .named(scrollCoordinateSpace)).maxY
+                                } action: { maxY in
+                                    bottomAnchorY = maxY
+                                    updateFollowLatest()
                                 }
                         }
-                        .id(conversation.id)
-                        .transition(conversationTransition)
-                        .padding(.horizontal)
-                        .padding(.vertical, 16)
-                        .frame(maxWidth: ChatReadableWidth.maximum)
-                        .frame(maxWidth: .infinity)
-                        .animation(
-                            AppMotion.contentArrival(reduceMotion: reduceMotion),
-                            value: conversation.messages.map(\.id)
-                        )
-                        .animation(
-                            AppMotion.contentArrival(reduceMotion: reduceMotion),
-                            value: viewModel.pendingInteractionID
-                        )
                     }
                     .coordinateSpace(name: scrollCoordinateSpace)
-                    .background {
-                        GeometryReader { geometry in
-                            Color.clear.preference(
-                                key: ChatViewportHeightPreferenceKey.self,
-                                value: geometry.size.height
-                            )
+                    // Read directly: the old preference-key version never arrived, so the height
+                    // stayed 0 and the chat always thought you were at the bottom.
+                    .onGeometryChange(for: CGFloat.self) { geometry in
+                        geometry.size.height
+                    } action: { height in
+                        let wasFollowingLatest = shouldFollowLatest
+                        scrollViewportHeight = height
+                        updateFollowLatest()
+                        if isPromptFocused && wasFollowingLatest {
+                            scrollToBottom(proxy)
                         }
                     }
                     .scrollDismissesKeyboard(.interactively)
@@ -250,31 +256,23 @@ struct ChatScreen: View {
                         scrollToBottom(proxy, animated: false)
                     }
                     .onChange(of: scrollUpdate(for: conversation)) { previous, current in
+                        let isNewMessage = current.isNewMessage(comparedTo: previous)
                         guard shouldFollowLatest else {
+                            // Only the agent's reply lights the dot, not your message, "Thinking…"
+                            // or tool steps.
+                            let latestRole = viewModel.activeConversation?.messages.last?.role
+                            if isNewMessage && latestRole == .agent {
+                                hasUnseenLatest = true
+                            }
                             return
                         }
-                        scrollToBottom(
-                            proxy,
-                            animated: current.isNewMessage(comparedTo: previous)
-                        )
+                        scrollToBottom(proxy, animated: isNewMessage)
                     }
                     .onChange(of: viewModel.pendingInteractionID) {
                         if let interactionID = viewModel.pendingInteractionID {
                             withAnimation(AppMotion.contentArrival(reduceMotion: reduceMotion)) {
                                 proxy.scrollTo(scrollTarget(for: interactionID), anchor: .bottom)
                             }
-                        }
-                    }
-                    .onPreferenceChange(ChatBottomAnchorPreferenceKey.self) { value in
-                        bottomAnchorY = value
-                        updateFollowLatest()
-                    }
-                    .onPreferenceChange(ChatViewportHeightPreferenceKey.self) { value in
-                        let wasFollowingLatest = shouldFollowLatest
-                        scrollViewportHeight = value
-                        updateFollowLatest()
-                        if isPromptFocused && wasFollowingLatest {
-                            scrollToBottom(proxy)
                         }
                     }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -289,6 +287,19 @@ struct ChatScreen: View {
                                 }
                                 scrollToBottomAfterKeyboardLayout(proxy)
                             }
+                                // Above the composer's top edge, drawn over the messages. An overlay on the
+                                // scroll view sits behind the composer, since the scroll view runs under it.
+                                .overlay(alignment: .top) {
+                                    // The ZStack stays put, so the button's own transition can animate.
+                                    ZStack {
+                                        jumpToLatestButton(proxy)
+                                    }
+                                        .alignmentGuide(.top) { $0[.bottom] }
+                                        .animation(
+                                            AppMotion.stateChange(reduceMotion: reduceMotion),
+                                            value: isFarFromLatest
+                                        )
+                                }
                                 .padding(.top, 8)
                                 .background {
                                     ChatSurfacePalette.backgroundBase

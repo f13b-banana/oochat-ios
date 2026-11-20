@@ -30,7 +30,6 @@ struct MarkdownMessageView: View {
                 FontSize(16)
                 BackgroundColor(nil)
             }
-            .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import Security
+import ConnectOnionKit
 
 enum IdentityStoreError: LocalizedError {
     case invalidStoredKey

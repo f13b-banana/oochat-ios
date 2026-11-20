@@ -3,6 +3,7 @@ tt.*
 
 # Build and Derived Data
 build/
+.build
 DerivedData/
 *.xcuserstate
 xcuserdata/

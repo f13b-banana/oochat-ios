@@ -1,4 +1,6 @@
 import SwiftUI
+import ConnectOnionKit
+
 // Card view for pending approval requests.
 struct ApprovalCard: View {
     let approval: PendingApproval

@@ -1,4 +1,5 @@
 import Foundation
+import ConnectOnionKit
 
 enum HostedAgentEvent: Equatable {
     case toolCall(id: String, name: String, arguments: [String: JSONValue])

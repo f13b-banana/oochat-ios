@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import ConnectOnionKit
 
 final class HostedAgentClient: HostedAgentTransport {
     private let connectionPool: HostedAgentConnectionPool

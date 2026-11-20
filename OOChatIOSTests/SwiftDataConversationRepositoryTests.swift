@@ -1,4 +1,5 @@
 import SwiftData
+import ConnectOnionKit
 import XCTest
 @testable import OOChatIOS
 

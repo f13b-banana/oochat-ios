@@ -1,7 +1,9 @@
 import SwiftUI
 
+// SessionStatus label
 struct AgentPresencePill: View {
-    let isOnline: Bool
+    let label: String
+    let isLive: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -16,7 +18,7 @@ struct AgentPresencePill: View {
         .font(.caption)
         .animation(statusTransition, value: label)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Agent status: \(label)")
+        .accessibilityLabel("Session status: \(label)")
     }
 
     private var statusContent: some View {
@@ -36,7 +38,8 @@ struct AgentPresencePill: View {
             Circle()
                 .frame(width: 6, height: 6)
 
-            Text("Offline")
+            // The longest label
+            Text("Not Connected")
                 .lineLimit(1)
         }
     }
@@ -45,11 +48,7 @@ struct AgentPresencePill: View {
         reduceMotion ? .easeOut(duration: 0.16) : AppMotion.press
     }
 
-    private var label: String {
-        isOnline ? "Online" : "Offline"
-    }
-
     private var statusColor: Color {
-        isOnline ? .green : .secondary
+        isLive ? .green : .secondary
     }
 }

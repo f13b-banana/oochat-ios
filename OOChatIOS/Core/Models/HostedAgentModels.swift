@@ -69,4 +69,5 @@ struct HostedAgentResult {
     let output: String?
     let endpointLabel: String
     let serverSession: [String: JSONValue]?
+    var sessionModes: OIPSessionModes?
 }

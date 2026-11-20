@@ -39,6 +39,8 @@ actor HostedAgentConnection {
     let livenessCheckInterval: TimeInterval
     let resumeAttemptLimit: Int
     let resumeRetryDelay: TimeInterval
+    let statusPollInterval: TimeInterval
+    let modeChangeTimeout: TimeInterval
     let bookmarkStore: HostedAgentBookmarkStore
     let reconnectPolicy: ReconnectPolicy
     let execTimeout: TimeInterval
@@ -50,12 +52,19 @@ actor HostedAgentConnection {
     var connectTimeoutTask: Task<Void, Never>?
     var livenessTask: Task<Void, Never>?
     var resumeTask: Task<Void, Never>?
+    var statusPollTask: Task<Void, Never>?
     var interactionTasks: [UUID: Task<Void, Never>] = [:]
     // Ignore frames and failures from sockets that have already been replaced.
     var socketGeneration = 0
     var connectWaiters: [UUID: CheckedContinuation<HostedAgentResult, Error>] = [:]
     var pendingPrompt: PendingPrompt?
+
+    // The mode_change request waiting for its mode_changed, if any.
+    var pendingModeChangeHandler: (@MainActor (HostedAgentEvent) -> Void)?
+    var modeChangeTimeoutTask: Task<Void, Never>?
+
     var serverSession: [String: JSONValue]?
+    var sessionModes: OIPSessionModes?
     var connectionStatus: String?
     var lastNetworkActivityAt = Date()
     var resumeAttemptsUsed = 0
@@ -76,6 +85,8 @@ actor HostedAgentConnection {
         livenessCheckInterval: TimeInterval = 10,
         resumeAttemptLimit: Int = 3,
         resumeRetryDelay: TimeInterval = 1,
+        statusPollInterval: TimeInterval = SessionStatusLabel.pollInterval,
+        modeChangeTimeout: TimeInterval = 15,
         bookmarkStore: HostedAgentBookmarkStore = HostedAgentBookmarkStore(),
         execTimeout: TimeInterval = 30
     ) {
@@ -83,7 +94,12 @@ actor HostedAgentConnection {
         self.identityStore = identityStore
         self.frames = OIPClientFrames(keyStore: identityStore, to: key.agentAddress)
         self.connectionStateObserver = connectionStateObserver
-        self.socketFactory = socketFactory ?? { session.webSocketTask(with: $0) }
+        self.socketFactory = socketFactory ?? { url in
+            let task = session.webSocketTask(with: url)
+            /// URLSession closes the socket if over 1MiB, and the dashboard could be bigger
+            task.maximumMessageSize = OIPDashboard.socketMessageBytes
+            return task
+        }
         self.endpointResolver = endpointResolver ?? { agentAddress in
             try await discovery.discover(agentAddress: agentAddress).endpoint
         }
@@ -92,6 +108,8 @@ actor HostedAgentConnection {
         self.livenessCheckInterval = livenessCheckInterval
         self.resumeAttemptLimit = resumeAttemptLimit
         self.resumeRetryDelay = resumeRetryDelay
+        self.statusPollInterval = statusPollInterval
+        self.modeChangeTimeout = modeChangeTimeout
         self.bookmarkStore = bookmarkStore
         self.reconnectPolicy = ReconnectPolicy(maxAttempts: resumeAttemptLimit + 1, baseDelay: resumeRetryDelay)
         self.execTimeout = execTimeout
@@ -107,7 +125,12 @@ actor HostedAgentConnection {
             disconnect(with: HostedAgentClientError.closed, closeCode: .goingAway)
         }
         if state == .connected, socket != nil, let endpoint {
-            return HostedAgentResult(output: nil, endpointLabel: endpoint.label, serverSession: serverSession)
+            return HostedAgentResult(
+                output: nil,
+                endpointLabel: endpoint.label,
+                serverSession: serverSession,
+                sessionModes: sessionModes
+            )
         }
 
         let waiterID = UUID()
@@ -187,6 +210,58 @@ actor HostedAgentConnection {
                 await self?.cancelPrompt(promptID)
             }
         }
+    }
+
+    /// Sends a signed mode-change command. The confirmation is delivered asynchronously
+    /// by the socket receive loop through `pendingModeChangeHandler`.
+    func requestModeChange(
+        conversation: Conversation,
+        mode: OIPPermissionMode,
+        onEvent: @escaping @MainActor (HostedAgentEvent) -> Void
+    ) async throws {
+        try Task.checkCancellation()
+        _ = try await ensureConnected(conversation: conversation)
+        try Task.checkCancellation()
+
+        guard pendingModeChangeHandler == nil else {
+            throw HostedAgentClientError.busy
+        }
+        guard let socket, state == .connected else {
+            throw HostedAgentClientError.closed
+        }
+
+        // Install the callback before sending so a fast server confirmation cannot be missed.
+        pendingModeChangeHandler = onEvent
+        do {
+            try await send(frames.modeChange(mode), over: socket)
+            // A mode change should be acknowledged promptly. Avoid leaving the UI pending
+            // forever if the host never sends mode_changed.
+            if pendingModeChangeHandler != nil {
+                modeChangeTimeoutTask?.cancel()
+                let timeout = modeChangeTimeout
+                modeChangeTimeoutTask = Task { [weak self] in
+                    do {
+                        try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    } catch {
+                        return
+                    }
+                    await self?.expireModeChangeRequest()
+                }
+            }
+        } catch {
+            pendingModeChangeHandler = nil
+            modeChangeTimeoutTask?.cancel()
+            modeChangeTimeoutTask = nil
+            throw error
+        }
+    }
+
+    func expireModeChangeRequest() async {
+        guard let handler = pendingModeChangeHandler else { return }
+        pendingModeChangeHandler = nil
+        modeChangeTimeoutTask?.cancel()
+        modeChangeTimeoutTask = nil
+        await handler(.modeChangeTimedOut)
     }
 
     // Settles a prompt that an earlier run of the app may already have sent, without
@@ -461,6 +536,7 @@ actor HostedAgentConnection {
             try await send(inputFrame, over: socket)
             if pendingPrompt?.id == promptID {
                 pendingPrompt?.inputDelivered = true
+                publishHostStatus("running")
             }
         } catch {
             failConnection(error, generation: generation)

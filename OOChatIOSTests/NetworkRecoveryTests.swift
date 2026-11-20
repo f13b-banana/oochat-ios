@@ -1034,6 +1034,7 @@ final class NetworkRecoveryTests: XCTestCase {
             let (viewModel, transport, _) = makeEnvironment()
             setUpAgentAndConversation(viewModel)
             viewModel.setMode(mode)
+            await viewModel.settleModeChange()
             transport.approvalRequests = [approvalRequest(tool: "credit_card_charge")]
 
             viewModel.prompt = "Charge the card"
@@ -1049,34 +1050,36 @@ final class NetworkRecoveryTests: XCTestCase {
         }
     }
 
-    func testSelectingUlwDoesNotForgeServerOwnedCapabilityState() {
-        let (viewModel, _, _) = makeEnvironment()
+    func testSelectingUlwDoesNotForgeServerOwnedCapabilityState() async {
+        let (viewModel, transport, _) = makeEnvironment()
         setUpAgentAndConversation(viewModel)
-        // Floored: the signed payload carries whole seconds so CanonicalJSON stays
-        // byte-identical to the Python/TS reference implementations.
-        let selectedAt = Date().timeIntervalSince1970.rounded(.down)
 
         viewModel.setMode(.ulw)
+        // Nothing changes on the device until the host confirms.
+        XCTAssertEqual(viewModel.activeMode, .safe)
+        XCTAssertNil(viewModel.activeConversation?.serverSession?["mode"])
+        await viewModel.settleModeChange()
 
+        XCTAssertEqual(transport.requestedModes, [.fullAccess])
         let session = viewModel.activeConversation?.serverSession
         XCTAssertEqual(session?["mode"], .string("ulw"))
         XCTAssertNil(session?["skip_tool_approval"])
         XCTAssertNil(session?["ulw_turns"])
         XCTAssertNil(session?["ulw_turns_used"])
-        let updated = session?["updated"]?.numberValue ?? 0
-        XCTAssertGreaterThanOrEqual(updated, selectedAt)
-        XCTAssertEqual(updated, updated.rounded(.down))
+        XCTAssertNil(session?["updated"])
     }
 
-    func testLeavingUlwClearsAutonomousSessionState() {
+    func testLeavingUlwClearsAutonomousSessionState() async {
         let (viewModel, _, _) = makeEnvironment()
         setUpAgentAndConversation(viewModel)
         viewModel.setMode(.ulw)
+        await viewModel.settleModeChange()
         var conversation = viewModel.activeConversation!
         conversation.serverSession?["skip_tool_approval"] = .bool(true)
         viewModel.upsertForTesting(conversation)
 
         viewModel.setMode(.safe)
+        await viewModel.settleModeChange()
 
         let session = viewModel.activeConversation?.serverSession
         XCTAssertEqual(session?["mode"], .string("safe"))
@@ -1089,7 +1092,9 @@ final class NetworkRecoveryTests: XCTestCase {
         let (viewModel, transport, _) = makeEnvironment()
         setUpAgentAndConversation(viewModel)
         viewModel.setMode(.ulw)
-        transport.streamedEvents = [.modeChanged(.safe)]
+        await viewModel.settleModeChange()
+        XCTAssertEqual(viewModel.activeMode, .ulw)
+        transport.streamedEvents = [.modeChanged(mode: .auto, turnsLeft: nil)]
 
         viewModel.prompt = "Keep working"
         viewModel.sendPrompt()
@@ -1128,6 +1133,7 @@ final class NetworkRecoveryTests: XCTestCase {
         let (viewModel, transport, _) = makeEnvironment()
         setUpAgentAndConversation(viewModel)
         viewModel.setMode(.ulw)
+        await viewModel.settleModeChange()
         transport.ulwCheckpoints = [UlwCheckpointRequest(turnsUsed: 100, maxTurns: 100)]
 
         viewModel.prompt = "Keep working"
@@ -1146,6 +1152,7 @@ final class NetworkRecoveryTests: XCTestCase {
         let (viewModel, transport, _) = makeEnvironment()
         setUpAgentAndConversation(viewModel)
         viewModel.setMode(.ulw)
+        await viewModel.settleModeChange()
         transport.ulwCheckpoints = [UlwCheckpointRequest(turnsUsed: 100, maxTurns: 100)]
 
         viewModel.prompt = "Keep working"
@@ -1153,15 +1160,18 @@ final class NetworkRecoveryTests: XCTestCase {
         await waitForUlwCheckpoint(on: viewModel)
         viewModel.switchModeFromUlwCheckpoint(id: viewModel.activePendingUlwCheckpoint!.id, to: .accept)
         await viewModel.sendTask?.value
+        await viewModel.settleModeChange()
 
         XCTAssertEqual(transport.ulwDecisions, [.switchMode(.accept)])
-        XCTAssertEqual(viewModel.activeMode, .accept)
+        // accept_edits is auto on the wire, and a confirmed auto reads back as .safe.
+        XCTAssertEqual(viewModel.activeMode, .safe)
     }
 
     func testPlanReviewWaitsForApproval() async {
         let (viewModel, transport, _) = makeEnvironment()
         setUpAgentAndConversation(viewModel)
         viewModel.setMode(.plan)
+        await viewModel.settleModeChange()
         transport.planReviews = [PlanReviewRequest(planContent: "# Plan")]
 
         viewModel.prompt = "Plan the change"

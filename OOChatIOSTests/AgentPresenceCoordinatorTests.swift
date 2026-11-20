@@ -195,6 +195,37 @@ final class AgentPresenceCoordinatorTests: XCTestCase {
         XCTAssertFalse(viewModel.isAgentOnline(agent))
     }
 
+    /// header gets label from socket state and last status
+    func testHeaderStatusFollowsTheSocketAndTheHost() throws {
+        let environment = try makeEnvironment()
+        let viewModel = environment.viewModel
+        let transport = environment.transport
+        setUpAgentAndConversation(viewModel)
+        let conversationID = try XCTUnwrap(viewModel.activeConversationID)
+
+        XCTAssertEqual(viewModel.activeSessionStatusText, "Not Connected")
+
+        transport.simulateConnectionState(.reconnecting, conversationID: conversationID)
+
+        XCTAssertEqual(viewModel.activeSessionStatusText, "Connecting")
+
+        transport.simulateConnectionState(.connected, conversationID: conversationID)
+        viewModel.apply(.hostStatus("running"), forConversationID: conversationID)
+
+        XCTAssertEqual(viewModel.activeSessionStatusText, "Running")
+        XCTAssertTrue(viewModel.isActiveSessionLive)
+
+        transport.simulateConnectionState(.reconnecting, conversationID: conversationID)
+
+        XCTAssertEqual(viewModel.activeSessionStatusText, "Reconnecting")
+
+        transport.simulateConnectionState(.connected, conversationID: conversationID)
+        viewModel.apply(.hostStatus("not_found"), forConversationID: conversationID)
+
+        XCTAssertEqual(viewModel.activeSessionStatusText, "Ended")
+        XCTAssertFalse(viewModel.isActiveSessionLive)
+    }
+
     func testDashboardIsKeptPerConversation() throws {
         let environment = try makeEnvironment()
         let viewModel = environment.viewModel

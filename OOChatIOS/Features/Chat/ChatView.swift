@@ -226,7 +226,10 @@ struct ChatScreen: View {
                         .contentTransition(.opacity)
 
                     HStack {
-                        AgentPresencePill(isOnline: viewModel.isActiveAgentOnline)
+                        AgentPresencePill(
+                            label: viewModel.activeSessionStatusText,
+                            isLive: viewModel.isActiveSessionLive
+                        )
                     }
                     .contentTransition(.opacity)
                 }

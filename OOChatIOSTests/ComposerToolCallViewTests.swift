@@ -17,7 +17,7 @@ final class ComposerTests: XCTestCase {
         let window = ViewHost.host(Composer(viewModel: viewModel))
 
         XCTAssertNotNil(ViewHost.element(labelContains: "Send message", in: window))
-        XCTAssertNotNil(ViewHost.element(labelContains: "Chat mode: Safe", in: window))
+        XCTAssertNotNil(ViewHost.element(labelContains: "Chat mode: Auto", in: window))
         XCTAssertNotNil(ViewHost.element(labelContains: "Add attachment", in: window))
         XCTAssertNotNil(ViewHost.element(labelContains: "Start voice input", in: window))
         XCTAssertNil(ViewHost.element(labelContains: "Add photos", in: window))
@@ -308,23 +308,18 @@ final class ComposerTests: XCTestCase {
         let viewModel = ViewFixtures.chatViewModel(transport: makeTransport())
         let window = ViewHost.host(Composer(viewModel: viewModel))
 
-        XCTAssertTrue(ViewHost.activate(labelContains: "Chat mode: Safe", in: window))
+        XCTAssertTrue(ViewHost.activate(labelContains: "Chat mode: Auto", in: window))
         ViewHost.pump(0.5)
 
-        var sheetWindow: UIWindow?
-        for candidate in UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .flatMap({ $0.windows }) {
-            if ViewHost.element(labelContains: "Accept Edits", in: candidate) != nil {
-                sheetWindow = candidate
-                break
-            }
-        }
+        let sheetWindow = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { ViewHost.element(labelContains: "Ask before any change", in: $0) != nil }
 
         if let sheetWindow {
-            ViewHost.activate(labelContains: "Accept Edits", in: sheetWindow)
+            ViewHost.activate(labelContains: "Ask before any change", in: sheetWindow)
             ViewHost.pump(0.5)
-            XCTAssertEqual(viewModel.activeMode, .accept)
+            XCTAssertEqual(viewModel.activeMode, .plan)
         }
     }
 

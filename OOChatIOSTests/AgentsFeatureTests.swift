@@ -368,6 +368,48 @@ final class AgentsFeatureTests: XCTestCase {
         XCTAssertEqual(results.map(\.id), [mineHit.id])
     }
 
+    func testDraftSurvivesARelaunch() {
+        let repo = makeDraftRepository()
+
+        let first = ChatViewModel(store: repo)
+        first.prompt = "half-written thought"
+        XCTAssertEqual(repo.savedDrafts, ["con1": "half-written thought"])
+
+        let relaunched = ChatViewModel(store: repo)
+        XCTAssertEqual(relaunched.prompt, "half-written thought")
+    }
+
+    func testClearedOrDeletedDraftIsForgotten() {
+        let repo = makeDraftRepository()
+        let viewModel = ChatViewModel(store: repo)
+
+        viewModel.prompt = "draft"
+        // Sending clears the prompt the same way.
+        viewModel.prompt = ""
+        XCTAssertEqual(repo.savedDrafts, [:])
+
+        viewModel.prompt = "draft again"
+        guard let conversation = viewModel.activeConversation else {
+            return XCTFail("Expected con1 to be open")
+        }
+        viewModel.deleteConversation(conversation)
+        XCTAssertEqual(repo.savedDrafts, [:])
+    }
+
+    /// One agent with one open chat, "con1".
+    private func makeDraftRepository() -> SpyConversationRepository {
+        let agent = makeAgent(id: "agent1", address: "0xaaa", updatedAt: seconds(1000))
+        let conversation = makeConversation(id: "con1", agent: agent, updatedAt: seconds(1000))
+        return SpyConversationRepository(
+            snapshot: ChatSnapshot(
+                agents: [agent],
+                conversations: [conversation],
+                activeAgentID: agent.id,
+                activeConversationID: conversation.id
+            )
+        )
+    }
+
     private func makeAgent(id: String, address: String, updatedAt: Date) -> SavedAgent {
         SavedAgent(
             id: id,
@@ -414,6 +456,7 @@ private final class SpyConversationRepository: ConversationRepository {
     private(set) var deletedAgentIDs: [String] = []
     private(set) var savedActiveCalls: [SavedActive] = []
     private(set) var searchQueries: [String] = []
+    private(set) var savedDrafts: [String: String] = [:]
     var searchResults: [Conversation] = []
 
     init(snapshot: ChatSnapshot) {
@@ -449,5 +492,13 @@ private final class SpyConversationRepository: ConversationRepository {
     func search(_ query: String) -> [Conversation] {
         searchQueries.append(query)
         return searchResults
+    }
+
+    func loadDrafts() -> [String: String] {
+        savedDrafts
+    }
+
+    func saveDrafts(_ drafts: [String: String]) {
+        savedDrafts = drafts
     }
 }

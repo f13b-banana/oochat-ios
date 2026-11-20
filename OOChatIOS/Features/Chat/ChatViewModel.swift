@@ -394,6 +394,8 @@ final class ChatViewModel: ObservableObject {
         if let storeError {
             self.errorMessage = "Couldn’t open your saved conversations, so this session won’t be saved. \(storeError.localizedDescription)"
         }
+        // Reopen the open chat with whatever was left unsent.
+        prompt = conversationState.activeDraft
         observeCoordinators()
         recoveryCoordinator.start()
     }

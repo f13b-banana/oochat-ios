@@ -1,39 +1,65 @@
 import SwiftUI
+import ConnectOnionKit
+
+// The words next to the mode capsule while Ultra Work counts turns.
+enum ComposerTurnsLeft {
+    static func label(_ turnsLeft: Int) -> String {
+        "\(turnsLeft) \(turnsLeft == 1 ? "turn" : "turns") left"
+    }
+}
 
 extension Composer {
-    @ViewBuilder
+    // The execution mode and, beside it, how many turns Ultra Work has left (16.2).
     var modeMenu: some View {
+        HStack(spacing: OOSpace.small) {
+            modeButton
+            if viewModel.activePendingMode == nil,
+               viewModel.activeMode == .ulw,
+               let turnsLeft = viewModel.activeFullAccessTurnsLeft {
+                Text(ComposerTurnsLeft.label(turnsLeft))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(OOColor.inkSecondary)
+                    .lineLimit(1)
+                    .accessibilityLabel(ComposerTurnsLeft.label(turnsLeft))
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    @ViewBuilder
+    private var modeButton: some View {
         Button {
             showModeMenu = true
         } label: {
             let displayedMode = viewModel.activePendingMode ?? viewModel.activeMode
             HStack(spacing: 5) {
                 Image(systemName: displayedMode.icon)
-                    .foregroundStyle(AppTheme.primary)
+                    .foregroundStyle(OOColor.primary)
 
                 Text(displayedMode.label)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(OOColor.ink)
 
                 if viewModel.activePendingMode != nil {
                     Text("Pending")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(OOColor.inkSecondary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
-                        .background(.orange.opacity(0.12), in: Capsule())
+                        .background(OOColor.currentTint, in: Capsule())
                 }
 
                 Image(systemName: "chevron.up.chevron.down")
                     .imageScale(.small)
-                    .foregroundStyle(Color(.tertiaryLabel))
+                    .foregroundStyle(OOColor.inkSecondary)
             }
             .font(.footnote.weight(.medium))
             .padding(.horizontal, ComposerMetrics.modeHorizontalPadding)
             .padding(.vertical, ComposerMetrics.modeVerticalPadding)
-            .background(Color(.tertiarySystemFill), in: Capsule())
+            .background(OOColor.surface, in: Capsule())
             .overlay {
                 Capsule()
-                    .stroke(Color(.separator).opacity(ComposerMetrics.modeStrokeOpacity), lineWidth: 0.5)
+                    .stroke(OOColor.hairline, lineWidth: 1)
             }
         }
         .buttonStyle(AppPressButtonStyle(pressedScale: 0.96, pressedOpacity: 0.88))
@@ -47,21 +73,13 @@ extension Composer {
                 .presentationDetents([.height(sheetHeight)])
                 .presentationDragIndicator(.visible)
         }
-
-        if viewModel.activePendingMode == nil,
-           viewModel.activeMode == .ulw,
-           let turnsLeft = viewModel.activeFullAccessTurnsLeft {
-            Text("\(turnsLeft) \(turnsLeft == 1 ? "turn" : "turns") left")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.leading, 8)
-        }
     }
 
     var modeSheet: some View {
         VStack(spacing: 0) {
             Text("Response Mode")
                 .font(.headline)
+                .foregroundStyle(OOColor.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
@@ -94,26 +112,26 @@ extension Composer {
         HStack(spacing: 14) {
             Image(systemName: mode.icon)
                 .font(.system(size: 18))
-                .foregroundStyle(AppTheme.primary)
+                .foregroundStyle(OOColor.primary)
                 .frame(width: 40, height: 40)
                 .background(
-                    AppTheme.primary.opacity(0.12),
-                    in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    OOColor.currentTint,
+                    in: RoundedRectangle(cornerRadius: OORadius.card, style: .continuous)
                 )
             VStack(alignment: .leading, spacing: 3) {
                 Text(mode.label)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(OOColor.ink)
                 Text(mode.detail)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(OOColor.inkSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
             if (viewModel.activePendingMode ?? viewModel.activeMode) == mode {
                 Image(systemName: "checkmark")
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(AppTheme.primary)
+                    .foregroundStyle(OOColor.primary)
                     .transition(
                         reduceMotion
                             ? .opacity
@@ -142,7 +160,6 @@ private extension ChatMode {
             return "bolt.fill"
         }
     }
-
     var detail: String {
         switch self {
         case .plan:

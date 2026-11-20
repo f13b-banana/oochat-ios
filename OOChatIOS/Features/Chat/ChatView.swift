@@ -73,7 +73,7 @@ struct ChatView: View {
                 if case .tabs(_, let selection, let attention) = controlCenter {
                     OOViewSwitch(selection: selection, attention: attention)
                         .frame(maxWidth: .infinity)
-                        .background(Color(.systemBackground))
+                        .background(OOColor.paper)
                 }
             }
             .toolbar {
@@ -290,13 +290,8 @@ struct ChatScreen: View {
                         .lineLimit(1)
                         .contentTransition(.opacity)
 
-                    HStack {
-                        AgentPresencePill(
-                            label: viewModel.activeSessionStatusText,
-                            isLive: viewModel.isActiveSessionLive
-                        )
-                    }
-                    .contentTransition(.opacity)
+                    sessionStatus
+                        .contentTransition(.opacity)
                 }
                 .animation(
                     AppMotion.stateChange(reduceMotion: reduceMotion),
@@ -328,6 +323,22 @@ struct ChatScreen: View {
                 trailingBalanceItem
             }
         }
+    }
+
+    private var sessionStatus: some View {
+        let text = viewModel.activeSessionStatusText
+        return ZStack {
+            // The longest label reserves the width, so the header doesn't resize when the status changes.
+            OOStatusDot(label: "Not Connected", isLive: false)
+                .hidden()
+
+            OOStatusDot(label: text, isLive: viewModel.isActiveSessionLive)
+                .id(text)
+                .transition(AppMotion.statusTransition(reduceMotion: reduceMotion))
+        }
+        .animation(AppMotion.stateChange(reduceMotion: reduceMotion), value: text)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Session status: \(text)")
     }
 
     @ViewBuilder

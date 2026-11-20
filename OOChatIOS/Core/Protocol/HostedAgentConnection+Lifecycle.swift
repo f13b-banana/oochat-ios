@@ -12,8 +12,6 @@ extension HostedAgentConnection {
         }
         await dispatch(frame, generation: generation)
     }
-
-    // swiftlint:disable:next cyclomatic_complexity
     private func dispatch(_ frame: [String: JSONValue], generation: Int) async {
         switch frame["type"]?.stringValue {
         case "PING":
@@ -23,9 +21,16 @@ extension HostedAgentConnection {
         case "AGENT_PROFILE":
             handleAgentProfile(frame)
         case "OUTPUT":
-            handleOutput(frame)
+            handleOutput(frame, generation: generation)
         case "EXEC_RESULT":
             handleExecResult(frame)
+        default:
+            await dispatchRemaining(frame, generation: generation)
+        }
+    }
+
+    private func dispatchRemaining(_ frame: [String: JSONValue], generation: Int) async {
+        switch frame["type"]?.stringValue {
         case "tool_call", "tool_result":
             await handleEvent(frame)
         case "mode_changed":
@@ -105,6 +110,7 @@ extension HostedAgentConnection {
         }
         updateServerSession(from: frame)
         sessionModes = connected.sessionModes
+        announceCurrentMode(connected.sessionModes)
         connectionStatus = connected.status
         setState(.connected)
         publishHostStatus(connected.status)
@@ -125,8 +131,19 @@ extension HostedAgentConnection {
         scheduleStatusPoll(after: connected.status, generation: generation)
     }
 
-    private func handleOutput(_ frame: [String: JSONValue]) {
+    private func handleOutput(_ frame: [String: JSONValue], generation: Int) {
+        guard case .output(let output) = OIPServerFrame.decode(frame) else {
+            // With no prompt waiting there is nothing to fail, so an unreadable frame is ignored
+            if pendingPrompt != nil {
+                failConnection(HostedAgentClientError.badFrame, generation: generation)
+            }
+            return
+        }
         updateServerSession(from: frame)
+        if let turnsLeft = Self.turnsLeft(in: frame) {
+            connectionStateObserver.notify(conversationID: key.conversationID,
+                                           update: .modeChanged(mode: .fullAccess, turnsLeft: turnsLeft))
+        }
         connectionStatus = "connected"
         publishHostStatus("connected")
         statusPollTask?.cancel()
@@ -138,7 +155,7 @@ extension HostedAgentConnection {
         cancelInteractionTasks()
         pending.continuation.resume(
             returning: HostedAgentResult(
-                output: messageText(frame),
+                output: output.result,
                 endpointLabel: endpoint?.label ?? key.agentAddress,
                 serverSession: serverSession,
                 sessionModes: sessionModes
@@ -146,8 +163,8 @@ extension HostedAgentConnection {
         )
     }
 
-    /// Hands an EXEC_RESULT to the caller waiting under its exec_id. 
-    /// Never fails the connection: `status: error` is taken as a tool response.
+    // Hands an EXEC_RESULT to the caller waiting under its exec_id.
+    // Never fails the connection: `status: error` is taken as a tool response.
     private func handleExecResult(_ frame: [String: JSONValue]) {
         guard case .execResult(let result) = OIPServerFrame.decode(frame),
               let continuation = pendingExecs.removeValue(forKey: result.execID) else {
@@ -163,6 +180,35 @@ extension HostedAgentConnection {
             continuation.resume(throwing: error)
         }
     }
+    // CONNECTED carries the host's current mode and, in Full access, the turns left. Passing it on
+    // means the count shows as soon as the app connects or reconnects, not after the next turn.
+    private func announceCurrentMode(_ modes: OIPSessionModes?) {
+        guard let current = modes?.currentMode else {
+            return
+        }
+        switch current {
+        case .readOnly, .auto:
+            connectionStateObserver.notify(
+                conversationID: key.conversationID,
+                update: .modeChanged(mode: current, turnsLeft: nil)
+            )
+        case .fullAccess:
+            connectionStateObserver.notify(
+                conversationID: key.conversationID,
+                update: .modeChanged(mode: .fullAccess, turnsLeft: modes?.turnsLeft)
+            )
+        case .unknown:
+            // An unknown mode is never guessed at.
+            break
+        }
+    }
+
+    // The turns left a finished run reports, wherever the host puts it.
+    static func turnsLeft(in frame: [String: JSONValue]) -> Int? {
+        frame["session_modes"]?.objectValue?["turnsLeft"]?.intValue
+            ?? frame["turns_left"]?.intValue
+            ?? frame["session"]?.objectValue?["turns_left"]?.intValue
+    }
 
     /// Updates what the app says about the session
     private func handleSessionUpdate(_ frame: [String: JSONValue], generation: Int) {
@@ -175,7 +221,7 @@ extension HostedAgentConnection {
 
     // Session_status rule
     private func handleSessionStatus(_ frame: [String: JSONValue], generation: Int) {
-        guard let status = frame["status"]?.stringValue else {
+        guard case .sessionStatus(_, let status) = OIPServerFrame.decode(frame) else {
             return
         }
         connectionStatus = status
@@ -243,8 +289,13 @@ extension HostedAgentConnection {
             modeChangeTimeoutTask?.cancel()
             modeChangeTimeoutTask = nil
             await handler(event)
-        } else {
-            await pendingPrompt?.onEvent?(event)
+        } else if let pending = pendingPrompt {
+            await pending.onEvent?(event)
+        } else if case .modeChanged(let mode, let turnsLeft) = event {
+            // host reports each finished full access turn (and expiry) after the OUTPUT when no prompt is waiting.
+            // Without this, the turn count stops at the first value.
+            connectionStateObserver.notify(conversationID: key.conversationID,
+                                           update: .modeChanged(mode: mode, turnsLeft: turnsLeft))
         }
     }
 

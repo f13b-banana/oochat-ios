@@ -1,3 +1,4 @@
+import ConnectOnionKit
 import SwiftUI
 
 // The entry of app.
@@ -7,6 +8,10 @@ struct OOChatIOSApp: App {
     // `ContentView` takes it as a @StateObject, matching how it was constructed
     // before — ChatViewModel is an ObservableObject, not @Observable.
     @StateObject private var viewModel = ChatViewModel()
+
+    init() {
+        OOFonts.register()
+    }
 
     var body: some Scene {
         WindowGroup {

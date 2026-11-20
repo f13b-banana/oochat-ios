@@ -1,3 +1,4 @@
+import ConnectOnionKit
 import SwiftUI
 
 struct ChatSidebarHeaderView: View {
@@ -33,7 +34,7 @@ struct ChatSidebarHeaderView: View {
 
     private var brandTitle: some View {
         HStack(spacing: SidebarMetrics.headerLogoSpacing) {
-            Image("OnionLogo")
+            OOLogo.image
                 .resizable()
                 .scaledToFit()
                 .frame(width: SidebarMetrics.logoSize, height: SidebarMetrics.logoSize)
@@ -52,7 +53,7 @@ struct ChatSidebarHeaderView: View {
 
             Text(connectionSummary)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(OOColor.inkSecondary)
         }
         .accessibilityElement(children: .combine)
     }

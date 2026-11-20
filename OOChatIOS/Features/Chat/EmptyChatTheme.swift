@@ -1,79 +1,24 @@
+import ConnectOnionKit
 import SwiftUI
 import UIKit
 
-/// The empty-chat screen's palette, on the ConnectOnion brand ramp.
-///
-/// This started as an independent violet palette — a second copy of "brand
-/// colour" living beside `AppTheme.primary`. Two copies of one meaning is how a
-/// palette drifts, so both now come from the same green ramp as the web client
-/// (`--color-brand-*`): 400 `#4ADE80`, 500 `#22C55E`, 600 `#16A34A`,
-/// 700 `#15803D`, 200 `#BBF7D0`, 100 `#DCFCE7`.
-///
-/// Lightness and alpha are unchanged from the original design — only the hue
-/// moved — so the tinted chips and the logo aura keep their intended weight.
-/// Text and surfaces are deliberately neutral rather than tinted: green is an
-/// accent here, not a wash.
+/// The empty-chat screen's pallette. Text, chips and lines come from
+/// ConnectOnionKit's O Chat v12 tokens; the logo glow keeps its own values
+/// until N2.3 restyles this screen
 enum EmptyChatPalette {
-    static let heading = Color(uiColor: UIColor { traits in
-        if traits.userInterfaceStyle == .dark {
-            // brand-200
-            return UIColor(red: 187.0 / 255.0, green: 247.0 / 255.0, blue: 208.0 / 255.0, alpha: 1)
-        } else {
-            // brand-700
-            return UIColor(red: 21.0 / 255.0, green: 128.0 / 255.0, blue: 61.0 / 255.0, alpha: 1)
-        }
-    })
+    static let heading = OOColor.ink
 
-    static let chipText = Color(uiColor: UIColor { traits in
-        if traits.userInterfaceStyle == .dark {
-            return UIColor(red: 229.0 / 255.0, green: 229.0 / 255.0, blue: 229.0 / 255.0, alpha: 1)
-        } else {
-            return UIColor(red: 38.0 / 255.0, green: 38.0 / 255.0, blue: 38.0 / 255.0, alpha: 1)
-        }
-    })
+    static let chipText = OOColor.ink
 
-    static let chipIcon = Color(uiColor: UIColor { traits in
-        if traits.userInterfaceStyle == .dark {
-            // brand-400
-            return UIColor(red: 74.0 / 255.0, green: 222.0 / 255.0, blue: 128.0 / 255.0, alpha: 1)
-        } else {
-            // brand-600
-            return UIColor(red: 22.0 / 255.0, green: 163.0 / 255.0, blue: 74.0 / 255.0, alpha: 0.72)
-        }
-    })
+    static let chipIcon = OOColor.inkSecondary
 
-    static let chipFill = Color(uiColor: UIColor { traits in
-        if traits.userInterfaceStyle == .dark {
-            return UIColor(red: 38.0 / 255.0, green: 38.0 / 255.0, blue: 38.0 / 255.0, alpha: 0.76)
-        } else {
-            return UIColor(red: 250.0 / 255.0, green: 250.0 / 255.0, blue: 250.0 / 255.0, alpha: 0.78)
-        }
-    })
+    static let chipFill = OOColor.paper
 
-    static let chipStroke = Color(uiColor: UIColor { traits in
-        if traits.userInterfaceStyle == .dark {
-            return UIColor(red: 74.0 / 255.0, green: 222.0 / 255.0, blue: 128.0 / 255.0, alpha: 0.18)
-        } else {
-            return UIColor(red: 22.0 / 255.0, green: 163.0 / 255.0, blue: 74.0 / 255.0, alpha: 0.08)
-        }
-    })
+    static let chipStroke = OOColor.hairline
 
-    static let chipPressedFill = Color(uiColor: UIColor { traits in
-        if traits.userInterfaceStyle == .dark {
-            // brand-500
-            return UIColor(red: 34.0 / 255.0, green: 197.0 / 255.0, blue: 94.0 / 255.0, alpha: 0.18)
-        } else {
-            return UIColor(red: 22.0 / 255.0, green: 163.0 / 255.0, blue: 74.0 / 255.0, alpha: 0.10)
-        }
-    })
+    static let chipPressedFill = OOColor.hover
 
-    static let chipPressedStroke = Color(uiColor: UIColor { traits in
-        if traits.userInterfaceStyle == .dark {
-            return UIColor(red: 74.0 / 255.0, green: 222.0 / 255.0, blue: 128.0 / 255.0, alpha: 0.28)
-        } else {
-            return UIColor(red: 22.0 / 255.0, green: 163.0 / 255.0, blue: 74.0 / 255.0, alpha: 0.22)
-        }
-    })
+    static let chipPressedStroke = OOColor.hairline
 
     static let chipShadow = Color(uiColor: UIColor { traits in
         if traits.userInterfaceStyle == .dark {

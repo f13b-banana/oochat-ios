@@ -107,6 +107,78 @@ extension HostedAgentConnectionTests {
     }
 }
 
+// OUTPUT and SESSION_STATUS are read by the kit's OIPServerFrame.decode.
+extension HostedAgentConnectionTests {
+    func testOutputWithoutAResultFailsThePromptInsteadOfInventingAReply() async throws {
+        try await assertOutputFailsPrompt(
+            ["type": .string("OUTPUT"), "message": .string("not the wire shape")],
+            id: "no-result"
+        )
+    }
+
+    func testOutputWithANonStringResultFailsThePrompt() async throws {
+        try await assertOutputFailsPrompt(
+            ["type": .string("OUTPUT"), "result": .object(["answer": .string("42")])],
+            id: "object-result"
+        )
+    }
+
+    func testMalformedOutputWithNoPromptWaitingKeepsTheConnection() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let recorder = SessionUpdateRecorder()
+        let connection = makeConnection(factory: factory, observer: recorder.observer)
+        _ = try await establish(connection, conversation: makeConversation(id: "idle-bad-output"), factory: factory)
+        let socket = try await factory.socket(at: 0)
+
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "message": .string("no result")])
+        try socket.enqueueFrame(["type": .string("SESSION_STATUS"), "session_id": .string("x"), "status": .string("connected")])
+        try await recorder.wait { $0.last == .hostStatus("connected") }
+
+        let isConnected = await connection.state == .connected
+
+        XCTAssertTrue(isConnected, "a bad OUTPUT with no prompt waiting must not drop the socket")
+        await connection.close()
+    }
+
+    private func assertOutputFailsPrompt(_ frame: [String: JSONValue], id: String) async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let connection = makeConnection(factory: factory)
+        let conversation = makeConversation(id: id)
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+        let socket = try await factory.socket(at: 0)
+
+        let prompt = Task {
+            try await connection.sendPrompt(conversation: conversation, prompt: "hi", onEvent: nil, onInteraction: nil)
+        }
+        _ = try await socket.waitForSentFrame(type: "INPUT")
+        try socket.enqueueFrame(frame)
+
+        do {
+            _ = try await prompt.value
+            XCTFail("An unreadable OUTPUT must not resolve the prompt")
+        } catch {
+            guard case .badFrame? = error as? HostedAgentClientError else {
+                return XCTFail("Expected badFrame, got \(error)")
+            }
+        }
+    }
+
+    func testSessionStatusWithoutAStatusIsIgnored() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let recorder = SessionUpdateRecorder()
+        let connection = makeConnection(factory: factory, observer: recorder.observer)
+        _ = try await establish(connection, conversation: makeConversation(id: "bare-status"), factory: factory)
+        let socket = try await factory.socket(at: 0)
+
+        try socket.enqueueFrame(["type": .string("SESSION_STATUS"), "session": .object(["session_id": .string("x")])])
+        try socket.enqueueFrame(["type": .string("SESSION_STATUS"), "session_id": .string("x"), "status": .string("connected")])
+        try await recorder.wait { $0.last == .hostStatus("connected") }
+
+        XCTAssertEqual(recorder.updates, [.hostStatus("new"), .hostStatus("connected")])
+        await connection.close()
+    }
+}
+
 /// observer session updates
 @MainActor
 private final class SessionUpdateRecorder {

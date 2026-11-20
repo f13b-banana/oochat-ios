@@ -1,3 +1,4 @@
+import ConnectOnionKit
 import SwiftUI
 
 struct EmptyChatState: View {
@@ -104,7 +105,7 @@ struct EmptyChatState: View {
                 )
                 .blur(radius: EmptyChatMetrics.logoBacklightBlur)
 
-            Image("OnionLogo")
+            OOLogo.image
                 .resizable()
                 .scaledToFit()
                 .frame(

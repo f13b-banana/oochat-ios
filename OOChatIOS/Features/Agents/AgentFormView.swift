@@ -1,4 +1,5 @@
 import SwiftUI
+import ConnectOnionKit
 
 struct AgentFormDraft: Identifiable {
     let id = UUID()
@@ -48,6 +49,7 @@ struct AgentFormView: View {
                     HStack {
                         TextField("Name", text: $draft.name)
                             .textInputAutocapitalization(.words)
+                            .foregroundStyle(OOColor.inkSecondary)
                         if isFetchingAgentName {
                             ProgressView()
                                 .controlSize(.small)
@@ -56,6 +58,7 @@ struct AgentFormView: View {
                     }
                     TextField("Agent address", text: $draft.address, axis: .vertical)
                         .textInputAutocapitalization(.never)
+                        .foregroundStyle(OOColor.inkSecondary)
                         .autocorrectionDisabled()
                         .font(.system(.body, design: .monospaced))
                         .onChange(of: draft.address) {

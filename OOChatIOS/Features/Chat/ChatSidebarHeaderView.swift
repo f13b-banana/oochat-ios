@@ -1,81 +1,166 @@
 import ConnectOnionKit
 import SwiftUI
 
+/// A chat that needs you, for the list under the attention line.
+struct SidebarAttentionItem: Identifiable, Equatable {
+    let conversation: Conversation
+    let status: SidebarChatStatus
+
+    var id: String { conversation.id }
+}
+
+/// The top of the agent pane: New chat and Search as plain rows, the search field when open, and
+/// one amber line whenever one of this agent's chats needs you.
 struct ChatSidebarHeaderView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    let onlineAgentCount: Int
     let isSearchVisible: Bool
     @Binding var searchText: String
     let searchFieldFocus: FocusState<Bool>.Binding
+    /// This agent's chats waiting on approval or with a message that didn't send.
+    var attentionItems: [SidebarAttentionItem] = []
+    var onOpenChat: (Conversation) -> Void = { _ in }
+    let onNewChat: () -> Void
     let onToggleSearch: () -> Void
+    /// Another agent starts with its attention list shut.
+    var agentID: String?
+    @State private var isAttentionExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: SidebarMetrics.headerSpacing) {
-            ZStack(alignment: .topTrailing) {
-                VStack(alignment: .leading, spacing: SidebarMetrics.headerSpacing) {
-                    brandTitle
-                    connectionStatus
-                }
-                .padding(.top, SidebarMetrics.brandTopPadding)
-                .padding(.trailing, SidebarMetrics.headerIconButtonSize + SidebarMetrics.headerTrailingSpacing)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                searchToggleButton
-                    .offset(y: SidebarMetrics.searchButtonVerticalOffset)
-            }
+        VStack(alignment: .leading, spacing: 0) {
+            newChatRow
+            actionRow(
+                isSearchVisible ? "Close search" : "Search",
+                systemImage: isSearchVisible ? "xmark" : "magnifyingglass",
+                action: onToggleSearch
+            )
 
             if isSearchVisible {
                 SidebarSearchField(text: $searchText, focus: searchFieldFocus)
+                    .padding(.vertical, OOSpace.tiny)
                     .transition(AppMotion.materialize(reduceMotion: reduceMotion, edge: .top))
+            }
+
+            attention
+        }
+        .onChange(of: agentID) {
+            isAttentionExpanded = false
+        }
+        .onChange(of: attentionItems.count) { _, count in
+            if count < 2 {
+                isAttentionExpanded = false
             }
         }
     }
 
-    private var brandTitle: some View {
-        HStack(spacing: SidebarMetrics.headerLogoSpacing) {
-            OOLogo.image
-                .resizable()
-                .scaledToFit()
-                .frame(width: SidebarMetrics.logoSize, height: SidebarMetrics.logoSize)
+    // One chat: the line opens it. Several: the amber panel opens to list them, so the chats
+    // plainly belong to the line (impeccable: contain it, rather than an accent stripe).
+    @ViewBuilder
+    private var attention: some View {
+        if let summary = SidebarAttention.summary(attentionItems.map(\.status)) {
+            let listsChats = attentionItems.count > 1
+            VStack(spacing: 0) {
+                Button {
+                    if listsChats {
+                        withAnimation(AppMotion.stateChange(reduceMotion: reduceMotion)) {
+                            isAttentionExpanded.toggle()
+                        }
+                    } else if let item = attentionItems.first {
+                        onOpenChat(item.conversation)
+                    }
+                } label: {
+                    OOSidebarAttentionLine(
+                        summary,
+                        isExpanded: listsChats ? isAttentionExpanded : nil,
+                        drawsBackground: false
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(listsChats ? "Lists the chats" : "Opens the chat")
 
-            Text("oo-chat")
-                .font(.title3.bold())
-                .lineLimit(1)
-        }
-    }
-
-    private var connectionStatus: some View {
-        HStack(spacing: SidebarMetrics.statusSpacing) {
-            Circle()
-                .fill(onlineAgentCount > 0 ? Color(.systemGreen) : Color(.tertiaryLabel))
-                .frame(width: SidebarMetrics.statusDotSize, height: SidebarMetrics.statusDotSize)
-
-            Text(connectionSummary)
-                .font(.footnote)
-                .foregroundStyle(OOColor.inkSecondary)
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var searchToggleButton: some View {
-        Button {
-            onToggleSearch()
-        } label: {
-            SidebarIconButtonLabel(
-                systemName: isSearchVisible ? "xmark" : "magnifyingglass",
-                foregroundColor: AppTheme.primary,
-                size: SidebarMetrics.headerIconButtonSize,
-                font: .system(size: 16, weight: .semibold)
+                // Always present and clipped: on close the chats slide up into the line and are
+                // cut off under it, rather than fading where they stand.
+                VStack(spacing: 0) {
+                    if listsChats && isAttentionExpanded {
+                        OOColor.decisionLine
+                            .frame(height: 1)
+                            .accessibilityHidden(true)
+                        VStack(spacing: 0) {
+                            ForEach(Array(attentionItems.enumerated()), id: \.element.id) { index, item in
+                                Button {
+                                    onOpenChat(item.conversation)
+                                } label: {
+                                    OOSidebarChatRow(
+                                        title: item.conversation.isUntitled ? Conversation.defaultTitle : item.conversation.title,
+                                        lastActivity: nil,
+                                        status: item.status,
+                                        indent: OOSidebarMetrics.horizontalPadding + 24
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                if index < attentionItems.count - 1 {
+                                    OOColor.decisionLine
+                                        .opacity(0.6)
+                                        .frame(height: 1)
+                                        .padding(.leading, OOSidebarMetrics.horizontalPadding + 24)
+                                        .accessibilityHidden(true)
+                                }
+                            }
+                        }
+                        .padding(.vertical, OOSpace.tiny)
+                        .transition(reduceMotion ? .opacity : .move(edge: .top))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .clipped()
+            }
+            .background(
+                OOColor.decisionFill,
+                in: RoundedRectangle(cornerRadius: OOSidebarMetrics.rowCornerRadius, style: .continuous)
             )
+            .padding(.top, OOSpace.small)
+            .transition(AppMotion.materialize(reduceMotion: reduceMotion, edge: .top))
+        }
+    }
+
+    // The one action the drawer exists for: a green symbol and a heavier label make it the
+    // first thing found, without the weight of a filled button.
+    private var newChatRow: some View {
+        Button(action: onNewChat) {
+            HStack(spacing: OOSpace.medium) {
+                Image(systemName: "square.and.pencil")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(OOColor.primary)
+                    .frame(width: 22)
+                Text("New chat")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(OOColor.ink)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, OOSidebarMetrics.horizontalPadding)
+            .frame(minHeight: OOSidebarMetrics.rowHeight)
+            .contentShape(Rectangle())
         }
         .buttonStyle(SidebarFooterButtonStyle())
-        .accessibilityLabel(isSearchVisible ? "Close search" : "Search")
     }
 
-    private var connectionSummary: String {
-        let noun = onlineAgentCount == 1 ? "agent" : "agents"
-        return "\(onlineAgentCount) \(noun) online"
+    private func actionRow(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: OOSpace.medium) {
+                Image(systemName: systemImage)
+                    .font(.body)
+                    .foregroundStyle(OOColor.inkSecondary)
+                    .frame(width: 22)
+                Text(title)
+                    .font(.body)
+                    .foregroundStyle(OOColor.ink)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, OOSidebarMetrics.horizontalPadding)
+            .frame(minHeight: OOSidebarMetrics.rowHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SidebarFooterButtonStyle())
     }
 }
 

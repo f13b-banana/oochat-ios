@@ -16,28 +16,77 @@ final class AgentPresencePillTests: XCTestCase {
 
 @MainActor
 final class ChatSidebarHeaderViewTests: XCTestCase {
-    func testHeaderShowsBrandConnectionSummaryAndSearchAction() {
+    // New chat and Search lead the drawer; no brand or online count (spec D8).
+    func testHeaderLeadsWithNewChatAndSearch() {
+        var newChatCount = 0
         var toggleCount = 0
         let window = ViewHost.host(
             HeaderHarness(
-                onlineAgentCount: 2,
                 isSearchVisible: false,
                 searchText: "",
+                onNewChat: { newChatCount += 1 },
                 onToggleSearch: { toggleCount += 1 }
             )
         )
 
-        XCTAssertNotNil(ViewHost.element(labelContains: "oo-chat", in: window))
-        XCTAssertNotNil(ViewHost.element(labelContains: "2 agents online", in: window))
-        XCTAssertTrue(ViewHost.activate(labelContains: "Search", in: window))
+        XCTAssertNil(ViewHost.element(labelContains: "online", in: window))
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "New chat", in: window))
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "Search", in: window))
+        XCTAssertEqual(newChatCount, 1)
         XCTAssertEqual(toggleCount, 1)
+    }
+
+    // Folding an agent must not hide a chat that needs you; with one, the line opens it.
+    func testAttentionLineOpensTheOneChatThatNeedsYou() {
+        let quiet = ViewHost.host(HeaderHarness(isSearchVisible: false, searchText: "", onToggleSearch: {}))
+        XCTAssertNil(ViewHost.element(labelContains: "needs approval", in: quiet))
+
+        let agent = ViewFixtures.agent()
+        let chat = ViewFixtures.conversation(id: "waiting", agent: agent)
+        var opened: [String] = []
+        let busy = ViewHost.host(
+            HeaderHarness(
+                attentionItems: [SidebarAttentionItem(conversation: chat, status: .approval)],
+                onOpenChat: { opened.append($0.id) },
+                isSearchVisible: false,
+                searchText: "",
+                onToggleSearch: {}
+            )
+        )
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "1 chat needs approval", in: busy))
+        XCTAssertEqual(opened, ["waiting"])
+    }
+
+    // Several: the line lists them underneath, and each opens its chat.
+    func testAttentionLineListsSeveralChats() {
+        let agent = ViewFixtures.agent()
+        let waiting = ViewFixtures.conversation(id: "waiting", agent: agent)
+        let failed = ViewFixtures.conversation(id: "failed", agent: agent)
+        var opened: [String] = []
+        let window = ViewHost.host(
+            HeaderHarness(
+                attentionItems: [
+                    SidebarAttentionItem(conversation: waiting, status: .approval),
+                    SidebarAttentionItem(conversation: failed, status: .notSent)
+                ],
+                onOpenChat: { opened.append($0.id) },
+                isSearchVisible: false,
+                searchText: "",
+                onToggleSearch: {}
+            )
+        )
+
+        XCTAssertNil(ViewHost.element(labelContains: "message not sent", in: window))
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "2 chats need attention", in: window))
+        ViewHost.pump(0.2)
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "message not sent", in: window))
+        XCTAssertEqual(opened, ["failed"])
     }
 
     func testVisibleSearchShowsCloseActionAndCanClearText() {
         var toggleCount = 0
         let window = ViewHost.host(
             HeaderHarness(
-                onlineAgentCount: 1,
                 isSearchVisible: true,
                 searchText: "deploy",
                 onToggleSearch: { toggleCount += 1 }
@@ -54,95 +103,14 @@ final class ChatSidebarHeaderViewTests: XCTestCase {
 
 @MainActor
 final class SidebarRowViewTests: XCTestCase {
-    func testAgentRowRendersAgentNameAndInvokesToggle() {
-        let agent = ViewFixtures.agent(name: "Orbit Agent")
-        var toggled = false
-        var addChatCount = 0
-        let window = ViewHost.host(
-            SidebarAgentRow(
-                agent: agent,
-                isExpanded: true,
-                isOnline: true,
-                isCurrent: true,
-                onToggle: { toggled = true },
-                onRename: {},
-                onEdit: {},
-                onAddChat: { addChatCount += 1 },
-                onShowQRCode: { _ in },
-                onDelete: {}
-            )
-            .padding()
-        )
-
-        XCTAssertNotNil(ViewHost.element(labelContains: "Orbit Agent", in: window))
-        XCTAssertTrue(ViewHost.activate(labelContains: "Orbit Agent", in: window))
-        XCTAssertTrue(toggled)
-        XCTAssertTrue(ViewHost.activateButton(labelContains: "New chat with Orbit Agent", in: window))
-        XCTAssertEqual(addChatCount, 1)
+    func testDisplayNameCompactsTheDefaultAddressName() {
+        let agent = SavedAgent(id: "default-agent", address: "0x6e0469abcdef1234567890abcdefcd567a")
+        XCTAssertEqual(agent.displayName, "0x6e04...567a")
+        XCTAssertEqual(ViewFixtures.agent(name: "Orbit Agent").displayName, "Orbit Agent")
     }
 
-    func testStationAgentRowShowsTheStationCaption() {
-        let window = ViewHost.host(
-            SidebarAgentRow(
-                agent: ViewFixtures.agent(name: "Orbit Agent"),
-                isExpanded: false,
-                isOnline: true,
-                onToggle: {},
-                onRename: {},
-                onEdit: {},
-                onAddChat: {},
-                onShowQRCode: { _ in },
-                onDelete: {},
-                isStation: true
-            )
-            .padding()
-        )
-
-        XCTAssertNotNil(ViewHost.element(labelContains: "Station", in: window))
-    }
-
-    func testAgentRowCompactsDefaultAddressNameForDisplay() {
-        let agent = SavedAgent(
-            id: "default-agent",
-            address: "0x6e0469abcdef1234567890abcdefcd567a"
-        )
-        let window = ViewHost.host(
-            SidebarAgentRow(
-                agent: agent,
-                isExpanded: false,
-                isOnline: false,
-                onToggle: {},
-                onRename: {},
-                onEdit: {},
-                onAddChat: {},
-                onShowQRCode: { _ in },
-                onDelete: {}
-            )
-            .padding()
-        )
-
-        XCTAssertNotNil(ViewHost.element(labelContains: "0x6e04...567a", in: window))
-        XCTAssertNil(ViewHost.element(labelContains: "Agent 0x6e04...567a", in: window))
-    }
-
-    func testAgentRowFallsBackToDefaultInitialForBlankName() {
-        let agent = ViewFixtures.agent(name: "   ")
-        let window = ViewHost.host(
-            SidebarAgentRow(
-                agent: agent,
-                isExpanded: false,
-                isOnline: false,
-                onToggle: {},
-                onRename: {},
-                onEdit: {},
-                onAddChat: {},
-                onShowQRCode: { _ in },
-                onDelete: {}
-            )
-            .padding()
-        )
-
-        XCTAssertNotNil(ViewHost.element(labelContains: "A", in: window))
+    func testDisplayNameSaysAgentForABlankName() {
+        XCTAssertEqual(ViewFixtures.agent(name: "   ").displayName, "Agent")
     }
 
     func testConversationRowRendersTitleAndInvokesSelection() {
@@ -286,30 +254,38 @@ private extension ViewFixtures {
 }
 
 private struct HeaderHarness: View {
-    let onlineAgentCount: Int
+    var attentionItems: [SidebarAttentionItem] = []
+    var onOpenChat: (Conversation) -> Void = { _ in }
     let isSearchVisible: Bool
+    var onNewChat: () -> Void = {}
     let onToggleSearch: () -> Void
     @State private var searchText: String
     @FocusState private var isSearchFocused: Bool
 
     init(
-        onlineAgentCount: Int,
+        attentionItems: [SidebarAttentionItem] = [],
+        onOpenChat: @escaping (Conversation) -> Void = { _ in },
         isSearchVisible: Bool,
         searchText: String,
+        onNewChat: @escaping () -> Void = {},
         onToggleSearch: @escaping () -> Void
     ) {
-        self.onlineAgentCount = onlineAgentCount
+        self.attentionItems = attentionItems
+        self.onOpenChat = onOpenChat
         self.isSearchVisible = isSearchVisible
+        self.onNewChat = onNewChat
         self.onToggleSearch = onToggleSearch
         _searchText = State(initialValue: searchText)
     }
 
     var body: some View {
         ChatSidebarHeaderView(
-            onlineAgentCount: onlineAgentCount,
             isSearchVisible: isSearchVisible,
             searchText: $searchText,
             searchFieldFocus: $isSearchFocused,
+            attentionItems: attentionItems,
+            onOpenChat: onOpenChat,
+            onNewChat: onNewChat,
             onToggleSearch: onToggleSearch
         )
         .padding()

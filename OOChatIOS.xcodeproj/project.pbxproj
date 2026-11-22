@@ -59,7 +59,8 @@
 		100000000000000000000157 /* SkillLoadingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000062 /* SkillLoadingCoordinator.swift */; };
 		100000000000000000000158 /* ChatSidebarMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000063 /* ChatSidebarMetrics.swift */; };
 		100000000000000000000159 /* ChatSidebarHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000064 /* ChatSidebarHeaderView.swift */; };
-		100000000000000000000160 /* ChatSidebarFooterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000065 /* ChatSidebarFooterView.swift */; };
+		100000000000000000000160 /* AgentRail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000065 /* AgentRail.swift */; };
+		AA00000000000000000000A1 /* AgentPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000A2 /* AgentPane.swift */; };
 		100000000000000000000161 /* ChatSidebarRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000066 /* ChatSidebarRows.swift */; };
 		900000000000000000000103 /* StationPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 900000000000000000000104 /* StationPaneView.swift */; };
 		910000000000000000000205 /* OnboardingPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 910000000000000000000206 /* OnboardingPaneView.swift */; };
@@ -195,7 +196,8 @@
 		100000000000000000000062 /* SkillLoadingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillLoadingCoordinator.swift; sourceTree = "<group>"; };
 		100000000000000000000063 /* ChatSidebarMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarMetrics.swift; sourceTree = "<group>"; };
 		100000000000000000000064 /* ChatSidebarHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarHeaderView.swift; sourceTree = "<group>"; };
-		100000000000000000000065 /* ChatSidebarFooterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarFooterView.swift; sourceTree = "<group>"; };
+		100000000000000000000065 /* AgentRail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentRail.swift; sourceTree = "<group>"; };
+		AA00000000000000000000A2 /* AgentPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPane.swift; sourceTree = "<group>"; };
 		100000000000000000000066 /* ChatSidebarRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatSidebarRows.swift; sourceTree = "<group>"; };
 		900000000000000000000104 /* StationPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationPaneView.swift; sourceTree = "<group>"; };
 		910000000000000000000206 /* OnboardingPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPaneView.swift; sourceTree = "<group>"; };
@@ -385,7 +387,8 @@
 				100000000000000000000364 /* ChatSidebarSearch.swift */,
 				100000000000000000000063 /* ChatSidebarMetrics.swift */,
 				100000000000000000000064 /* ChatSidebarHeaderView.swift */,
-				100000000000000000000065 /* ChatSidebarFooterView.swift */,
+				100000000000000000000065 /* AgentRail.swift */,
+				AA00000000000000000000A2 /* AgentPane.swift */,
 				100000000000000000000066 /* ChatSidebarRows.swift */,
 				900000000000000000000104 /* StationPaneView.swift */,
 				910000000000000000000206 /* OnboardingPaneView.swift */,
@@ -724,7 +727,8 @@
 				100000000000000000000144 /* ChatSidebarView.swift in Sources */,
 				100000000000000000000158 /* ChatSidebarMetrics.swift in Sources */,
 				100000000000000000000159 /* ChatSidebarHeaderView.swift in Sources */,
-				100000000000000000000160 /* ChatSidebarFooterView.swift in Sources */,
+				100000000000000000000160 /* AgentRail.swift in Sources */,
+				AA00000000000000000000A1 /* AgentPane.swift in Sources */,
 				100000000000000000000161 /* ChatSidebarRows.swift in Sources */,
 				900000000000000000000103 /* StationPaneView.swift in Sources */,
 				910000000000000000000205 /* OnboardingPaneView.swift in Sources */,

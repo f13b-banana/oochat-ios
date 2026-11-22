@@ -1,103 +1,6 @@
 import ConnectOnionKit
 import SwiftUI
 
-/// An agent's folding header, drawn by the shared kit header: status dot, name, then ✋ and
-/// the chat count while folded. Tapping folds it; ＋ starts a chat with this agent.
-struct SidebarAgentRow: View {
-    let agent: SavedAgent
-    /// The name the sidebar shows; the same helper names it in New chat and the attention panel.
-    /// A blank name says "Agent"; the default name (the address) is shortened to 0x1234...abcd.
-    static func displayName(for agent: SavedAgent) -> String {
-        let name = agent.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if name.isEmpty {
-            return "Agent"
-        }
-        guard name == SavedAgent.defaultName(for: agent.address), agent.address.count > 12 else {
-            return name
-        }
-        return "\(agent.address.prefix(6))...\(agent.address.suffix(4))"
-    }
-
-    let isExpanded: Bool
-    let isOnline: Bool
-    var chatCount = 0
-    var needsYou = false
-    /// New chat goes here; its name reads in the selection green.
-    var isCurrent = false
-    let onToggle: () -> Void
-    let onRename: () -> Void
-    let onEdit: () -> Void
-    let onAddChat: () -> Void
-    let onShowQRCode: (URL) -> Void
-    let onDelete: () -> Void
-    var isStation = false
-
-    var body: some View {
-        OOSidebarAgentHeader(
-            name: Self.displayName(for: agent),
-            isOnline: isOnline,
-            isExpanded: isExpanded,
-            chatCount: chatCount,
-            needsYou: needsYou,
-            isCurrent: isCurrent,
-            onToggle: onToggle,
-            // A Claude Station opens rather than folds: no chevron, and its row is the way in.
-            disclosure: isStation ? .hidden : .trailing,
-            isStation: isStation
-        ) {
-            // Every agent: start a chat with it without opening one of its chats first. A
-            // Station has no chats of its own, so its ＋ keeps its place but isn't shown.
-            addChatButton
-                .opacity(isStation ? 0 : 1)
-                .allowsHitTesting(!isStation)
-                .accessibilityHidden(isStation)
-        }
-        .contextMenu {
-            if isStation {
-                Button(action: onToggle) {
-                    Label("Open Station", systemImage: "terminal")
-                }
-            } else {
-                Button(action: onAddChat) {
-                    Label("New Chat", systemImage: "square.and.pencil")
-                }
-            }
-            Button(action: onRename) {
-                Label("Rename", systemImage: "pencil")
-            }
-            Button(action: onEdit) {
-                Label("Edit Agent", systemImage: "slider.horizontal.3")
-            }
-            if let shareURL = AgentShareURL.url(for: agent.address) {
-                ShareLink(item: shareURL) {
-                    Label("Share Link", systemImage: "square.and.arrow.up")
-                }
-                Button {
-                    onShowQRCode(shareURL)
-                } label: {
-                    Label("Show QR Code", systemImage: "qrcode")
-                }
-            }
-            Button(role: .destructive, action: onDelete) {
-                Label("Delete", systemImage: "trash")
-            }
-        }
-    }
-
-    private var addChatButton: some View {
-        Button(action: onAddChat) {
-            Image(systemName: "plus")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(OOColor.inkSecondary)
-                // 44 pt to hit, glyph unchanged (story 162).
-                .frame(width: ooMinimumTarget, height: ooMinimumTarget)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("New chat with \(Self.displayName(for: agent))")
-    }
-}
-
 /// One chat, drawn by the shared kit row: title, then its time or what's happening instead.
 struct SidebarConversationRow: View {
     let conversation: Conversation
@@ -111,6 +14,8 @@ struct SidebarConversationRow: View {
     var preview: String?
     /// A soft line under the row, between it and the next chat of the same agent.
     var showsSeparator = false
+    /// Where the title starts: the agent pane lists chats flush with its other rows.
+    var indent: CGFloat = OOSidebarMetrics.chatIndent
     let onSelect: () -> Void
     let onRename: () -> Void
     let onDelete: () -> Void
@@ -123,7 +28,8 @@ struct SidebarConversationRow: View {
                 status: status ?? activityState?.sidebarStatus,
                 preview: isFromPreviousIdentity ? PreviousIdentity.label : preview,
                 isSelected: isSelected,
-                isUnread: activityState == .completedUnread
+                isUnread: activityState == .completedUnread,
+                indent: indent
             )
         }
         .buttonStyle(.plain)
@@ -131,7 +37,7 @@ struct SidebarConversationRow: View {
             if showsSeparator {
                 OOColor.hairline
                     .frame(height: 1)
-                    .padding(.leading, OOSidebarMetrics.chatIndent)
+                    .padding(.leading, indent)
                     .padding(.trailing, OOSidebarMetrics.horizontalPadding)
                     .accessibilityHidden(true)
             }

@@ -107,6 +107,9 @@ enum ViewHost {
                 return match
             }
             pump(0.05)
+            // A List that was rebuilt (another agent's pane) only makes its rows in a layout pass,
+            // and a test window gets none after the first unless asked.
+            window.layoutIfNeeded()
         } while Date() < deadline
 
         return element(

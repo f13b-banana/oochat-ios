@@ -421,6 +421,14 @@ actor HostedAgentConnectionPool {
         }
     }
 
+    func closeConnection(agentAddress: String, conversationID: String) async {
+        let key = HostedAgentConnectionKey(agentAddress: agentAddress, conversationID: conversationID)
+        guard let entry = connections.removeValue(forKey: key) else {
+            return
+        }
+        await entry.connection.close()
+    }
+
     func noteNetworkLost() async {
         let idleKeys = connections.compactMap { key, entry in
             entry.activeLeases == 0 ? key : nil

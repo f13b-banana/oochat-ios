@@ -20,6 +20,8 @@ struct ChatScrollUpdate: Equatable {
 
 enum ChatScrollMetrics {
     static let followThreshold: CGFloat = 80
+    /// Jump to latest only shows once you're this many screens up, not just past the follow point.
+    static let jumpToLatestScreens: CGFloat = 1.5
     static let keyboardFollowUpDelay: DispatchTimeInterval = .milliseconds(250)
 }
 
@@ -28,22 +30,6 @@ enum ChatScrollMetrics {
 // layouts keep their existing full-bleed behavior.
 enum ChatReadableWidth {
     static let maximum: CGFloat = 720
-}
-
-struct ChatBottomAnchorPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-struct ChatViewportHeightPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
 }
 
 enum ChatTimelineEntry: Identifiable, Equatable {

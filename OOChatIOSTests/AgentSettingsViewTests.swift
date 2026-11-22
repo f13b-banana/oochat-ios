@@ -34,7 +34,7 @@ final class AgentFormViewTests: XCTestCase {
         )
 
         XCTAssertNotNil(ViewHost.waitForElement(labelContains: "That doesn't look like an agent address", in: window))
-        _ = ViewHost.activate(identifier: "agentForm.confirm", in: window)
+        _ = ViewHost.activateButton(label: "Add", in: window)
         XCTAssertFalse(didAttemptSave)
     }
 
@@ -58,7 +58,7 @@ final class AgentFormViewTests: XCTestCase {
         )
 
         ViewHost.pump(0.5)
-        XCTAssertTrue(ViewHost.activate(identifier: "agentForm.confirm", in: window))
+        XCTAssertTrue(ViewHost.activateButton(label: "Add", in: window))
         XCTAssertEqual(savedDraft?.name, "Looked Up")
     }
 
@@ -71,7 +71,7 @@ final class AgentFormViewTests: XCTestCase {
             } onCancel: {}
         )
 
-        XCTAssertTrue(ViewHost.activate(identifier: "agentForm.confirm", in: window))
+        XCTAssertTrue(ViewHost.activateButton(label: "Add", in: window))
         ViewHost.pump(0.3)
         XCTAssertEqual(saveAttemptCount, 1)
         XCTAssertNotNil(ViewHost.element(labelContains: "Add Agent", in: window))

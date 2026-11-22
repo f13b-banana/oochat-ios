@@ -1,6 +1,7 @@
 import Combine
 import ConnectOnionKit
 import Security
+import UserNotifications
 import XCTest
 @testable import OOChatIOS
 
@@ -341,6 +342,31 @@ final class AgentsFeatureTests: XCTestCase {
         withExtendedLifetime(cancellable) {}
     }
 
+    // Tapping agent B on the rail while a chat with A is open: the nav bar's New chat goes to B.
+    func testNewChatGoesToTheAgentPickedOnTheRail() throws {
+        let agentA = makeAgent(id: "agentA", address: "0xaaa", updatedAt: seconds(1000))
+        let agentB = makeAgent(id: "agentB", address: "0xbbb", updatedAt: seconds(2000))
+        let chatWithA = makeConversation(id: "conA", agent: agentA, updatedAt: seconds(1000))
+        let repo = SpyConversationRepository(
+            snapshot: ChatSnapshot(
+                agents: [agentA, agentB],
+                conversations: [chatWithA],
+                activeAgentID: agentA.id,
+                activeConversationID: chatWithA.id
+            )
+        )
+        let view = ChatViewModel(store: repo)
+        XCTAssertEqual(view.newChatAgent?.id, agentA.id)
+
+        view.pickOnRail(agentB)
+
+        XCTAssertEqual(view.paneAgent?.id, agentB.id)
+        XCTAssertEqual(view.newChatAgent?.id, agentB.id)
+        let created = view.createConversation(for: try XCTUnwrap(view.newChatAgent))
+        XCTAssertEqual(created.agentID, agentB.id)
+        XCTAssertEqual(view.paneAgent?.id, agentB.id)
+    }
+
     // Search forwards the query to the store and returns its results unfiltered.
     func testSearchConversationsForwardsToStore() {
         let agent = makeAgent(id: "agent1", address: "0xaaa", updatedAt: seconds(1000))
@@ -368,6 +394,55 @@ final class AgentsFeatureTests: XCTestCase {
         let results = view.searchConversations("note", for: mine)
 
         XCTAssertEqual(results.map(\.id), [mineHit.id])
+    }
+
+    func testNotifiesOnlyWhileTheAppIsInTheBackground() {
+        XCTAssertTrue(ChatNotifier.shouldNotify(isAppActive: false))
+        XCTAssertFalse(ChatNotifier.shouldNotify(isAppActive: true))
+        // A turn sent from a linked device notifies there, not here as well.
+        XCTAssertFalse(ChatNotifier.shouldNotify(isAppActive: false, isMirrored: true))
+    }
+
+    // Allow once from a notification that launched the app: the card hasn't loaded yet, so the
+    // answer waits and goes out when the approval arrives.
+    func testAnApprovalAnsweredBeforeItsCardLoadsIsAnsweredWhenItArrives() {
+        let agent = makeAgent(id: "agent1", address: "0xaaa", updatedAt: seconds(1000))
+        let chat = makeConversation(id: "con1", agent: agent, updatedAt: seconds(1000))
+        let repo = SpyConversationRepository(
+            snapshot: ChatSnapshot(agents: [agent], conversations: [chat], activeAgentID: nil, activeConversationID: nil)
+        )
+        let view = ChatViewModel(store: repo)
+
+        view.answerApproval(.allowOnce, approvalID: "appr1", conversationID: chat.id)
+
+        XCTAssertEqual(view.activeConversationID, chat.id)
+        XCTAssertEqual(view.queuedApprovalAnswer?.approvalID, "appr1")
+        let request = ToolApprovalRequest(id: "appr1", tool: "bash", arguments: [:])
+        view.interactionDidArrive(.approval(request), conversationID: chat.id)
+        XCTAssertNil(view.queuedApprovalAnswer)
+    }
+
+    func testNotificationPreviewIsTheReplysFirstShortLine() {
+        XCTAssertEqual(ChatNotifier.preview(of: "Done.\nHere are the details."), "Done.")
+        XCTAssertEqual(ChatNotifier.preview(of: "  "), "Finished.")
+        let long = String(repeating: "a", count: 150)
+        XCTAssertEqual(ChatNotifier.preview(of: long).count, 100)
+        XCTAssertTrue(ChatNotifier.preview(of: long).hasSuffix("…"))
+    }
+
+    func testApprovalNotificationNamesTheAgentAndWhatItWillDo() {
+        let request = ToolApprovalRequest(
+            id: "appr1",
+            tool: "bash",
+            arguments: ["command": .string("./scripts/run_kit_tests.sh")]
+        )
+        let content = ChatNotifier.approvalContent(conversationID: "con1", agentName: "PCAgent", request: request)
+
+        XCTAssertEqual(content.title, "PCAgent needs your approval")
+        XCTAssertEqual(content.body, "Run a shell command using ./scripts/run_kit_tests.sh.")
+        XCTAssertEqual(content.categoryIdentifier, ChatNotifier.approvalCategory)
+        XCTAssertEqual(content.userInfo[ChatNotifier.conversationKey] as? String, "con1")
+        XCTAssertEqual(content.userInfo[ChatNotifier.approvalKey] as? String, "appr1")
     }
 
     func testDraftSurvivesARelaunch() {

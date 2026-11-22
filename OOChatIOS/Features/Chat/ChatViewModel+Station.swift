@@ -14,10 +14,55 @@ extension ChatViewModel {
         agents.filter { !isStation($0) }
     }
 
-    /// Where New chat goes: the current agent, or the first one if none is chosen yet.
+    /// Where the rail keeps your order of agents.
+    static let railOrderKey = "agentRailOrder"
+
+    /// The order you've dragged the rail into; empty until you first move a tile.
+    var savedRailOrder: [String] {
+        AgentRailOrder.decode(UserDefaults.standard.string(forKey: Self.railOrderKey) ?? "")
+    }
+
+    func saveRailOrder(_ ids: [String]) {
+        objectWillChange.send()
+        UserDefaults.standard.set(AgentRailOrder.encode(ids), forKey: Self.railOrderKey)
+    }
+
+    /// Every agent, in the order you've put them on the rail.
+    var railAgents: [SavedAgent] {
+        AgentRailOrder.ordered(agents, by: savedRailOrder)
+    }
+
+    /// The agent the pane shows.
+    var paneAgent: SavedAgent? {
+        currentAgentCandidates.first
+    }
+
+    /// Where New chat goes, from the pane or the nav bar: the pane's agent, unless that's a Station.
     var newChatAgent: SavedAgent? {
-        let chattable = chattableAgents
-        return chattable.first { $0.id == activeAgentID } ?? chattable.first
+        currentAgentCandidates.first { !isStation($0) }
+    }
+
+    func pickOnRail(_ agent: SavedAgent) {
+        railPick = RailPick(agentID: agent.id, activeAgentID: activeAgentID)
+    }
+
+    /// After New chat or a saved agent, the open chat's agent leads the pane again.
+    func clearRailPick() {
+        railPick = nil
+    }
+
+    /// The one picked on the rail, then the open chat's agent, then the rail from the top. A rail pick
+    /// lasts while the open chat's agent stays the same, so opening another chat brings the pane with it.
+    private var currentAgentCandidates: [SavedAgent] {
+        var candidates: [SavedAgent] = []
+        if let railPick, railPick.activeAgentID == activeAgentID,
+           let picked = agents.first(where: { $0.id == railPick.agentID }) {
+            candidates.append(picked)
+        }
+        if let activeAgent {
+            candidates.append(activeAgent)
+        }
+        return candidates + railAgents
     }
 
     /// The profile arrives after CONNECTED, so the address is remembered to draw the row before the next connect.
@@ -99,4 +144,10 @@ extension ChatViewModel {
         selectConversation(session)
         connectActiveConversationOnOpen()
     }
+}
+
+/// An agent picked on the rail, and the open chat's agent when it was picked.
+struct RailPick: Equatable {
+    let agentID: String
+    let activeAgentID: String?
 }

@@ -47,6 +47,18 @@ struct SidebarConversationRow: View {
         .listRowInsets(SidebarMetrics.conversationRowInsets)
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
+        // Swipe left to delete (it still asks first), right to rename; the menu stays for a long press.
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button(action: onRename) {
+                Label("Rename", systemImage: "pencil")
+            }
+            .tint(OOColor.primary)
+        }
         .contextMenu {
             Button(action: onRename) {
                 Label("Rename", systemImage: "pencil")

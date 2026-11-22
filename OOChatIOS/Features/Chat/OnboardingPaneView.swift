@@ -20,6 +20,9 @@ struct OnboardingPaneView: View {
                         .padding(20)
                 }
             }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                ChatBanners(viewModel: viewModel)
+            }
             .navigationTitle(viewModel.activeAgent?.name ?? "Agent")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

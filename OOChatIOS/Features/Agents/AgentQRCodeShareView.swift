@@ -12,9 +12,19 @@ enum AgentShareURL {
 }
 
 struct AgentQRCodeShareView: View {
-    let url: URL
+    let payload: String
+    var title = "Agent QR Code"
     @Environment(\.dismiss) private var dismiss
     private let context = CIContext()
+
+    init(url: URL) {
+        payload = url.absoluteString
+    }
+
+    init(payload: String, title: String) {
+        self.payload = payload
+        self.title = title
+    }
 
     var body: some View {
         NavigationStack {
@@ -31,7 +41,7 @@ struct AgentQRCodeShareView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(.systemGroupedBackground))
-            .navigationTitle("Agent QR Code")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -45,7 +55,7 @@ struct AgentQRCodeShareView: View {
 
     private var qrImage: UIImage? {
         let filter = CIFilter.qrCodeGenerator()
-        filter.message = Data(url.absoluteString.utf8)
+        filter.message = Data(payload.utf8)
         filter.correctionLevel = "M"
 
         guard let output = filter.outputImage else {

@@ -30,9 +30,14 @@ final class ChatViewModel: ObservableObject {
     @Published var onboardingByConversationID: [String: OnboardingPrompt] = [:]
     /// The code typed for onboarding, kept in memory until the agent turns out to be a Station that needs it to attach.
     var onboardingCodesByConversationID: [String: String] = [:]
-    @Published var errorMessage: String?
-    /// The banner message a reconnect can fix. Retry only shows while this is the message on screen.
-    var retryableErrorMessage: String?
+    /// Any new message clears Retry; only a failed reconnect turns it back on (presentConnectionError).
+    @Published var errorMessage: String? {
+        didSet { isErrorRetryable = false }
+    }
+    /// The agent last tapped on the rail; see `paneAgent`.
+    @Published var railPick: RailPick?
+    /// The message on the banner came from a failed reconnect, so Retry can fix it.
+    var isErrorRetryable = false
     /// Why each failed message didn't go through. Kept for this run of the app only.
     @Published var failureByMessageID: [String: ChatFailure] = [:]
      /// Set when the agent answered -32010. The Incompatible screen shows while it is non-nil.
@@ -107,6 +112,10 @@ final class ChatViewModel: ObservableObject {
     var fileDraftsByConversationID: [String: [ChatFileAttachment]] = [:]
     let voiceInputController: VoiceInputController
     var backgroundDeliveryTaskID: UIBackgroundTaskIdentifier = .invalid
+    /// Set by the app; nil in tests, so tests never post notifications or ask for permission.
+    var chatNotifier: ChatNotifier?
+    /// Allow once or Skip tapped on a notification before that approval's card had loaded.
+    var queuedApprovalAnswer: (answer: ChatNotifier.ApprovalAnswer, approvalID: String)?
 
     var probeInterval: TimeInterval {
         get {
@@ -471,6 +480,7 @@ final class ChatViewModel: ObservableObject {
         deliveryCoordinator.onDeliveryError = { [weak self] conversationID, messageID, error in
             self?.presentDeliveryError(error, messageID: messageID, forConversationID: conversationID)
         }
+        observeRunsForNotifications()
         deliveryCoordinator.onDeliveriesIdle = { [weak self] in
             self?.endBackgroundDeliveryHold()
         }

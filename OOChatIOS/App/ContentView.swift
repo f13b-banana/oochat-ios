@@ -7,7 +7,6 @@ struct ContentView: View {
     // keeps only the first value it is given, which is a quiet way to end up with
     // two of them.
     @ObservedObject var viewModel: ChatViewModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("appAppearance") private var appAppearance = AppAppearance.system.rawValue
     /// Set once the person has kept this device's Identity or linked one in. Someone who already has
@@ -17,27 +16,8 @@ struct ContentView: View {
     @State private var isOnboardingLinking = false
 
     var body: some View {
-        // Banners sit in a stack above the shell. The shell lays out edge to edge, so a top
-        // safe-area inset would draw them over its nav bar.
-        VStack(spacing: 0) {
-            VStack(spacing: 0) {
-                if viewModel.shouldShowOfflineBanner {
-                    OfflineBanner(isRetrying: viewModel.isRetryingConnectivity) {
-                        viewModel.retryConnectivity()
-                    } onDismiss: {
-                        viewModel.dismissOfflineBanner()
-                    }
-                    .transition(AppMotion.materialize(reduceMotion: reduceMotion, edge: .top))
-                }
-                ErrorBanner(
-                    message: viewModel.errorMessage,
-                    onRetry: viewModel.canRetryError ? { Task { await viewModel.reconnect() } } : nil,
-                    onDismiss: { viewModel.dismissError() }
-                )
-            }
-
-            ChatShellView(viewModel: viewModel)
-        }
+        // The banners sit in the chat column, under its nav bar (ChatBanners).
+        ChatShellView(viewModel: viewModel)
         .fullScreenCover(isPresented: Binding(
             get: { !isOnboardingDone && (viewModel.agents.isEmpty || isOnboardingLinking) },
             set: { if !$0 { isOnboardingDone = true } }
@@ -54,14 +34,6 @@ struct ContentView: View {
                 onFinish: { isOnboardingDone = true }
             )
         }
-        .animation(
-            AppMotion.contentArrival(reduceMotion: reduceMotion),
-            value: viewModel.shouldShowOfflineBanner
-        )
-        .animation(
-            AppMotion.contentArrival(reduceMotion: reduceMotion),
-            value: viewModel.errorMessage
-        )
         .fullScreenCover(
             isPresented: Binding(
                 get: { viewModel.incompatibility != nil },

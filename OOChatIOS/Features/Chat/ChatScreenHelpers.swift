@@ -20,13 +20,22 @@ extension ChatScreen {
     }
 
     /// New chat sits opposite the sidebar button, so the title stays centred. Tap starts a chat
-    /// with the current agent, the same as the drawer's New chat; hold to pick another agent.
+    /// with the pane's agent, the same as the drawer's New chat; hold to pick another agent.
     var newChatItem: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
-                ForEach(viewModel.chattableAgents) { agent in
-                    Button(agent.displayName) {
-                        _ = viewModel.createConversation(for: agent)
+                // The tick marks the agent a tap goes to, the one the pane shows.
+                Section("New chat with") {
+                    ForEach(viewModel.chattableAgents) { agent in
+                        Button {
+                            _ = viewModel.createConversation(for: agent)
+                        } label: {
+                            if agent.id == viewModel.newChatAgent?.id {
+                                Label(agent.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(agent.displayName)
+                            }
+                        }
                     }
                 }
             } label: {

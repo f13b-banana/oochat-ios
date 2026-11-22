@@ -90,10 +90,10 @@ final class MessageBubbleTests: XCTestCase {
         let window = ViewHost.host(bubble)
 
         XCTAssertNotNil(ViewHost.element(labelContains: "Waiting for Scout · 3 s", in: window))
-        XCTAssertNil(ViewHost.element(labelContains: "Stop Scout", in: window), "Stop waits for 10 s")
+        XCTAssertNil(ViewHost.element(labelContains: "Cancel waiting for Scout", in: window), "Cancel waits for 10 s")
     }
 
-    func testWaitingRowOffersStopAfterTenSeconds() {
+    func testWaitingRowSaysStillWaitingAndOffersCancelAfterTenSeconds() {
         var stopped = false
         let bubble = MessageBubble(
             message: ChatMessage(role: .thinking, content: "", createdAt: Date().addingTimeInterval(-12)),
@@ -102,7 +102,8 @@ final class MessageBubbleTests: XCTestCase {
         )
         let window = ViewHost.host(bubble)
 
-        XCTAssertTrue(ViewHost.activate(labelContains: "Stop Scout", in: window))
+        XCTAssertNotNil(ViewHost.element(labelContains: "Still waiting for Scout", in: window))
+        XCTAssertTrue(ViewHost.activate(labelContains: "Cancel waiting for Scout", in: window))
         XCTAssertTrue(stopped)
     }
 
@@ -113,7 +114,7 @@ final class MessageBubbleTests: XCTestCase {
         )
         let window = ViewHost.host(bubble)
 
-        XCTAssertNil(ViewHost.element(labelContains: "Stop Scout", in: window))
+        XCTAssertNil(ViewHost.element(labelContains: "Cancel waiting for Scout", in: window))
     }
 
     func testQueuedDeliveryShowsQueuedBadge() {

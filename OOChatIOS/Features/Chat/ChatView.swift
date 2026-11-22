@@ -11,6 +11,12 @@ enum ChatControlCenter {
     case tabs(dashboard: OIPDashboard, selection: Binding<OOAgentView>, attention: OOAgentView?)
 }
 
+/// iPad: the nav bar's button that hides or shows the agent pane beside the rail.
+struct ChatPaneToggle {
+    let isVisible: Bool
+    let toggle: () -> Void
+}
+
 struct ChatView: View {
     @ObservedObject var viewModel: ChatViewModel
     let showsComposer: Bool
@@ -23,6 +29,7 @@ struct ChatView: View {
     /// The open drawer covers the chat. A hidden modifier outside the NavigationStack doesn't
     /// reach VoiceOver in here, so the shell passes it in.
     var isCoveredByDrawer = false
+    var paneToggle: ChatPaneToggle?
 
     init(
         viewModel: ChatViewModel,
@@ -32,7 +39,8 @@ struct ChatView: View {
         workRoomPath: Binding<[String]> = .constant([]),
         onAddAgent: @escaping () -> Void = {},
         onOpenSidebar: @escaping () -> Void = {},
-        isCoveredByDrawer: Bool = false
+        isCoveredByDrawer: Bool = false,
+        paneToggle: ChatPaneToggle? = nil
     ) {
         self.viewModel = viewModel
         self.showsComposer = showsComposer
@@ -42,6 +50,7 @@ struct ChatView: View {
         self.onAddAgent = onAddAgent
         self.onOpenSidebar = onOpenSidebar
         self.isCoveredByDrawer = isCoveredByDrawer
+        self.paneToggle = paneToggle
     }
 
     /// The chat stays mounted under the Control tab, so VoiceOver must not read it there.
@@ -95,6 +104,15 @@ struct ChatView: View {
                 }
             }
             .toolbar {
+                if let paneToggle {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(action: paneToggle.toggle) {
+                            Image(systemName: "sidebar.left")
+                        }
+                        .accessibilityLabel(paneToggle.isVisible ? "Hide agent pane" : "Show agent pane")
+                        .accessibilityIdentifier("chat.togglePane")
+                    }
+                }
                 if case .beside(let isOpen, let toggle) = controlCenter {
                     ToolbarItem(placement: .topBarTrailing) {
                         OOControlCenterButton(isOpen: isOpen, action: toggle)
@@ -131,6 +149,8 @@ struct ChatScreen: View {
             OOColor.hairline
                 .frame(height: 1)
                 .accessibilityHidden(true)
+
+            ChatBanners(viewModel: viewModel)
 
             if showsComposer {
                 AgentBalanceNotice(
@@ -200,6 +220,7 @@ struct ChatScreen: View {
                                     UlwCheckpointCard(checkpoint: checkpoint) {
                                         viewModel.continueUlw(id: checkpoint.id)
                                     } onSwitchToAuto: {
+                                        // .safe is the mode the picker calls Auto.
                                         viewModel.switchModeFromUlwCheckpoint(id: checkpoint.id, to: .safe)
                                     }
                                     .id("pendingUlwCheckpoint")
@@ -418,7 +439,7 @@ struct ChatScreen: View {
             ContentUnavailableView {
                 Label("Add your first agent", systemImage: "person.badge.plus")
             } description: {
-                Text("An agent's address starts with 0x. Find it where the agent runs, or scan its QR code.")
+                Text("An agent's address starts with 0x. Find it in your agent's terminal, or scan its QR code.")
             } actions: {
                 Button("Add agent", action: onAddAgent)
                     .buttonStyle(.ooPrimary)

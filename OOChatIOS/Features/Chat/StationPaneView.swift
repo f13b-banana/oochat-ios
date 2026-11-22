@@ -18,6 +18,9 @@ struct StationPaneView: View {
     var body: some View {
         NavigationStack {
             content
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    ChatBanners(viewModel: viewModel)
+                }
                 .navigationTitle(viewModel.activeAgent?.name ?? "Claude Station")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {

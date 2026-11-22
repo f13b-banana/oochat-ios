@@ -120,7 +120,8 @@ final class OIPServerFrameTests: XCTestCase {
         ])
 
         XCTAssertEqual(
-            OIPServerFrame.decode(input), .error(OIPServerError(code: nil, message: "Request could not be completed", reason: "stale", requestID: nil)))
+            OIPServerFrame.decode(input), .error(OIPServerError(code: nil, message: "Request could not be completed",
+                                                                reason: "stale", requestID: nil)))
     }
 
     func testErrorMissingAllOptionalFieldsStillDecodes() {
@@ -143,7 +144,6 @@ final class OIPServerFrameTests: XCTestCase {
         XCTAssertEqual(error.code, .string("SOME_FUTURE_ERROR"))
         XCTAssertEqual(error.message, "An unknown error occurred")
     }
-
 
     // MARK: OUTPUT
 
@@ -334,7 +334,7 @@ final class OIPServerFrameTests: XCTestCase {
             )
         )
     }
-    
+
     // MARK: PING
 
     func testPingDecodesSpecFixture() throws {

@@ -145,6 +145,14 @@ public struct OIPOnboardRequired: Equatable, Sendable {
     public let paymentAddress: String?
 }
 
+// DASHBOARD_SNAPSHOT
+public struct OIPDashboardSnapshot: Equatable, Sendable {
+    /// Agent-authored and untrusted. Render only in a sandboxed view with scripts and network blocked.
+    /// The host never sends files over 2 MB, and the decoder does not truncate or validate the markup.
+    public let html: String
+    public let sessionID: String?
+}
+
 // Frame
 
 public enum OIPServerFrame: Equatable, Sendable {
@@ -157,6 +165,7 @@ public enum OIPServerFrame: Equatable, Sendable {
     case modeChanged(mode: OIPPermissionMode, turnsLeft: Int?)
     case execResult(OIPExecResult)
     case onboardRequired(OIPOnboardRequired)
+    case dashboardSnapshot(OIPDashboardSnapshot)
     case ping
     // 'body' is the whole frame containing 'type' and 'id' for stream and interaction frames
     case event(type: String, id: String?, body: [String: JSONValue])
@@ -181,6 +190,7 @@ public enum OIPServerFrame: Equatable, Sendable {
         guard let type = frame["type"]?.stringValue else {
             return .unknown(type: nil, body: frame)
         }
+
         let decoded = decodeSessionFrame(type, frame)
             ?? decodeAgentFrame(type, frame)
             ?? decodeStreamEvent(type, frame)
@@ -216,6 +226,8 @@ public enum OIPServerFrame: Equatable, Sendable {
             return decodeExecResult(frame)
         case OIPFrameType.onboardRequired:
             return decodeOnboardRequired(frame)
+        case OIPFrameType.dashboardSnapshot:
+            return decodeDashboardSnapshot(frame)
         default:
             return nil
         }
@@ -227,6 +239,7 @@ public enum OIPServerFrame: Equatable, Sendable {
         }
         return .event(type: type, id: frame["id"]?.stringValue, body: frame)
     }
+
     // Frame Decoders
     private static func decodeConnected(_ frame: [String: JSONValue]) -> OIPServerFrame? {
         guard let status = frame["status"]?.stringValue else {
@@ -327,6 +340,14 @@ public enum OIPServerFrame: Equatable, Sendable {
                 paymentAddress: frame["payment_address"]?.stringValue
             )
         )
+    }
+
+    private static func decodeDashboardSnapshot(_ frame: [String: JSONValue]) -> OIPServerFrame? {
+        // An empty string is still HTML; only a missing or non-string `html` is malformed.
+        guard let html = frame["html"]?.stringValue else {
+            return nil
+        }
+        return .dashboardSnapshot(OIPDashboardSnapshot(html: html, sessionID: frame["session_id"]?.stringValue))
     }
     // Helpers
     private static func strings(_ value: JSONValue?) -> [String] {

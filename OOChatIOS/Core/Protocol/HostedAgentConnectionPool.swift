@@ -1,11 +1,58 @@
 import Foundation
 import ConnectOnionKit
 
+enum HostedAgentSessionUpdate: Equatable {
+    case dashboard(OIPDashboard)
+
+    var kind: String {
+        switch self {
+        case.dashboard:
+            return "dashboard"
+        }
+    }
+}
+
 // sends only the newest queued state update for each conversation
 final class HostedAgentConnectionStateObserver: @unchecked Sendable {
     private let lock = NSLock()
     private var storedHandler: (@MainActor (String, ConversationConnectionState) -> Void)?
     private var sequenceByConversationID: [String: Int] = [:]
+    private var storedUpdateHandler: (@MainActor (String, HostedAgentSessionUpdate) -> Void)?
+
+    var updateHandler: (@MainActor (String, HostedAgentSessionUpdate) -> Void)? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return storedUpdateHandler
+        }
+        set {
+            lock.lock()
+            storedUpdateHandler = newValue
+            lock.unlock()
+        }
+    }
+
+    // like state changes, only the newest update of each kind is delivered
+    func notify(conversationID: String, update: HostedAgentSessionUpdate) {
+        let key = "\(conversationID)|\(update.kind)"
+        lock.lock()
+        let sequence = (sequenceByConversationID[key] ?? 0) + 1
+        sequenceByConversationID[key] = sequence
+        lock.unlock()
+
+        Task { @MainActor [weak self] in
+            self?.currentUpdateHandler(key: key, sequence: sequence)?(conversationID, update)
+        }
+    }
+
+    private func currentUpdateHandler(
+        key: String,
+        sequence: Int
+    ) -> (@MainActor (String, HostedAgentSessionUpdate) -> Void)? {
+        lock.lock()
+        defer { lock.unlock() }
+        return sequenceByConversationID[key] == sequence ? storedUpdateHandler : nil
+    }
 
     var handler: (@MainActor (String, ConversationConnectionState) -> Void)? {
         get {

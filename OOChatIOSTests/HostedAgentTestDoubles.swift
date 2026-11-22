@@ -55,6 +55,7 @@ final class MockAgentTransport: HostedAgentTransport {
     var connectBehavior: Behavior = .succeed(output: "")
     var sendBehavior: Behavior = .succeed(output: "mock reply")
     var onConnectionStateChange: (@MainActor (String, ConversationConnectionState) -> Void)?
+    var onSessionUpdate: (@MainActor (String, HostedAgentSessionUpdate) -> Void)?
     var sendBehaviorsByPrompt: [String: Behavior] = [:]
     var streamedEvents: [HostedAgentEvent] = []
     var approvalRequests: [ToolApprovalRequest] = []
@@ -256,6 +257,11 @@ final class MockAgentTransport: HostedAgentTransport {
     @MainActor
     func simulateConnectionState(_ state: ConversationConnectionState, conversationID: String) {
         onConnectionStateChange?(conversationID, state)
+    }
+
+    @MainActor
+    func simulateDashboard(_ html: String, conversationID: String) {
+        onSessionUpdate?(conversationID, .dashboard(OIPDashboard(html: html)))
     }
 }
 

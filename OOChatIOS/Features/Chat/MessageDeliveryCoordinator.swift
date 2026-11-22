@@ -32,6 +32,8 @@ final class MessageDeliveryCoordinator: ObservableObject {
     private var deliveryTasksByConversationID: [String: Task<Void, Never>] = [:]
     private var activeMessageIDsByConversationID: [String: String] = [:]
     private var pausedConversationIDs: Set<String> = []
+    // Chats whose next send must reconnect first, because their session was rewound.
+    private var restartSessionConversationIDs: Set<String> = []
     private var isDeliveryEnabled = true
 
     private let conversationState: ConversationState
@@ -123,6 +125,40 @@ final class MessageDeliveryCoordinator: ObservableObject {
         pausedConversationIDs.remove(conversation.id)
         if isDeliveryEnabled {
             startNextQueuedMessage(in: conversation.id)
+        }
+        return true
+    }
+
+    /// Redoes your latest message in place: drops everything the agent did after it, rewinds
+    /// the host session to before it, and sends it again, with `editedText` if you changed it.
+    /// false when there is nothing to redo, a run is going, or the session can't be rewound.
+    func redoLatestTurn(in conversationID: String, editedText: String? = nil) -> Bool {
+        guard deliveryTasksByConversationID[conversationID] == nil,
+              var conversation = conversationState.conversation(withID: conversationID),
+              let index = conversation.messages.lastIndex(where: { $0.role == .user }),
+              conversation.messages[index].deliveryState == .sent,
+              let session = conversation.serverSession,
+              // The prompt as the host has it, so the cut lands on that message and not on one
+              // Core added mid-turn (a reminder, or something sent while the agent worked).
+              let rewound = SessionRewind.droppingLatestTurn(
+                  from: session,
+                  prompt: conversation.messages[index].content
+              ) else {
+            return false
+        }
+
+        conversation.messages.removeSubrange((index + 1)...)
+        if let editedText {
+            conversation.messages[index].content = editedText
+        }
+        conversation.messages[index].deliveryState = .queued
+        conversation.serverSession = rewound
+        restartSessionConversationIDs.insert(conversationID)
+        conversationState.clearCompletedUnread(conversationID: conversationID)
+        conversationState.upsert(conversation)
+        pausedConversationIDs.remove(conversationID)
+        if isDeliveryEnabled {
+            startNextQueuedMessage(in: conversationID)
         }
         return true
     }
@@ -224,6 +260,7 @@ final class MessageDeliveryCoordinator: ObservableObject {
 
         let transport = transport
         let handlers = promptHandlers(messageID: messageID, conversationID: conversationID)
+        let restartsSession = restartSessionConversationIDs.remove(conversationID) != nil
         return Task { [weak self, transport] in
             defer {
                 self?.deliveryDidFinish(
@@ -232,6 +269,12 @@ final class MessageDeliveryCoordinator: ObservableObject {
                 )
             }
             do {
+                if restartsSession {
+                    await transport.restartSession(
+                        agentAddress: delivery.agent.address,
+                        conversationID: conversationID
+                    )
+                }
                 let result = try await Self.deliver(delivery, over: transport, handlers: handlers)
                 try Task.checkCancellation()
                 self?.completeDelivery(

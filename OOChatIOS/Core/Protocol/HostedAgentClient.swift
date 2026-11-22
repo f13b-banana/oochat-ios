@@ -171,6 +171,10 @@ final class HostedAgentClient: HostedAgentTransport {
         )
     }
 
+    func restartSession(agentAddress: String, conversationID: String) async {
+        await connectionPool.closeConnection(agentAddress: agentAddress, conversationID: conversationID)
+    }
+
     func noteNetworkLost() async {
         await connectionPool.noteNetworkLost()
     }

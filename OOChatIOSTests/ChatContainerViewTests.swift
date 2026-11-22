@@ -322,8 +322,8 @@ final class ChatShellViewTests: XCTestCase {
         )
         let window = ViewHost.host(ChatShellView(viewModel: viewModel, startsInSettings: true))
 
-        XCTAssertNotNil(ViewHost.waitForElement(labelContains: "Settings", in: window))
-        XCTAssertNotNil(ViewHost.element(labelContains: "Diagnostics", in: window))
+        // "Settings" also matches the sidebar's button, so wait for something only the sheet has.
+        XCTAssertNotNil(ViewHost.waitForElement(labelContains: "Diagnostics", in: window, timeout: 3))
 
         // Done closes the sheet onto the chat that was open under it.
         XCTAssertTrue(ViewHost.activateButton(labelContains: "Done", in: window))

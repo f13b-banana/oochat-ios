@@ -17,7 +17,27 @@ struct ContentView: View {
     @State private var isOnboardingLinking = false
 
     var body: some View {
-        ChatShellView(viewModel: viewModel)
+        // Banners sit in a stack above the shell. The shell lays out edge to edge, so a top
+        // safe-area inset would draw them over its nav bar.
+        VStack(spacing: 0) {
+            VStack(spacing: 0) {
+                if viewModel.shouldShowOfflineBanner {
+                    OfflineBanner(isRetrying: viewModel.isRetryingConnectivity) {
+                        viewModel.retryConnectivity()
+                    } onDismiss: {
+                        viewModel.dismissOfflineBanner()
+                    }
+                    .transition(AppMotion.materialize(reduceMotion: reduceMotion, edge: .top))
+                }
+                ErrorBanner(
+                    message: viewModel.errorMessage,
+                    onRetry: viewModel.canRetryError ? { Task { await viewModel.reconnect() } } : nil,
+                    onDismiss: { viewModel.dismissError() }
+                )
+            }
+
+            ChatShellView(viewModel: viewModel)
+        }
         .fullScreenCover(isPresented: Binding(
             get: { !isOnboardingDone && (viewModel.agents.isEmpty || isOnboardingLinking) },
             set: { if !$0 { isOnboardingDone = true } }
@@ -33,21 +53,6 @@ struct ContentView: View {
                 },
                 onFinish: { isOnboardingDone = true }
             )
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            VStack(spacing: 1) {
-                if viewModel.shouldShowOfflineBanner {
-                    OfflineBanner(isRetrying: viewModel.isRetryingConnectivity) {
-                        viewModel.retryConnectivity()
-                    } onDismiss: {
-                        viewModel.dismissOfflineBanner()
-                    }
-                    .transition(AppMotion.materialize(reduceMotion: reduceMotion, edge: .top))
-                }
-                ErrorBanner(message: viewModel.errorMessage) {
-                    viewModel.dismissError()
-                }
-            }
         }
         .animation(
             AppMotion.contentArrival(reduceMotion: reduceMotion),

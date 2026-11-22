@@ -1113,6 +1113,20 @@ final class NetworkRecoveryTests: XCTestCase {
         XCTAssertNil(session?["updated"])
     }
 
+    func testDiscardingAPlanSwitchesBackToSafeMode() async {
+        let (viewModel, transport, _) = makeEnvironment()
+        setUpAgentAndConversation(viewModel)
+        viewModel.setMode(.plan)
+        await viewModel.settleModeChange()
+        XCTAssertEqual(viewModel.activeMode, .plan)
+
+        viewModel.discardPendingPlan(id: "plan-1")
+        await viewModel.settleModeChange()
+
+        XCTAssertEqual(transport.requestedModes.last, ChatMode.safe.oipPermissionMode)
+        XCTAssertEqual(viewModel.activeMode, .safe)
+    }
+
     func testLeavingUlwClearsAutonomousSessionState() async {
         let (viewModel, _, _) = makeEnvironment()
         setUpAgentAndConversation(viewModel)

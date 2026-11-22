@@ -70,6 +70,9 @@ struct UlwCheckpointRequest: Identifiable, Equatable {
 enum UlwCheckpointDecision: Equatable {
     case continueWork(turns: Int)
     case switchMode(ChatMode)
+
+    /// How many more turns Continue grants. The checkpoint card shows this number.
+    static let continueTurns = 100
 }
 
 struct PendingUlwCheckpoint: Identifiable, Equatable {
@@ -92,6 +95,8 @@ struct PlanReviewRequest: Identifiable, Equatable {
 enum PlanReviewDecision: Equatable {
     case approve
     case requestChanges(feedback: String?)
+    /// Drop the plan without implementing it, like Cancel on macOS.
+    case discard
 }
 
 struct PendingPlanReview: Identifiable, Equatable {

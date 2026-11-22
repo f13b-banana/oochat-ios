@@ -2,7 +2,7 @@ import SwiftUI
 import ConnectOnionKit
 
 // One flat card for everything the agent asks of the person: approvals, plan review,
-// questions and the Ultra Work checkpoint. A hairline border and the card radius, no
+// questions and the Full access checkpoint. A hairline border and the card radius, no
 // glass and no tinted fill, so a card reads as part of the transcript and not as an
 // overlay. Colours, radius and tap target all come from the N2.2 tokens
 // (`OOColor`, `OORadius`, `ooMinimumTarget`) so N2.1 can replace the values later

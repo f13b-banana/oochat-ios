@@ -4,12 +4,14 @@ import CoreGraphics
 enum ComposerMetrics {
     static let outerHorizontalPadding: CGFloat = 12
     static let outerBottomPadding: CGFloat = 6
-    static let horizontalPadding: CGFloat = 16
-    static let trailingPadding: CGFloat = 7
-    static let verticalPadding: CGFloat = 7
+    // The buttons sit in 44 pt frames, bigger than their glyphs. These paddings and the spacing
+    // are smaller by the difference, so the glyphs land where they did with 32 and 40 pt frames.
+    static let horizontalPadding: CGFloat = 10
+    static let trailingPadding: CGFloat = 5
+    static let verticalPadding: CGFloat = 5
     static let cornerRadius: CGFloat = 27
     static let stackSpacing: CGFloat = 9
-    static let inputSpacing: CGFloat = 10
+    static let inputSpacing: CGFloat = 4
     static let inputVerticalPadding: CGFloat = 2
     static let inputStrokeOpacity: Double = 0.10
     static let focusedInputStrokeOpacity: Double = 0.32
@@ -19,6 +21,8 @@ enum ComposerMetrics {
     static let modeLeadingPadding: CGFloat = 8
     static let modeHorizontalPadding: CGFloat = 10
     static let modeVerticalPadding: CGFloat = 5
+    /// What the mode capsule's 44 pt frame adds under it, taken back so the input keeps its gap.
+    static let modeTargetBottomInset: CGFloat = 8
     static let modeStrokeOpacity: Double = 0.08
     static let modePopoverWidth: CGFloat = 340
     static let sendButtonSize: CGFloat = 40

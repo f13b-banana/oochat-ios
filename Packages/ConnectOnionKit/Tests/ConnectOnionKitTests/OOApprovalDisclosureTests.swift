@@ -13,6 +13,8 @@ final class OOApprovalDisclosureTests: XCTestCase {
         XCTAssertEqual(OOApprovalDisclosure.effect(tool: "Write_File", arguments: [:]), .changesFiles)
         XCTAssertEqual(OOApprovalDisclosure.effect(tool: "multi_edit", arguments: [:]), .changesFiles)
         XCTAssertEqual(OOApprovalDisclosure.effect(tool: "web_fetch", arguments: [:]), .usesNetwork)
+        XCTAssertEqual(OOApprovalDisclosure.effect(tool: "read_file", arguments: [:]), .readsOnly)
+        XCTAssertEqual(OOApprovalDisclosure.effect(tool: "grep", arguments: [:]), .readsOnly)
         XCTAssertEqual(OOApprovalDisclosure.effect(tool: "custom_action", arguments: [:]), .other)
     }
 
@@ -45,7 +47,7 @@ final class OOApprovalDisclosureTests: XCTestCase {
         XCTAssertFalse(line.contains("Reads only"))
         XCTAssertFalse(line.contains("Nothing is changed"))
         XCTAssertFalse(line.contains("above"))
-        XCTAssertTrue(line.contains("Review the parameters"))
+        XCTAssertTrue(line.contains("values shown below"))
     }
 
     func testScopeNamesWhatTheApprovalCovers() {
@@ -77,6 +79,10 @@ final class OOApprovalDisclosureTests: XCTestCase {
         XCTAssertEqual(
             OOApprovalDisclosure.consequence(tool: "web_fetch", arguments: [:]),
             "Sends a request over the network from the agent's host."
+        )
+        XCTAssertEqual(
+            OOApprovalDisclosure.consequence(tool: "read_file", arguments: [:]),
+            "Reads only. Nothing is changed."
         )
         XCTAssertTrue(
             OOApprovalDisclosure.consequence(tool: "bash", arguments: [:]).hasPrefix("Runs on the agent's host")

@@ -216,6 +216,47 @@ final class SidebarBannerViewTests: XCTestCase {
         XCTAssertTrue(dismissed)
     }
 
+    func testErrorBannerOffersRetryOnlyWhenGivenOne() {
+        var retried = false
+        let withRetry = ViewHost.host(
+            ErrorBanner(message: "Couldn't reconnect", onRetry: { retried = true }, onDismiss: {})
+        )
+        XCTAssertTrue(ViewHost.activate(labelContains: "Retry connection", in: withRetry))
+        XCTAssertTrue(retried)
+
+        let withoutRetry = ViewHost.host(ErrorBanner(message: "That photo could not be loaded.", onDismiss: {}))
+        XCTAssertNil(ViewHost.element(labelContains: "Retry connection", in: withoutRetry))
+    }
+
+    func testOnlyAFailedReconnectMakesTheErrorRetryable() {
+        let viewModel = ViewFixtures.chatViewModel()
+        viewModel.errorMessage = "That photo could not be loaded."
+        XCTAssertFalse(viewModel.canRetryError)
+
+        viewModel.presentConnectionError(HostedAgentClientError.busy, forConversationID: viewModel.activeConversationID ?? "")
+        XCTAssertNotNil(viewModel.errorMessage)
+        XCTAssertTrue(viewModel.canRetryError)
+
+        viewModel.errorMessage = "That photo could not be loaded."
+        XCTAssertFalse(viewModel.canRetryError, "a later, different error has nothing to retry")
+
+        viewModel.dismissError()
+        XCTAssertFalse(viewModel.canRetryError)
+    }
+
+    func testBalanceNoticeShowsLowAndEmptyWithAddCredits() {
+        let address = "0x" + String(repeating: "a", count: 64)
+        let low = ViewHost.host(AgentBalanceNotice(balanceUSD: 0.42, agentAddress: address))
+        XCTAssertNotNil(ViewHost.element(labelContains: "Running low", in: low))
+        XCTAssertNotNil(ViewHost.element(labelContains: "Add credits", in: low))
+
+        let empty = ViewHost.host(AgentBalanceNotice(balanceUSD: 0, agentAddress: address))
+        XCTAssertNotNil(ViewHost.element(labelContains: "out of credits", in: empty))
+
+        let healthy = ViewHost.host(AgentBalanceNotice(balanceUSD: 5, agentAddress: address))
+        XCTAssertNil(ViewHost.element(identifier: "agentBalanceNotice", in: healthy))
+    }
+
     func testErrorBannerWithNilMessageRendersNothing() {
         let window = ViewHost.host(
             ErrorBanner(message: nil, onDismiss: {})

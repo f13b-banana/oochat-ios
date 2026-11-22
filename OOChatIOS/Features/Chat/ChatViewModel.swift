@@ -31,6 +31,8 @@ final class ChatViewModel: ObservableObject {
     /// The code typed for onboarding, kept in memory until the agent turns out to be a Station that needs it to attach.
     var onboardingCodesByConversationID: [String: String] = [:]
     @Published var errorMessage: String?
+    /// The banner message a reconnect can fix. Retry only shows while this is the message on screen.
+    var retryableErrorMessage: String?
     /// Why each failed message didn't go through. Kept for this run of the app only.
     @Published var failureByMessageID: [String: ChatFailure] = [:]
      /// Set when the agent answered -32010. The Incompatible screen shows while it is non-nil.

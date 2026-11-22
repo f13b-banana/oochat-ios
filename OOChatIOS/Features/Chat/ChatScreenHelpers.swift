@@ -19,41 +19,38 @@ extension ChatScreen {
         }
     }
 
-    // `sharedBackgroundVisibility` is an iOS 26 API. The `#available` check keeps it
-    // safe at run time, but availability does not help at COMPILE time: the symbol
-    // has to exist in the SDK being built against, and an older SDK fails outright.
-    // The compiler check compiles the whole branch out on toolchains that predate
-    // the API, so this file builds on Xcode 15 as well as Xcode 26 — where the
-    // iOS 26 polish (suppressing the empty glass capsule behind a hidden toolbar
-    // item) is still applied. Swift 6.2 is the version that ships with Xcode 26,
-    // and is used here as a proxy for "the iOS 26 SDK is present".
-    @ToolbarContentBuilder
-    var trailingBalanceItem: some ToolbarContent {
-        #if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
-            ToolbarItem(placement: .topBarTrailing) {
-                hiddenSidebarButtonMirror
-            }
-            .sharedBackgroundVisibility(.hidden)
-        } else {
-            ToolbarItem(placement: .topBarTrailing) {
-                hiddenSidebarButtonMirror
-            }
-        }
-        #else
+    /// New chat sits opposite the sidebar button, so the title stays centred. Tap starts a chat
+    /// with the current agent, the same as the drawer's New chat; hold to pick another agent.
+    var newChatItem: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
-            hiddenSidebarButtonMirror
+            Menu {
+                ForEach(viewModel.chattableAgents) { agent in
+                    Button(agent.displayName) {
+                        _ = viewModel.createConversation(for: agent)
+                    }
+                }
+            } label: {
+                // No frame of our own: the bar already makes it a 44 pt circle. A bigger frame
+                // makes it wider than the sidebar button and pushes the title off centre.
+                Image(systemName: "square.and.pencil")
+                    .foregroundStyle(OOColor.primary)
+            } primaryAction: {
+                startNewChat()
+            }
+            .tint(OOColor.primary)
+            .accessibilityLabel(viewModel.newChatAgent.map { "New chat with \($0.displayName)" } ?? "New chat")
+            .accessibilityHint("Hold to choose an agent")
+            .accessibilityIdentifier("chat.newChat")
         }
-        #endif
     }
 
-    private var hiddenSidebarButtonMirror: some View {
-        Button {
-        } label: {
-            Image(systemName: "sidebar.left")
+    /// With no agent to chat with, New chat adds one instead, as in the drawer.
+    func startNewChat() {
+        guard let agent = viewModel.newChatAgent else {
+            onAddAgent()
+            return
         }
-        .hidden()
-        .accessibilityHidden(true)
+        _ = viewModel.createConversation(for: agent)
     }
 
     func scrollTarget(for interactionID: String) -> String {
@@ -97,6 +94,8 @@ extension ChatScreen {
                 menu: messageMenu(for: message),
                 failureReason: failure?.reason,
                 failureDetails: failure?.details,
+                agentName: viewModel.activeAgent?.displayName ?? "Agent",
+                onStop: viewModel.isProcessing ? { viewModel.stopActiveResponse() } : nil,
                 onRetry: offersRetry ? { viewModel.retryMessage(message) } : nil
             )
         case .toolCallGroup(let messages):

@@ -31,6 +31,8 @@ struct SidebarConversationRow: View {
                 isUnread: activityState == .completedUnread,
                 indent: indent
             )
+            .frame(minHeight: ooMinimumTarget)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .overlay(alignment: .bottom) {

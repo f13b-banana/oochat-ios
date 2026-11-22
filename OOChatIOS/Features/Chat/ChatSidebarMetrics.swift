@@ -26,7 +26,6 @@ enum SidebarMetrics {
     static let searchFieldSpacing: CGFloat = 8
     static let searchFieldHorizontalPadding: CGFloat = 12
     static let searchFieldHeight: CGFloat = 42
-    static let searchClearButtonSize: CGFloat = 24
     static let agentsHeaderTopPadding: CGFloat = 0
     static let agentsHeaderBottomPadding: CGFloat = 10
     static let sectionHeaderHorizontalPadding: CGFloat = 10
@@ -35,11 +34,9 @@ enum SidebarMetrics {
     static let settingsButtonStrokeOpacity: Double = 0.20
     static let chevronWidth: CGFloat = 24
     static let agentRowSpacing: CGFloat = 8
-    static let agentRowHeight: CGFloat = 34
     static let avatarSize: CGFloat = 32
     static let agentAvatarSpacing: CGFloat = 10
     static let agentNameSpacing: CGFloat = 8
-    static let agentActionButtonSize: CGFloat = 34
     static let agentActionIconSize: CGFloat = 16
     static let sessionIndent: CGFloat = 36
     static let sessionIconWidth: CGFloat = 18

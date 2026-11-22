@@ -29,6 +29,7 @@
 		100000000000000000000126 /* AgentFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000030 /* AgentFormView.swift */; };
 		100000000000000000000127 /* AgentsFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000031 /* AgentsFeatureTests.swift */; };
 		100000000000000000000128 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000032 /* NetworkMonitor.swift */; };
+		4A6E1B5C2F0D9A31009B1A02 /* AgentBalanceNotice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6E1B5C2F0D9A31009B1A01 /* AgentBalanceNotice.swift */; };
 		100000000000000000000129 /* OfflineBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000033 /* OfflineBanner.swift */; };
 		100000000000000000000130 /* NetworkRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000034 /* NetworkRecoveryTests.swift */; };
 		100000000000000000000131 /* AgentQRCodePayloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000035 /* AgentQRCodePayloadTests.swift */; };
@@ -167,6 +168,7 @@
 		100000000000000000000030 /* AgentFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentFormView.swift; sourceTree = "<group>"; };
 		100000000000000000000031 /* AgentsFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentsFeatureTests.swift; sourceTree = "<group>"; };
 		100000000000000000000032 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
+		4A6E1B5C2F0D9A31009B1A01 /* AgentBalanceNotice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentBalanceNotice.swift; sourceTree = "<group>"; };
 		100000000000000000000033 /* OfflineBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineBanner.swift; sourceTree = "<group>"; };
 		100000000000000000000034 /* NetworkRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRecoveryTests.swift; sourceTree = "<group>"; };
 		100000000000000000000035 /* AgentQRCodePayloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentQRCodePayloadTests.swift; sourceTree = "<group>"; };
@@ -537,6 +539,7 @@
 		100000000000000000000318 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				4A6E1B5C2F0D9A31009B1A01 /* AgentBalanceNotice.swift */,
 				100000000000000000000027 /* AgentPresencePill.swift */,
 				100000000000000000000028 /* ErrorBanner.swift */,
 				100000000000000000000033 /* OfflineBanner.swift */,
@@ -756,6 +759,7 @@
 				100000000000000000000132 /* AgentQRCodeScanner.swift in Sources */,
 				100000000000000000000133 /* AgentQRCodeShareView.swift in Sources */,
 				100000000000000000000128 /* NetworkMonitor.swift in Sources */,
+				4A6E1B5C2F0D9A31009B1A02 /* AgentBalanceNotice.swift in Sources */,
 				100000000000000000000129 /* OfflineBanner.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

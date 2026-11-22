@@ -68,6 +68,8 @@ struct AskUserCard: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 11)
+                        .frame(minHeight: ooMinimumTarget)
+                        .contentShape(Rectangle())
                         .background(
                             Color(.tertiarySystemBackground),
                             in: RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -98,6 +100,8 @@ struct AskUserCard: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
+                    .frame(minHeight: ooMinimumTarget)
+                    .contentShape(Rectangle())
                     .background(
                         Color(.tertiarySystemBackground),
                         in: RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -163,8 +167,8 @@ struct AskUserCard: View {
             Text("Submit")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, minHeight: ooMinimumTarget)
+                .contentShape(Rectangle())
                 .background(
                     AppTheme.primary,
                     in: RoundedRectangle(cornerRadius: 12, style: .continuous)

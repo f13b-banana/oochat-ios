@@ -417,6 +417,13 @@ final class MockHostedAgentTests: XCTestCase {
                 "message": .string("Plan rejected. Revise with write_plan(). Feedback: Use smaller commits")
             ]
         )
+        XCTAssertEqual(
+            PlanReviewDecision.discard.responseFrame(for: request!),
+            [
+                "type": .string("PLAN_REVIEW_RESPONSE"),
+                "message": .string("Plan cancelled. Do not implement it. Return to Safe mode and wait for new instructions.")
+            ]
+        )
     }
 
     func testAskUserFrameMapsAllSupportedInputShapes() {

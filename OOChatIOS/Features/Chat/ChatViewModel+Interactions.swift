@@ -22,7 +22,7 @@ extension ChatViewModel {
         resolvePendingApproval(id: id, with: .rejectExplain(feedback: nil))
     }
 
-    func continueUlw(id: String, turns: Int = 100) {
+    func continueUlw(id: String, turns: Int = UlwCheckpointDecision.continueTurns) {
         resolvePendingUlwCheckpoint(id: id, with: .continueWork(turns: turns))
     }
 
@@ -40,6 +40,15 @@ extension ChatViewModel {
 
     func requestPlanChanges(id: String, feedback: String?) {
         resolvePendingPlanReview(id: id, with: .requestChanges(feedback: feedback))
+    }
+
+    func discardPendingPlan(id: String) {
+        resolvePendingPlanReview(id: id, with: .discard)
+        // The reply asks the agent to return to Safe mode. Ask the host to switch as well, so the
+        // mode menu doesn't stay on plan mode after the plan is gone.
+        if activeMode == .plan {
+            setMode(.safe)
+        }
     }
 
     func answerPendingAskUser(id: String, answer: String) {

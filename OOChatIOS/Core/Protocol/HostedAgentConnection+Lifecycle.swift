@@ -7,6 +7,9 @@ extension HostedAgentConnection {
             return
         }
         lastNetworkActivityAt = Date()
+        guard recordEventIfNew(frame) else {
+            return
+        }
 
         switch frame["type"]?.stringValue {
         case "PING":
@@ -27,6 +30,35 @@ extension HostedAgentConnection {
         default:
             break
         }
+    }
+
+    static let interactionFrameTypes: Set<String> = [
+        "approval_needed", "APPROVAL_NEEDED", "ulw_turns_reached", "plan_review", "ask_user"
+    ]
+
+    /// Port of macOS recordEventIfNew
+    func recordEventIfNew(_ frame: [String: JSONValue]) -> Bool {
+        guard let eventID = frame["id"]?.stringValue, !eventID.isEmpty else {
+            return true
+        }
+        let type = frame["type"]?.stringValue ?? "unknown"
+        guard !Self.interactionFrameTypes.contains(type) else {
+            return true
+        }
+        let status = frame["status"]?.stringValue ?? "none"
+        let sequence = frame["seq"]?.numberValue.map { String(Int($0)) } ?? "none"
+        guard eventLedger.record(eventID: "\(type):\(eventID):\(status):\(sequence)") else {
+            return false
+        }
+        advanceBookmark(to: eventID)
+        return true
+    }
+
+    func advanceBookmark(to eventID: String) {
+        let fallbackID = lastConversation?.id ?? key.conversationID
+        var bookmark = bookmarkStore.load(conversationID: key.conversationID) ?? SessionBookmark(sessionID: fallbackID)
+        bookmark.lastMessageID = eventID
+        bookmarkStore.save(bookmark, conversationID: key.conversationID)
     }
 
     private func handlePing(generation: Int) async {
@@ -111,26 +143,41 @@ extension HostedAgentConnection {
         guard frame["status"]?.stringValue != "running" else {
             return
         }
+        if pending.inputDelivered {
+            await settleFromChatItems(pending, frame: frame)
+        } else {
+            await resendUndeliveredPrompt(pending, generation: generation)
+        }
+    }
 
-        if !pending.inputDelivered {
-            guard var conversation = lastConversation else {
-                failConnection(HostedAgentClientError.closed, generation: generation)
-                return
-            }
-            if let serverSession {
-                conversation.serverSession = serverSession
-            }
-            await transmitPrompt(
-                pending.prompt,
-                images: pending.images,
-                files: pending.files,
-                conversation: conversation,
-                promptID: pending.id
-            )
+    // The INPUT never started the run, so send it again on this socket.
+    private func resendUndeliveredPrompt(_ pending: PendingPrompt, generation: Int) async {
+        guard var conversation = lastConversation else {
+            failConnection(HostedAgentClientError.closed, generation: generation)
             return
         }
+        if let serverSession {
+            conversation.serverSession = serverSession
+        }
+        await transmitPrompt(
+            pending.prompt,
+            images: pending.images,
+            files: pending.files,
+            conversation: conversation,
+            promptID: pending.id
+        )
+    }
 
-        let missedItems = Self.itemsAfterLastUserMessage(in: frame)
+    // The run finished while we were away: replay its tool results, then answer with its reply.
+    private func settleFromChatItems(_ pending: PendingPrompt, frame: [String: JSONValue]) async {
+        let missedItems: [[String: JSONValue]]
+        if pending.requiresMatchingUserTurn {
+            // After a relaunch the host's last turn may be an older one (our INPUT never
+            // arrived), so its reply must not be taken as the answer to this prompt.
+            missedItems = Self.itemsAfterUserMessage(matching: pending.prompt, in: frame) ?? []
+        } else {
+            missedItems = Self.itemsAfterLastUserMessage(in: frame)
+        }
         for item in missedItems {
             guard let event = Self.replayedToolResult(item) else {
                 continue
@@ -153,8 +200,42 @@ extension HostedAgentConnection {
             )
         } else {
             // the server no longer has the run or its reply, so let the user retry
-            pending.continuation.resume(throwing: HostedAgentClientError.closed)
+            pending.continuation.resume(
+                throwing: pending.requiresMatchingUserTurn
+                    ? HostedAgentClientError.outcomeUnknown
+                    : HostedAgentClientError.closed
+            )
         }
+    }
+
+    // The items of the last turn, but only when that turn's user message is `prompt`.
+    // nil when there are no chat_items or the last turn belongs to another message.
+    private static func itemsAfterUserMessage(
+        matching prompt: String,
+        in frame: [String: JSONValue]
+    ) -> [[String: JSONValue]]? {
+        guard case .array(let values)? = frame["chat_items"] else {
+            return nil
+        }
+        var lastUserContent: String?
+        var turn: [[String: JSONValue]] = []
+        for value in values {
+            guard case .object(let item) = value else {
+                continue
+            }
+            if item["type"]?.stringValue == "user" {
+                lastUserContent = item["content"]?.stringValue
+                turn.removeAll()
+            } else {
+                turn.append(item)
+            }
+        }
+        let expected = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let lastUserContent,
+              lastUserContent.trimmingCharacters(in: .whitespacesAndNewlines) == expected else {
+            return nil
+        }
+        return turn
     }
 
     private static func itemsAfterLastUserMessage(in frame: [String: JSONValue]) -> [[String: JSONValue]] {
@@ -235,6 +316,7 @@ extension HostedAgentConnection {
                 return
             }
             try await send(frame, over: socket)
+            advanceBookmark(to: interaction.id)
         } catch {
             failConnection(error, generation: generation)
         }
@@ -258,6 +340,7 @@ extension HostedAgentConnection {
                 return
             }
             try await send(frame, over: socket)
+            advanceBookmark(to: interaction.id)
         } catch {
             failConnection(error, generation: generation)
         }
@@ -324,7 +407,9 @@ extension HostedAgentConnection {
         guard pendingPrompt != nil,
               connectWaiters.isEmpty,
               lastConversation != nil,
-              resumeAttemptsUsed < resumeAttemptLimit else {
+              case .connecting = reduce(
+                .connecting(attempt: resumeAttemptsUsed), .socketClosed, maxAttempts: reconnectPolicy.maxAttempts
+              ) else {
             return false
         }
         switch error {
@@ -364,7 +449,7 @@ extension HostedAgentConnection {
         endpoint = nil
         socket?.cancel(with: .goingAway, reason: nil)
 
-        let delay = resumeRetryDelay * pow(2, Double(resumeAttemptsUsed - 1))
+        let delay = reconnectPolicy.delay(for: resumeAttemptsUsed)
         resumeTask = Task { [weak self] in
             if delay > 0 {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -459,7 +544,7 @@ extension HostedAgentConnection {
             direct: false,
             sessionID: conversation.id,
             session: .object(sessionPayload(for: conversation)),
-            lastMessageID: nil
+            lastMessageID: bookmarkStore.load(conversationID: key.conversationID)?.lastMessageID
         )
     }
 

@@ -334,7 +334,6 @@ final class OIPServerFrameTests: XCTestCase {
             )
         )
     }
-
     // MARK: PING
 
     func testPingDecodesSpecFixture() throws {

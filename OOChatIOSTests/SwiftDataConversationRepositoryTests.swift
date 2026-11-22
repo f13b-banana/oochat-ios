@@ -205,6 +205,37 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
         XCTAssertEqual(conversations.first?.messages.map(\.id), ["m1"])
     }
 
+    /// After a force quit, everything comes back unchanged
+    func testRelaunchRestoresTranscriptAndServerSessionFromDisk() throws {
+        let storeURL = try makeScratchStoreURL()
+
+        defer { try? FileManager.default.removeItem(at: storeURL.deletingLastPathComponent()) }
+
+        let repository = try SwiftDataConversationRepository(storeURL: storeURL, defaults: defaults)
+        var conversation = makeConversation(
+            agentID: "a1",
+            address: "0xabc",
+            title: "Relaunch",
+            updatedAt: seconds(1000)
+        )
+
+        conversation.serverSession = ["session_id": .string(conversation.id)]
+        conversation.messages = [
+            ChatMessage(id: "u1", role: .user, content: "run the build", createdAt: seconds(1001)),
+            ChatMessage(id: "r1", role: .agent, content: "Build passed.", createdAt: seconds(1002))
+        ]
+        repository.upsertConversation(conversation)
+
+        let relaunched = try SwiftDataConversationRepository(storeURL: storeURL, defaults: defaults)
+        let restored = try XCTUnwrap(
+            relaunched.load().conversations.first { $0.id == conversation.id }
+        )
+
+        XCTAssertEqual(restored.messages.map(\.id), ["u1", "r1"])
+        XCTAssertEqual(restored.messages.map(\.content), ["run the build", "Build passed."])
+        XCTAssertEqual(restored.serverSession?["session_id"], .string(conversation.id))
+    }
+
     func testUpsertsThenLoadRestoresAgentsConversationsAndActiveIDs() throws {
         let repository = try makeRepository()
         let agent = SavedAgent(address: "0xabc", createdAt: seconds(1000), updatedAt: seconds(1000))

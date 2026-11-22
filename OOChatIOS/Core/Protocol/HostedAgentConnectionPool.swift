@@ -140,7 +140,8 @@ actor HostedAgentConnectionPool {
         images: [String] = [],
         files: [HostedAgentFilePayload] = [],
         onEvent: (@MainActor (HostedAgentEvent) -> Void)?,
-        onInteraction: (@MainActor (HostedAgentInteraction) async -> HostedAgentInteractionDecision)?
+        onInteraction: (@MainActor (HostedAgentInteraction) async -> HostedAgentInteractionDecision)?,
+        onInputDispatched: (@MainActor () -> Void)? = nil
     ) async throws -> HostedAgentResult {
         let lease = await acquire(agentAddress: agentAddress, conversationID: conversation.id)
         do {
@@ -149,6 +150,32 @@ actor HostedAgentConnectionPool {
                 prompt: prompt,
                 images: images,
                 files: files,
+                onEvent: onEvent,
+                onInteraction: onInteraction,
+                onInputDispatched: onInputDispatched
+            )
+            release(lease)
+            await trimToSize()
+            return result
+        } catch {
+            release(lease)
+            await trimToSize()
+            throw error
+        }
+    }
+
+    func resumePrompt(
+        agentAddress: String,
+        conversation: Conversation,
+        prompt: String,
+        onEvent: (@MainActor (HostedAgentEvent) -> Void)?,
+        onInteraction: (@MainActor (HostedAgentInteraction) async -> HostedAgentInteractionDecision)?
+    ) async throws -> HostedAgentResult {
+        let lease = await acquire(agentAddress: agentAddress, conversationID: conversation.id)
+        do {
+            let result = try await lease.connection.resumePrompt(
+                conversation: conversation,
+                prompt: prompt,
                 onEvent: onEvent,
                 onInteraction: onInteraction
             )

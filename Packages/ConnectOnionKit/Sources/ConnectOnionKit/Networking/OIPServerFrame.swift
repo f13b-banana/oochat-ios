@@ -181,32 +181,51 @@ public enum OIPServerFrame: Equatable, Sendable {
         guard let type = frame["type"]?.stringValue else {
             return .unknown(type: nil, body: frame)
         }
-        let decoded: OIPServerFrame?
+        let decoded = decodeSessionFrame(type, frame)
+            ?? decodeAgentFrame(type, frame)
+            ?? decodeStreamEvent(type, frame)
+        return decoded ?? .unknown(type: type, body: frame)
+    }
+
+    /// connection and run frames
+    private static func decodeSessionFrame(_ type: String, _ frame: [String: JSONValue]) -> OIPServerFrame? {
         switch type {
         case OIPFrameType.connected:
-            decoded = decodeConnected(frame)
+            return decodeConnected(frame)
         case OIPFrameType.error:
-            decoded = decodeError(frame)
+            return decodeError(frame)
         case OIPFrameType.output:
-            decoded = decodeOutput(frame)
-        case OIPFrameType.agentProfile:
-            decoded = decodeAgentProfile(frame)
+            return decodeOutput(frame)
         case OIPFrameType.sessionStatus:
-            decoded = decodeSessionStatus(frame)
-        case OIPFrameType.modeChanged:
-            decoded = decodeModeChanged(frame)
-        case OIPFrameType.execResult:
-            decoded = decodeExecResult(frame)
-        case OIPFrameType.onboardRequired:
-            decoded = decodeOnboardRequired(frame)
+            return decodeSessionStatus(frame)
         case OIPFrameType.ping:
-            decoded = .ping
+            return .ping
         default:
-            decoded = streamEventTypes.contains(type)
-            ? .event(type: type, id: frame["id"]?.stringValue, body: frame)
-            : nil
+            return nil
         }
-        return decoded ?? .unknown(type: type, body: frame)
+    }
+
+    /// agent frames
+    private static func decodeAgentFrame(_ type: String, _ frame: [String: JSONValue]) -> OIPServerFrame? {
+        switch type {
+        case OIPFrameType.agentProfile:
+            return decodeAgentProfile(frame)
+        case OIPFrameType.modeChanged:
+            return decodeModeChanged(frame)
+        case OIPFrameType.execResult:
+            return decodeExecResult(frame)
+        case OIPFrameType.onboardRequired:
+            return decodeOnboardRequired(frame)
+        default:
+            return nil
+        }
+    }
+
+    private static func decodeStreamEvent(_ type: String, _ frame: [String: JSONValue]) -> OIPServerFrame? {
+        guard streamEventTypes.contains(type) else {
+            return nil
+        }
+        return .event(type: type, id: frame["id"]?.stringValue, body: frame)
     }
     // Frame Decoders
     private static func decodeConnected(_ frame: [String: JSONValue]) -> OIPServerFrame? {

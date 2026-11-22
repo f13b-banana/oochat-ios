@@ -504,15 +504,14 @@ final class MockHostedAgentTests: XCTestCase {
     }
 
     @MainActor
-    func testDuplicateEndpointsRemainDistinctConfigurations() throws {
+    func testAddingAnEndpointTwiceKeepsOneAgent() throws {
         let viewModel = try makeViewModel()
 
         let first = viewModel.saveAgent(name: "First", address: endpointA)
         let second = viewModel.saveAgent(name: "Second", address: endpointA)
 
-        XCTAssertNotEqual(first?.id, second?.id)
-        XCTAssertEqual(viewModel.agents.count, 2)
-        XCTAssertEqual(Set(viewModel.agents.map(\.name)), ["First", "Second"])
+        XCTAssertEqual(first?.id, second?.id)
+        XCTAssertEqual(viewModel.agents.map(\.name), ["First"])
     }
 
     @MainActor

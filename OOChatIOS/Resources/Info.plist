@@ -41,9 +41,15 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>oo-chat uses the camera only when you scan an agent QR code.</string>
+	<string>oo-chat uses the camera only when you scan an agent QR code or link another of your devices.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>oo-chat uses Face ID to confirm it's you before sending your identity to another of your devices.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>oo-chat looks for your hosted agents running on the local network.</string>
+	<string>oo-chat uses the local network to find your hosted agents and to link your other devices.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_oochat-link._tcp</string>
+	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>oo-chat uses the microphone only when you dictate a message.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

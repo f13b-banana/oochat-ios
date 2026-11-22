@@ -1,4 +1,5 @@
 import ConnectOnionKit
+import CryptoKit
 import Foundation
 import XCTest
 @testable import OOChatIOS
@@ -83,6 +84,31 @@ final class HostedAgentConnectionPoolTests: XCTestCase {
         try await connect(pool, conversation: conversation, factory: factory, socketIndex: 1)
 
         XCTAssertEqual(factory.count, 2)
+        await pool.closeAll()
+    }
+
+    // After a Device Link replaced the key, the app closes every connection; the next one signs as the new Address.
+    func testAConnectionAfterTheKeyIsReplacedSignsAsTheNewAddress() async throws {
+        let service = "pool-replace-tests.\(UUID().uuidString)"
+        defer {
+            SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service] as CFDictionary)
+        }
+        let store = IdentityStore(service: service)
+        let factory = MockHostedAgentSocketFactory()
+        let pool = makePool(factory: factory, maximumSize: 2, identityStore: store)
+        let conversation = makeConversation(id: "pool-replace")
+        try await connect(pool, conversation: conversation, factory: factory, socketIndex: 0)
+        let before = try OIPSigner(keyStore: store).address()
+
+        try store.replacePrivateKey(with: Curve25519.Signing.PrivateKey().rawRepresentation)
+        await pool.closeAll()
+        try await connect(pool, conversation: conversation, factory: factory, socketIndex: 1)
+
+        let firstFrom = try await factory.socket(at: 0).waitForSentFrame(type: "CONNECT")["from"]
+        let secondFrom = try await factory.socket(at: 1).waitForSentFrame(type: "CONNECT")["from"]
+        XCTAssertEqual(firstFrom, .string(before))
+        XCTAssertEqual(secondFrom, .string(try OIPSigner(keyStore: store).address()))
+        XCTAssertNotEqual(secondFrom, firstFrom)
         await pool.closeAll()
     }
 
@@ -340,11 +366,12 @@ final class HostedAgentConnectionPoolTests: XCTestCase {
         maximumSize: Int,
         idleLifetime: TimeInterval = 60,
         resolver: HostedAgentEndpointResolver? = nil,
-        clock: MutableHostedAgentClock = MutableHostedAgentClock()
+        clock: MutableHostedAgentClock = MutableHostedAgentClock(),
+        identityStore: IdentityStore = IdentityStore()
     ) -> HostedAgentConnectionPool {
         let endpoint = endpoint
         return HostedAgentConnectionPool(
-            identityStore: IdentityStore(),
+            identityStore: identityStore,
             session: .shared,
             maximumSize: maximumSize,
             idleLifetime: idleLifetime,

@@ -9,12 +9,15 @@ import AppKit
 /// from oo-chat components/agent-address.tsx
 public struct OOAddressLabel: View {
     private let address: String
+    private let name: String
     @State private var isExpanded = false
     @State private var isCopied = false
     @State private var copyReset: Task<Void, Never>?
 
-    public init(_ address: String) {
+    /// `name` is what VoiceOver calls the address, such as "Your address" for this device's own.
+    public init(_ address: String, name: String = "Agent address") {
         self.address = address
+        self.name = name
     }
 
     public var body: some View {
@@ -29,7 +32,7 @@ public struct OOAddressLabel: View {
                     .multilineTextAlignment(.leading)
                     .frame(minHeight: ooMinimumTarget)
             }
-            .accessibilityLabel(isExpanded ? address : "Agent address \(Self.short(address))")
+            .accessibilityLabel(isExpanded ? address : "\(name) \(Self.short(address))")
             .accessibilityHint(isExpanded ? "Shows less" : "Shows the full address")
 
             Button(action: copy) {
@@ -39,7 +42,7 @@ public struct OOAddressLabel: View {
                     .foregroundStyle(isCopied ? OOColor.primary : OOColor.inkSecondary)
                     .frame(width: ooMinimumTarget, height: ooMinimumTarget)
             }
-            .accessibilityLabel(isCopied ? "Copied" : "Copy agent address")
+            .accessibilityLabel(isCopied ? "Copied" : "Copy \(name.lowercased())")
         }
         .buttonStyle(.plain)
         .padding(.leading, OOSpace.medium)

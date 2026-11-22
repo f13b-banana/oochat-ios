@@ -29,6 +29,7 @@ final class ConnectionRecoveryCoordinator: ObservableObject {
         }
     }
 
+    var onConnected: ((String) -> Void)?
     var onRecoveryError: ((String, Error) -> Void)?
     var onReconnect: ((SavedAgent) -> Void)?
     var onNetworkAvailabilityChange: ((Bool) -> Void)?
@@ -103,7 +104,9 @@ final class ConnectionRecoveryCoordinator: ObservableObject {
         _ state: ConversationConnectionState,
         forConversationID conversationID: String
     ) {
+        let wasConnected = statesByConversationID[conversationID] == .connected
         statesByConversationID[conversationID] = state
+        if state == .connected, !wasConnected { onConnected?(conversationID) }
     }
 
     func removeConnectionState(forConversationID conversationID: String) {
@@ -273,6 +276,7 @@ final class ConnectionRecoveryCoordinator: ObservableObject {
         trigger: ConnectionRecoveryTrigger
     ) async -> Bool {
         guard let conversation = conversationState.conversation(withID: conversationID),
+              !conversationState.isFromPreviousIdentity(conversation),
               let agent = conversationState.agent(for: conversation),
               HostedAgentClient.isHostedAgentAddress(agent.address) else {
             return false

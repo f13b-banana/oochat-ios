@@ -1,10 +1,29 @@
 import ConnectOnionKit
 import SwiftUI
 
+/// An agent's folding header, drawn by the shared kit header: status dot, name, then ✋ and
+/// the chat count while folded. Tapping folds it; ＋ starts a chat with this agent.
 struct SidebarAgentRow: View {
     let agent: SavedAgent
+    /// The name the sidebar shows; the same helper names it in New chat and the attention panel.
+    /// A blank name says "Agent"; the default name (the address) is shortened to 0x1234...abcd.
+    static func displayName(for agent: SavedAgent) -> String {
+        let name = agent.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty {
+            return "Agent"
+        }
+        guard name == SavedAgent.defaultName(for: agent.address), agent.address.count > 12 else {
+            return name
+        }
+        return "\(agent.address.prefix(6))...\(agent.address.suffix(4))"
+    }
+
     let isExpanded: Bool
     let isOnline: Bool
+    var chatCount = 0
+    var needsYou = false
+    /// New chat goes here; its name reads in the selection green.
+    var isCurrent = false
     let onToggle: () -> Void
     let onRename: () -> Void
     let onEdit: () -> Void
@@ -14,184 +33,138 @@ struct SidebarAgentRow: View {
     var isStation = false
 
     var body: some View {
-        HStack(spacing: SidebarMetrics.agentRowSpacing) {
-            toggleButton
-
+        OOSidebarAgentHeader(
+            name: Self.displayName(for: agent),
+            isOnline: isOnline,
+            isExpanded: isExpanded,
+            chatCount: chatCount,
+            needsYou: needsYou,
+            isCurrent: isCurrent,
+            onToggle: onToggle,
+            // A Claude Station opens rather than folds: no chevron, and its row is the way in.
+            disclosure: isStation ? .hidden : .trailing,
+            isStation: isStation
+        ) {
+            // Every agent: start a chat with it without opening one of its chats first. A
+            // Station has no chats of its own, so its ＋ keeps its place but isn't shown.
             addChatButton
+                .opacity(isStation ? 0 : 1)
+                .allowsHitTesting(!isStation)
+                .accessibilityHidden(isStation)
         }
         .contextMenu {
-            Button {
-                onRename()
-            } label: {
-                sidebarContextMenuLabel("Rename", systemImage: "pencil", color: Color(.label))
+            if isStation {
+                Button(action: onToggle) {
+                    Label("Open Station", systemImage: "terminal")
+                }
+            } else {
+                Button(action: onAddChat) {
+                    Label("New Chat", systemImage: "square.and.pencil")
+                }
             }
-            .tint(Color(.label))
-
-            Button {
-                onEdit()
-            } label: {
-                sidebarContextMenuLabel("Edit Agent", systemImage: "slider.horizontal.3", color: Color(.label))
+            Button(action: onRename) {
+                Label("Rename", systemImage: "pencil")
             }
-            .tint(Color(.label))
-
+            Button(action: onEdit) {
+                Label("Edit Agent", systemImage: "slider.horizontal.3")
+            }
             if let shareURL = AgentShareURL.url(for: agent.address) {
                 ShareLink(item: shareURL) {
-                    sidebarContextMenuLabel("Share Link", systemImage: "square.and.arrow.up", color: Color(.label))
+                    Label("Share Link", systemImage: "square.and.arrow.up")
                 }
-                .tint(Color(.label))
-
                 Button {
                     onShowQRCode(shareURL)
                 } label: {
-                    sidebarContextMenuLabel("Show QR Code", systemImage: "qrcode", color: Color(.label))
+                    Label("Show QR Code", systemImage: "qrcode")
                 }
-                .tint(Color(.label))
             }
-
-            Button(role: .destructive) {
-                onDelete()
-            } label: {
-                sidebarContextMenuLabel("Delete", systemImage: "trash", color: AppTheme.destructive)
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete", systemImage: "trash")
             }
-            .tint(AppTheme.destructive)
         }
-    }
-
-    private var toggleButton: some View {
-        Button {
-            onToggle()
-        } label: {
-            HStack(spacing: SidebarMetrics.agentRowSpacing) {
-                Image(systemName: "chevron.forward")
-                    .imageScale(.small)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                    .frame(width: SidebarMetrics.chevronWidth, height: SidebarMetrics.agentRowHeight)
-                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
-
-                HStack(spacing: SidebarMetrics.agentAvatarSpacing) {
-                    // The tile carries the live dot on its corner, as in O Chat's sidebar.
-                    OOAvatarTile(name: avatarName, address: agent.address, isOnline: isOnline, isStation: isStation)
-
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(sidebarAgentName(for: agent))
-                            .font(.body)
-                            .foregroundStyle(OOColor.ink)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                        if isStation {
-                            OOStationCaption()
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityValue(isOnline ? "Online" : "")
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(AppPressButtonStyle(pressedScale: 0.985, pressedOpacity: 0.90))
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var addChatButton: some View {
         Button(action: onAddChat) {
-            Image(systemName: "square.and.pencil")
-                .font(.system(size: SidebarMetrics.agentActionIconSize, weight: .regular))
-                .foregroundStyle(Color(.label))
-                .frame(
-                    width: SidebarMetrics.agentActionButtonSize,
-                    height: SidebarMetrics.agentActionButtonSize
-                )
+            Image(systemName: "plus")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(OOColor.inkSecondary)
+                // 44 pt to hit, glyph unchanged (story 162).
+                .frame(width: ooMinimumTarget, height: ooMinimumTarget)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(SidebarFooterButtonStyle())
-        .accessibilityLabel("Add Chat")
-    }
-
-    private var avatarName: String {
-        let trimmedName = agent.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmedName == SavedAgent.defaultName(for: agent.address) ? "" : trimmedName
-    }
-
-    private func sidebarAgentName(for agent: SavedAgent) -> String {
-        let trimmedName = agent.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmedName == SavedAgent.defaultName(for: agent.address) else {
-            return agent.name
-        }
-
-        guard agent.address.count > 12 else {
-            return trimmedName
-        }
-
-        return "\(agent.address.prefix(6))...\(agent.address.suffix(4))"
+        .buttonStyle(.plain)
+        .accessibilityLabel("New chat with \(Self.displayName(for: agent))")
     }
 }
 
+/// One chat, drawn by the shared kit row: title, then its time or what's happening instead.
 struct SidebarConversationRow: View {
     let conversation: Conversation
     let isSelected: Bool
     let activityState: ConversationActivityState?
+    var isFromPreviousIdentity = false
+    /// What the row says in place of its time (Approve, Reply, Not sent, Working). Without it,
+    /// the activity state's own mapping, which can't tell a question from an approval.
+    var status: SidebarChatStatus?
+    /// The last message under the title, when "Show message previews" is on in Settings.
+    var preview: String?
+    /// A soft line under the row, between it and the next chat of the same agent.
+    var showsSeparator = false
     let onSelect: () -> Void
     let onRename: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
-        Button {
-            onSelect()
-        } label: {
-            HStack(spacing: 0) {
-                HStack(spacing: SidebarMetrics.sessionContentSpacing) {
-                    Image(systemName: "message")
-                        .imageScale(.medium)
-                        .symbolRenderingMode(.hierarchical)
-                        .frame(width: SidebarMetrics.sessionIconWidth)
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(conversation.title)
-                            .font(.subheadline)
-                            .lineLimit(1)
-                        // Says what the red mark means.
-                        if activityState == .failedDelivery {
-                            Text("Message not sent")
-                                .font(.caption2)
-                                .foregroundStyle(OOColor.inkSecondary)
-                                .lineLimit(1)
-                        }
-                    }
-
-                    Spacer(minLength: 0)
-
-                    ConversationActivityIndicator(state: activityState)
-                }
-                .padding(.leading, SidebarMetrics.sessionIndent)
+        Button(action: onSelect) {
+            OOSidebarChatRow(
+                title: conversation.isUntitled ? Conversation.defaultTitle : conversation.title,
+                lastActivity: conversation.updatedAt,
+                status: status ?? activityState?.sidebarStatus,
+                preview: isFromPreviousIdentity ? PreviousIdentity.label : preview,
+                isSelected: isSelected,
+                isUnread: activityState == .completedUnread
+            )
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .bottom) {
+            if showsSeparator {
+                OOColor.hairline
+                    .frame(height: 1)
+                    .padding(.leading, OOSidebarMetrics.chatIndent)
+                    .padding(.trailing, OOSidebarMetrics.horizontalPadding)
+                    .accessibilityHidden(true)
             }
         }
-        .buttonStyle(SidebarConversationButtonStyle(isSelected: isSelected))
         .listRowInsets(SidebarMetrics.conversationRowInsets)
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
         .contextMenu {
-            Button {
-                onRename()
-            } label: {
-                sidebarContextMenuLabel("Rename", systemImage: "pencil", color: Color(.label))
+            Button(action: onRename) {
+                Label("Rename", systemImage: "pencil")
             }
-            .tint(Color(.label))
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+        .accessibilityAction(named: Text("Delete"), onDelete)
+        .accessibilityAction(named: Text("Rename"), onRename)
+    }
+}
 
-            Button(role: .destructive) {
-                onDelete()
-            } label: {
-                sidebarContextMenuLabel("Delete", systemImage: "trash", color: AppTheme.destructive)
-            }
-            .tint(AppTheme.destructive)
-        }
-        .accessibilityAction(named: Text("Delete")) {
-            onDelete()
-        }
-        .accessibilityAction(named: Text("Rename")) {
-            onRename()
+extension ConversationActivityState {
+    /// The row shows waiting, failed and working in place of its time; a finished reply you
+    /// haven't opened shows as a semibold title instead.
+    var sidebarStatus: SidebarChatStatus? {
+        switch self {
+        case .actionRequired:
+            return .approval
+        case .failedDelivery:
+            return .notSent
+        case .working:
+            return .working
+        case .completedUnread:
+            return nil
         }
     }
 }
@@ -238,52 +211,4 @@ struct ConversationStatusDot: View {
             return "Message failed to send"
         }
     }
-}
-
-private struct ConversationActivityIndicator: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let state: ConversationActivityState?
-
-    var body: some View {
-        ZStack {
-            if let state {
-                indicator(for: state)
-                    .id(state)
-                    .transition(AppMotion.statusTransition(reduceMotion: reduceMotion))
-            }
-        }
-        .frame(
-            width: SidebarMetrics.activityIndicatorSlotSize,
-            height: SidebarMetrics.activityIndicatorSlotSize
-        )
-        .animation(AppMotion.statusChange, value: state)
-    }
-
-    @ViewBuilder
-    private func indicator(for state: ConversationActivityState) -> some View {
-        switch state {
-        case .actionRequired, .completedUnread:
-            ConversationStatusDot(state: state)
-        case .working:
-            ProgressView()
-                .controlSize(.small)
-                .accessibilityLabel("Agent working")
-        case .failedDelivery:
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(Color(.systemRed))
-                .accessibilityLabel("Message failed to send")
-        }
-    }
-}
-
-private func sidebarContextMenuLabel(_ title: String, systemImage: String, color: Color) -> some View {
-    Label {
-        Text(title)
-            .foregroundStyle(color)
-    } icon: {
-        Image(systemName: systemImage)
-            .symbolRenderingMode(.monochrome)
-            .foregroundStyle(color)
-    }
-    .tint(color)
 }

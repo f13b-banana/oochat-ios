@@ -48,6 +48,14 @@ protocol HostedAgentConversationTransport: AnyObject {
         prompt: HostedAgentPrompt,
         handlers: HostedAgentPromptHandlers
     ) async throws -> HostedAgentResult
+    // Joins the turn another device started (announced as `.mirroredTurn`). Never sends INPUT.
+    func attachMirroredTurn(
+        agentAddress: String,
+        conversation: Conversation,
+        handlers: HostedAgentPromptHandlers
+    ) async throws -> HostedAgentResult
+    // The app declined a mirrored turn: stop holding the connection's frames back.
+    func releaseMirrorBuffer(agentAddress: String, conversationID: String) async
     func requestModeChange(
         agentAddress: String,
         conversation: Conversation,
@@ -61,6 +69,8 @@ protocol HostedAgentConversationTransport: AnyObject {
     // Answers an ONBOARD_REQUIRED on the conversation's open socket with ONBOARD_SUBMIT.
     func submitOnboarding(agentAddress: String, conversationID: String, code: String) async throws
     func noteNetworkLost() async
+    // Closes every agent connection, for example because this device's Identity changed.
+    func disconnectAll() async
     func applicationDidBecomeActive()
 }
 

@@ -601,6 +601,15 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
         XCTAssertNil(repository.load().conversations.first?.serverSession)
     }
 
+    func testIdentityStampRoundTrips() throws {
+        let repository = try makeRepository()
+        var conversation = makeConversation(agentID: "a1", address: "0xaaa", title: "c", updatedAt: seconds(1000))
+        conversation.identityAddress = "0xold"
+        repository.upsertConversation(conversation)
+
+        XCTAssertEqual(repository.load().conversations.first?.identityAddress, "0xold")
+    }
+
     func testEmptyMessagesRoundTrip() throws {
         let repository = try makeRepository()
         var conversation = makeConversation(agentID: "a1", address: "0xaaa", title: "c", updatedAt: seconds(1000))
@@ -801,6 +810,66 @@ final class SwiftDataConversationRepositoryTests: XCTestCase {
         XCTAssertEqual(message?.id, "v2-message")
         XCTAssertEqual(message?.images, [image])
         XCTAssertEqual(message?.files, [])
+    }
+
+    func testV4StoreMigratesWithNoIdentityStamp() throws {
+        let storeURL = try makeScratchStoreURL()
+        defer { try? FileManager.default.removeItem(at: storeURL.deletingLastPathComponent()) }
+
+        do {
+            let schema = Schema(versionedSchema: StoredModelsSchemaV4.self)
+            let container = try ModelContainer(for: schema, configurations: ModelConfiguration(url: storeURL))
+            let context = ModelContext(container)
+            context.insert(StoredModelsSchemaV4.StoredConversation(
+                id: "v4-conversation",
+                title: "Before stamps",
+                agentID: nil,
+                agentAddress: "0xaaa",
+                modeRaw: "safe",
+                createdAt: seconds(1000),
+                updatedAt: seconds(1001),
+                serverSessionData: nil,
+                messages: []
+            ))
+            try context.save()
+        }
+
+        let repository = try SwiftDataConversationRepository(storeURL: storeURL, defaults: defaults)
+        let conversation = repository.load().conversations.first
+
+        XCTAssertEqual(conversation?.id, "v4-conversation")
+        XCTAssertNil(conversation?.identityAddress)
+    }
+
+    func testV5StoreMigratesWithNoTombstones() throws {
+        let storeURL = try makeScratchStoreURL()
+        defer { try? FileManager.default.removeItem(at: storeURL.deletingLastPathComponent()) }
+
+        do {
+            let schema = Schema(versionedSchema: StoredModelsSchemaV5.self)
+            let container = try ModelContainer(for: schema, configurations: ModelConfiguration(url: storeURL))
+            let context = ModelContext(container)
+            context.insert(StoredModelsSchemaV5.StoredConversation(
+                id: "v5-conversation",
+                title: "Before tombstones",
+                agentID: nil,
+                agentAddress: "0xaaa",
+                modeRaw: "safe",
+                createdAt: seconds(1000),
+                updatedAt: seconds(1001),
+                serverSessionData: nil,
+                identityAddress: "0xold",
+                messages: []
+            ))
+            try context.save()
+        }
+
+        let repository = try SwiftDataConversationRepository(storeURL: storeURL, defaults: defaults)
+        let conversation = repository.load().conversations.first
+
+        XCTAssertEqual(conversation?.id, "v5-conversation")
+        XCTAssertEqual(conversation?.identityAddress, "0xold")
+        XCTAssertNil(conversation?.tombstoneUpdated)
     }
 
     func testMessagesWithSameIDInDifferentConversationsBothSurvive() throws {

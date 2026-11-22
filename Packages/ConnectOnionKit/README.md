@@ -51,10 +51,111 @@ let bytes = CanonicalJSON.data(from: payload)
 // {"prompt":"\u6267\u884c tree caf\u00e9 \ud83e\uddc5","type":"INPUT"}
 ```
 
-The kit does not open a socket. The app owns the connection and decodes each server frame with
+The kit does not open the agent's WebSocket. The app owns that connection and decodes each server frame with
 `OIPServerFrame.decode`. It feeds the frames named in `WorkRoomStore.frameTypes` to a `WorkRoomStore` and
 gives the store a `WorkRoomTransport`, through which the store sends its signed commands. The transport
 reports a failed write (`sendReportingFailure:`), and the request it carried then ends at once.
+
+The kit opens two other kinds of connection itself. Device Link uses Network.framework (`NWBrowser`,
+`NWListener`, `NWConnection`) on the local network, and `SessionsClient` makes signed HTTPS requests to
+the agent's host with `URLSession`. Both are described below.
+
+## Hosted History
+
+`SessionsClient` reads the person's own sessions from one agent's host: `listSessions()` is
+`GET /sessions` and `session(id:)` is `GET /sessions/{id}`. Each request carries the `x-co-*` headers
+from `SignedRequestHeaders.make`, an Ed25519 signature over the method, path, query, body hash,
+timestamp, request ID and the agent's Address, in the shape a ConnectOnion 1.8.10 host verifies.
+The replies decode to `ConnectOnionHostedSession`; `UnixTime.date` reads the host's times, which
+may be in seconds or milliseconds.
+
+```swift
+let client = SessionsClient(baseURL: hostURL, agentAddress: agent.address, keyStore: store)
+for session in try await client.listSessions() { restore(session) }
+```
+
+Related helpers:
+
+- `TurnRole` names who spoke a turn. Hosted messages (`turnRole`) and `CONNECTED`'s `chat_items` both map to it.
+- `MirroredTurn` reads a turn another device started (`prompt(fromUserMessage:)`, `items(fromChatItems:)`,
+  `catchUpSteps`), and `ViewerTurnState` says whether this chat's running turn belongs to this device.
+- `AgentAddress.normalized` and `AgentAddress.same` hold the 0x Address rule: `0x` and 64 hex digits, any case.
+- `PreviousIdentity` marks chats made under an Address this device no longer holds, with the copy the apps show.
+
+## Device Link
+
+Copies the Identity from one of a person's Apple devices to another over the local network
+(Bonjour service `_oochat-link._tcp`, which each app declares under `NSBonjourServices`).
+Either side may display the offer as a QR (`qrPayload`) or a 10-character Link Code; the other scans or types it.
+
+```swift
+// Receiving Device shows the code, Giving Device scans it. (Either can display:
+// DeviceLinkGiver(displayingWith:) and DeviceLinkReceiver(scanning:) are the other way round.)
+let receiver = try DeviceLinkReceiver()
+show(try receiver.offer.qrPayload, receiver.offer.linkCode)
+let identity = try await receiver.link(accept: { await personAccepts($0.address) })
+try store.replacePrivateKey(with: identity.privateKey)
+
+// `entered:` takes a scanned QR or a typed code, and restamps the expiry on this device's clock.
+let offer = try DeviceLinkOffer(entered: scanned, displayer: .receiving, now: Date())
+let giver = try DeviceLinkGiver(scanning: offer, keyStore: store)
+try await giver.link(approve: { await ownerConfirmsAndAuthenticates() })
+try store.markLinked()
+```
+
+Each offer lasts two minutes and is used once, whether or not the attempt succeeds. Cancelling the
+task running `link` closes the listener and connection, and no Identity is delivered. The receiver
+asks its person only after the Identity has passed every check, while the connection is still open,
+and answers the giver: the giver's `link` returns once the receiver accepted, and throws `.cancelled`
+if it declined or hung up. Only the giver checks the code; when it fails, the giver tells the receiver
+before hanging up, so both sides report `.wrongCode`. A scanning side that can't find the displaying device within 30 seconds
+gives up with a timeout.
+`DeviceLinkError` names each protocol failure (`malformed`, `expired`, `reused`, `wrongCode`, `addressMismatch`, `tampered`, `cancelled`, `noIdentity`).
+A giver with no saved key throws `noIdentity` and sends nothing.
+`malformed` is an offer or message that doesn't parse: `DeviceLinkFlow` shows it as `mistypedCode` only before
+connecting, and as the general failure (`other`) after.
+
+The giver's Agent Name list travels sealed with the key: pass `agentNames:` (`DeviceLinkAgentName`, a
+lower-cased 0x Address and a name) to `DeviceLinkGiver` or `DeviceLinkFlow`, and the receiver reads
+`identity.agentNames` or gets them in the flow's `onAgentNames`, after the key is replaced and before
+`onReplaced`. `DeviceLinkAgentName.apply` and `.duplicates` hold the rename/add rule and the
+one-agent-per-Address merge. Protocol version 2; version 1 offers are refused.
+
+### Link sheet
+
+Both apps use the same sheet content and state; only the chrome around it differs.
+
+```swift
+// Settings › Identity rows: DeviceLinkRole.giving.settingsTitle, DeviceLinkRole.receiving.settingsTitle
+let flow = DeviceLinkFlow(role: .receiving, keyStore: identityStore, displaysCode: true,
+                          onReplaced: { reconnectAllAgents() })
+NavigationStack {
+    DeviceLinkView(flow: flow)                                    // Mac: shows its code, or types one
+        .navigationTitle(flow.role.settingsTitle)
+}
+DeviceLinkView(flow: flow) { Scanner(onCode: flow.submit) }       // iPhone: camera above the field
+```
+
+- `DeviceLinkKeyStore` is what an app's identity store adds for linking: `loadPrivateKey()` (the saved key or
+  nil, never a new one), `replacePrivateKey(with:)` (atomic
+  write, cached key cleared, linked flag set), `isLinked` (false by default, gone with the key) and
+  `markLinked()`. `InMemoryPrivateKeyStore` conforms, for tests.
+- `DeviceLinkFlow` is the main-actor, observable state machine. `displaysCode` picks whether this device shows
+  its code or enters the other's, in either role (the iPhone enters, the Mac shows; left out, the receiver
+  shows and the giver enters), and `switchCodeMode()` flips it and starts over. The receiver gets the
+  Identity (from its own code, or by entering the giver's), then
+  `confirmingReplace(current:incoming:)`, then replaces the key before telling the giver it accepted (a key
+  it can't save is declined and shown as `couldNotSave`), runs `onReplaced` and ends in `done`;
+  the giver connects (from its own code, or by entering the receiver's), asks `confirmingSend`, runs the device-owner check
+  (`DeviceLinkFlow.checkDeviceOwner()`, LocalAuthentication `.deviceOwnerAuthentication`), sends, marks
+  itself linked and ends in `done`. Any step can end in `failed(DeviceLinkFailure)`.
+- `DeviceLinkView` starts the flow when it appears and cancels it when it disappears, so closing the sheet
+  cancels the link on both devices. It offers "Show my code instead" on code entry, and "Scan a code
+  instead" (or "Type a code instead" without a scanner) under its own code. A "no" at either confirmation closes the sheet.
+- `DeviceLinkFailure` turns any thrown error into one of the named failures (`expired`, `notOnSameNetwork`,
+  `wrongCode`, `mistypedCode`, `cancelledOnOtherDevice`, `localNetworkDenied`, `couldNotSave`, `other`), each with a `title` and a `nextStep`.
+- The flow injects the owner check, clock, randomness and the two link operations, so tests drive it with
+  in-memory link operations and never open a socket.
 
 ## Tests
 

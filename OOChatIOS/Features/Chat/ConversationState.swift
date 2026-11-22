@@ -22,6 +22,13 @@ final class ConversationState: ObservableObject {
     /// Session-scoped completion receipts. They are cleared when the conversation is viewed
     /// and intentionally are not restored after an app relaunch.
     @Published private(set) var completedUnreadConversationIDs: Set<String> = []
+    /// The Address this device signs as. Chats stamped with another one are Previous-Identity
+    /// Conversations: readable, never connected, resumed or merged.
+    @Published var currentAddress: String?
+
+    /// Deleted chats kept as empty rows so History Restore skips their sessions. Never part of
+    /// `conversations`, so the chat list and everything else that reads it never see them.
+    private(set) var tombstones: [Conversation] = []
 
     private var draftsByConversationID: [String: String] = [:]
     /// One Work Room store per conversation, fed from the live frame pipeline. Session-scoped like drafts.
@@ -34,7 +41,8 @@ final class ConversationState: ObservableObject {
         let snapshotResult = store.loadResult()
         let snapshot = (try? snapshotResult.get()) ?? .empty
         agents = snapshot.agents
-        conversations = snapshot.conversations
+        conversations = snapshot.conversations.filter { !$0.isTombstone }
+        tombstones = snapshot.conversations.filter(\.isTombstone)
         activeConversationID = snapshot.activeConversationID
         failedDeliveryConversationIDs = Set(
             snapshot.conversations
@@ -55,6 +63,47 @@ final class ConversationState: ObservableObject {
 
         let conversationIDs = Set(snapshot.conversations.map(\.id))
         draftsByConversationID = store.loadDrafts().filter { conversationIDs.contains($0.key) }
+        mergeDuplicateAgents()
+    }
+
+    /// One Address saved as two agents merges into the earliest-created, which keeps its Agent Name and takes
+    /// the others' conversations without counting as activity. Chats move before the extras go, because
+    /// deleting an agent deletes the chats still on it.
+    private func mergeDuplicateAgents() {
+        let earliestFirst = agents.sorted { $0.createdAt < $1.createdAt }
+        for (keep, extras) in DeviceLinkAgentName.duplicates(in: earliestFirst, address: \.address) {
+            var unmoved: Set<String> = []
+            // Tombstones move too, or deleting the extra would take them and bring their chats back.
+            moveRows(&conversations, from: extras, to: keep, unmoved: &unmoved)
+            moveRows(&tombstones, from: extras, to: keep, unmoved: &unmoved)
+            // Kept in the store while any of its chats are still saved on it; the next launch tries again.
+            for extra in extras {
+                agents.removeAll { $0.id == extra.id }
+                if activeAgentID == extra.id {
+                    activeAgentID = keep.id
+                    persistSelection()
+                }
+                if !unmoved.contains(extra.id) {
+                    recordPersistence(store.deleteAgentResult(id: extra.id))
+                }
+            }
+        }
+    }
+
+    private func moveRows(
+        _ rows: inout [Conversation],
+        from extras: [SavedAgent],
+        to keep: SavedAgent,
+        unmoved: inout Set<String>
+    ) {
+        for index in rows.indices {
+            guard let extra = extras.first(where: { conversationBelongsToAgent(rows[index], $0) }) else { continue }
+            rows[index].agentID = keep.id
+            rows[index].agentAddress = keep.address
+            let result = store.updateConversationMetadataResult(rows[index])
+            if case .failure = result { unmoved.insert(extra.id) }
+            recordPersistence(result)
+        }
     }
 
     var activeAgent: SavedAgent? {
@@ -141,8 +190,36 @@ final class ConversationState: ObservableObject {
         agents.first { $0.id == id }
     }
 
+    /// One agent per Address: matched by the lower-cased 0x Address.
+    func agent(withAddress address: String) -> SavedAgent? {
+        guard let key = AgentAddress.normalized(address) else { return nil }
+        return agents.first { AgentAddress.normalized($0.address) == key }
+    }
+
     func conversation(withID id: String) -> Conversation? {
         conversations.first { $0.id == id }
+    }
+
+    func isFromPreviousIdentity(_ conversation: Conversation) -> Bool {
+        PreviousIdentity.isPrevious(stamp: conversation.identityAddress, current: currentAddress)
+    }
+
+    /// After a Device Link replaced the key: stamps every unstamped chat with the Address it was made
+    /// under, without counting as activity. Returns the chats that are now from a previous identity.
+    /// Tombstones are stamped too, so History Restore never brings back one from a previous identity.
+    func stampForReplace(previousAddress: String) -> [Conversation] {
+        stamp(&conversations, previousAddress: previousAddress)
+        stamp(&tombstones, previousAddress: previousAddress)
+        return conversations.filter(isFromPreviousIdentity)
+    }
+
+    private func stamp(_ rows: inout [Conversation], previousAddress: String) {
+        for index in rows.indices {
+            let stamp = PreviousIdentity.stamp(rows[index].identityAddress, replacing: previousAddress)
+            guard stamp != rows[index].identityAddress else { continue }
+            rows[index].identityAddress = stamp
+            recordPersistence(store.updateConversationMetadataResult(rows[index]))
+        }
     }
 
     func conversations(for agent: SavedAgent) -> [Conversation] {
@@ -191,6 +268,11 @@ final class ConversationState: ObservableObject {
         name: String,
         address: String
     ) -> SavedAgent {
+        // Adding an Address this device already has updates that agent. A reported or prefilled name
+        // only fills the default on add, so the Agent Name stays.
+        if id == nil, let existing = agent(withAddress: address) {
+            return saveAgent(id: existing.id, name: existing.name, address: existing.address)
+        }
         let existing = id.flatMap(agent(withID:))
         let now = Date()
         let shouldResetSessions = existing.map { $0.address != address } ?? false
@@ -213,6 +295,9 @@ final class ConversationState: ObservableObject {
                 conversations[index].updatedAt = now
                 recordPersistence(store.upsertConversationResult(conversations[index]))
             }
+            // Tombstones follow too, so removing the agent still finds them.
+            var unmoved: Set<String> = []
+            moveRows(&tombstones, from: [existing], to: next, unmoved: &unmoved)
         }
 
         agents.removeAll { $0.id == next.id }
@@ -223,8 +308,26 @@ final class ConversationState: ObservableObject {
         return next
     }
 
+    /// The chat becomes a Tombstone: an empty row recording the later of the host's last-known `updated` and
+    /// its last message time. A reply arrives after the host stamps its turn, so a chat used and deleted before
+    /// the next restore stays deleted. Never the time of deletion. A chat from a previous identity is never
+    /// merged with hosted history, so it needs no Tombstone.
     func deleteConversation(_ conversation: Conversation, currentDraft: String) {
         updateActiveDraft(currentDraft)
+        let current = self.conversation(withID: conversation.id) ?? conversation
+        let deleted: Result<Void, ConversationRepositoryError>
+        if isFromPreviousIdentity(current) {
+            deleted = store.deleteConversationResult(id: current.id)
+        } else {
+            var tombstone = current
+            tombstone.tombstoneUpdated = (current.messages.map(\.createdAt) + [current.hostUpdated].compactMap { $0 }).max()
+                ?? current.createdAt
+            tombstone.messages = []
+            tombstone.title = Conversation.defaultTitle
+            tombstone.serverSession = nil
+            tombstones.append(tombstone)
+            deleted = store.upsertConversationResult(tombstone)
+        }
         conversations.removeAll { $0.id == conversation.id }
         if activeConversationID == conversation.id {
             if let activeAgent {
@@ -239,7 +342,7 @@ final class ConversationState: ObservableObject {
         failedDeliveryConversationIDs.remove(conversation.id)
         completedUnreadConversationIDs.remove(conversation.id)
         markActiveConversationViewed()
-        recordPersistence(store.deleteConversationResult(id: conversation.id))
+        recordPersistence(deleted)
         persistSelection()
     }
 
@@ -248,6 +351,10 @@ final class ConversationState: ObservableObject {
         let deletedConversationIDs = Set(conversations(for: agent).map(\.id))
         agents.removeAll { $0.id == agent.id }
         conversations.removeAll { conversationBelongsToAgent($0, agent) }
+        for tombstone in tombstones where conversationBelongsToAgent(tombstone, agent) {
+            recordPersistence(store.deleteConversationResult(id: tombstone.id))
+        }
+        tombstones.removeAll { conversationBelongsToAgent($0, agent) }
 
         if activeAgentID == agent.id {
             activeAgentID = agents.first?.id
@@ -293,10 +400,33 @@ final class ConversationState: ObservableObject {
             persistenceError = error
             results = []
         }
+        let live = results.filter { !$0.isTombstone }
         guard let agent else {
-            return results
+            return live
         }
-        return results.filter { conversationBelongsToAgent($0, agent) }
+        return live.filter { conversationBelongsToAgent($0, agent) }
+    }
+
+    /// Receiving Device, after a Device Link: the giver's Agent Name list renames the agent with each Address
+    /// and adds the ones missing; every other agent and the selection stay as they are. Throws the first
+    /// save that failed, after applying the rest in memory.
+    func applyAgentNames(_ list: [DeviceLinkAgentName]) throws {
+        let plan = DeviceLinkAgentName.apply(list, to: agents, address: \.address)
+        var changed: [SavedAgent] = []
+        for (index, name) in plan.renames {
+            agents[index].name = name
+            changed.append(agents[index])
+        }
+        let added = plan.additions.map { SavedAgent(address: $0.address, name: $0.name) }
+        agents.append(contentsOf: added)
+        var firstFailure: ConversationRepositoryError?
+        for agent in changed + added {
+            if case .failure(let error) = store.upsertAgentResult(agent) {
+                persistenceError = error
+                firstFailure = firstFailure ?? error
+            }
+        }
+        if let firstFailure { throw firstFailure }
     }
 
     func upsertAgent(_ agent: SavedAgent) -> SavedAgent {
@@ -350,6 +480,40 @@ final class ConversationState: ObservableObject {
         next.updatedAt = conversations[index].updatedAt
         conversations[index] = next
         recordPersistence(store.upsertConversationResult(next))
+    }
+
+    /// Adds restored conversations (or fills empty local ones) keeping the host's dates:
+    /// no updatedAt bump and no agent touch, so a refresh never reshuffles the list. A Tombstone
+    /// restored this way is a normal conversation again. A chat that already has messages only takes
+    /// the host's `updated`: its messages are never replaced, so one sent while the fetch ran survives.
+    /// A Tombstone passed back as one stays hidden and only records its new `updated`.
+    func restore(_ restored: [Conversation]) {
+        for conversation in restored {
+            if conversation.isTombstone {
+                // A Tombstone whose row has gone (agent removed mid-fetch) is dropped, never listed.
+                if let index = tombstones.firstIndex(where: { $0.id == conversation.id }) {
+                    tombstones[index] = conversation
+                    recordPersistence(store.upsertConversationResult(conversation))
+                }
+                continue
+            }
+            // Its agent was removed while the fetch ran: saving it would leave an orphan row.
+            if let agentID = conversation.agentID, agent(withID: agentID) == nil { continue }
+            tombstones.removeAll { $0.id == conversation.id }
+            if let index = conversations.firstIndex(where: { $0.id == conversation.id }) {
+                guard conversations[index].messages.isEmpty else {
+                    conversations[index].hostUpdated = conversation.hostUpdated
+                    recordPersistence(store.updateConversationMetadataResult(conversations[index]))
+                    continue
+                }
+                conversations[index] = conversation
+            } else {
+                conversations.append(conversation)
+            }
+            refreshFailedDeliveryFlag(for: conversation)
+            recordPersistence(store.upsertConversationResult(conversation))
+        }
+        conversations.sort { $0.updatedAt > $1.updatedAt }
     }
 
     func upsert(

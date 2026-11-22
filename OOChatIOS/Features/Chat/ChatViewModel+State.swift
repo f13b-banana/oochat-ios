@@ -8,6 +8,18 @@ extension ChatViewModel {
         return next
     }
 
+    /// Giving Device: every agent, by its lower-cased Address, with its Agent Name.
+    var linkAgentNames: [DeviceLinkAgentName] {
+        agents.compactMap { DeviceLinkAgentName(address: $0.address, name: $0.name) }
+    }
+
+    /// Receiving Device: called by the link after the key is replaced and before `adoptReplacedIdentity`,
+    /// whose History Restore then fills the added agents. Throws a failed save for the link to log.
+    func applyLinkedAgentNames(_ list: [DeviceLinkAgentName]) throws {
+        defer { presenceCoordinator.agentsDidChange() }
+        try conversationState.applyAgentNames(list)
+    }
+
     func ensureDefaultConversation(for agent: SavedAgent, seed: Conversation) {
         var normalizedSeed = seed
         if let existing = conversations(for: agent).first,
@@ -60,6 +72,10 @@ extension ChatViewModel {
             dashboards[conversationID] = dashboard
         case .modeChanged(let mode, let turnsLeft):
             deliveryCoordinator.apply(.modeChanged(mode: mode, turnsLeft: turnsLeft), toConversationID: conversationID)
+        case .mirroredTurn(let prompt):
+            deliveryCoordinator.beginMirroredTurn(prompt: prompt, conversationID: conversationID)
+        case .caughtUp(let items):
+            deliveryCoordinator.catchUp(toHostItems: items, conversationID: conversationID)
         case .onboarding(let onboarding):
             applyOnboarding(onboarding, forConversationID: conversationID)
         }

@@ -31,6 +31,8 @@ final class MessageDeliveryCoordinator: ObservableObject {
 
     private var deliveryTasksByConversationID: [String: Task<Void, Never>] = [:]
     private var activeMessageIDsByConversationID: [String: String] = [:]
+    // User messages typed on another device: never offered for retry, whatever happens to the turn.
+    private var mirroredMessageIDs: Set<String> = []
     private var pausedConversationIDs: Set<String> = []
     // Chats whose next send must reconnect first, because their session was rewound.
     private var restartSessionConversationIDs: Set<String> = []
@@ -79,10 +81,13 @@ final class MessageDeliveryCoordinator: ObservableObject {
               HostedAgentClient.isHostedAgentAddress(agent.address) else {
             return .rejected("Connect to an agent before sending a message.")
         }
+        guard !conversationState.isFromPreviousIdentity(conversation) else {
+            return .rejected(Self.previousIdentityRejection)
+        }
 
         conversation.agentID = agent.id
         conversation.agentAddress = agent.address
-        if conversation.title == Conversation.defaultTitle {
+        if conversation.isUntitled {
             conversation.title = Self.title(
                 from: text,
                 imageCount: images.count,
@@ -108,6 +113,9 @@ final class MessageDeliveryCoordinator: ObservableObject {
         return .queued
     }
 
+    /// A chat from a previous identity is read-only, whichever button tried to send into it.
+    private static let previousIdentityRejection = "This chat is from a previous identity. \(PreviousIdentity.startNewChat)."
+
     @discardableResult
     func retryMessage(_ message: ChatMessage) -> Bool {
         guard message.role == .user,
@@ -115,6 +123,7 @@ final class MessageDeliveryCoordinator: ObservableObject {
               var conversation = conversationState.conversations.first(where: { candidate in
                   candidate.messages.contains { $0.id == message.id }
               }),
+              !conversationState.isFromPreviousIdentity(conversation),
               let index = conversation.messages.firstIndex(where: { $0.id == message.id }) else {
             return false
         }
@@ -213,12 +222,99 @@ final class MessageDeliveryCoordinator: ObservableObject {
         pausedConversationIDs.remove(conversationID)
     }
 
+    /// A turn another device started on this conversation: show its prompt, lock this device's
+    /// composer ("Replying…", Stop) and follow the reply to its end.
+    func beginMirroredTurn(prompt: String, conversationID: String) {
+        guard isDeliveryEnabled,
+              deliveryTasksByConversationID[conversationID] == nil,
+              var conversation = conversationState.conversation(withID: conversationID),
+              let agent = conversationState.agent(for: conversation),
+              HostedAgentClient.isHostedAgentAddress(agent.address) else {
+            // Declined: free the connection's hold-back buffer instead of waiting out its grace.
+            let transport = transport
+            let address = conversationState.conversation(withID: conversationID)
+                .flatMap { conversationState.agent(for: $0)?.address }
+            Task {
+                if let address {
+                    await transport.releaseMirrorBuffer(agentAddress: address, conversationID: conversationID)
+                }
+            }
+            return
+        }
+        let messageID: String
+        if let last = conversation.messages.last(where: { $0.role == .user || $0.role == .agent }),
+           last.role == .user, MirroredTurn.sameText(last.content, prompt) {
+            // Joined a turn this transcript already shows (a reconnect), so do not repeat it.
+            messageID = last.id
+        } else {
+            let message = ChatMessage(role: .user, content: prompt, deliveryState: .sent)
+            messageID = message.id
+            conversation.messages.append(message)
+        }
+        conversation.messages.removeAll { $0.role == .thinking }
+        conversation.messages.append(ChatMessage(role: .thinking, content: "Replying…"))
+        conversationState.clearCompletedUnread(conversationID: conversationID)
+        conversationState.upsert(conversation)
+
+        mirroredMessageIDs.insert(messageID)
+        activeMessageIDsByConversationID[conversationID] = messageID
+        processingConversationIDs.insert(conversationID)
+        let transport = transport
+        let snapshot = conversation
+        let handlers = promptHandlers(messageID: messageID, conversationID: conversationID)
+        deliveryTasksByConversationID[conversationID] = runDelivery(
+            messageID: messageID,
+            conversationID: conversationID
+        ) {
+            try await transport.attachMirroredTurn(
+                agentAddress: agent.address,
+                conversation: snapshot,
+                handlers: handlers
+            )
+        }
+    }
+
+    /// Opening a chat that moved on elsewhere: add the host's turns this transcript lacks.
+    func catchUp(toHostItems items: [JSONValue], conversationID: String) {
+        guard deliveryTasksByConversationID[conversationID] == nil,
+              var conversation = conversationState.conversation(withID: conversationID) else {
+            return
+        }
+        let local = conversation.messages.compactMap { message -> CatchUpItem? in
+            switch message.role {
+            case .user: return CatchUpItem(role: .user, text: message.content)
+            case .agent: return CatchUpItem(role: .agent, text: message.content)
+            default: return nil
+            }
+        }
+        let steps = MirroredTurn.catchUpSteps(
+            host: MirroredTurn.items(fromChatItems: items),
+            local: local,
+            isRunning: false
+        )
+        for step in steps {
+            switch step {
+            case .user(let text):
+                conversation.messages.append(ChatMessage(role: .user, content: text, deliveryState: .sent))
+            case .agent(let text):
+                conversation.messages.append(ChatMessage(role: .agent, content: text))
+            case .runningUser:
+                break
+            }
+        }
+        if !steps.isEmpty {
+            conversationState.upsert(conversation)
+        }
+    }
+
     @discardableResult
     private func startNextQueuedMessage(in conversationID: String) -> Bool {
         guard isDeliveryEnabled,
               !pausedConversationIDs.contains(conversationID),
               deliveryTasksByConversationID[conversationID] == nil,
               let conversation = conversationState.conversation(withID: conversationID),
+              // A chat from a previous identity is never resumed; what it had queued stays put.
+              !conversationState.isFromPreviousIdentity(conversation),
               // A Claude Station refuses outer INPUT, so nothing queued for one is ever sent.
               !ChatViewModel.rememberedStationAddresses().contains(conversation.agentAddress.lowercased()),
               // A .transmitted message comes first: it was sent before the app last closed and
@@ -261,7 +357,23 @@ final class MessageDeliveryCoordinator: ObservableObject {
         let transport = transport
         let handlers = promptHandlers(messageID: messageID, conversationID: conversationID)
         let restartsSession = restartSessionConversationIDs.remove(conversationID) != nil
-        return Task { [weak self, transport] in
+        return runDelivery(messageID: messageID, conversationID: conversationID) {
+            if restartsSession {
+                await transport.restartSession(
+                    agentAddress: delivery.agent.address,
+                    conversationID: conversationID
+                )
+            }
+            return try await Self.deliver(delivery, over: transport, handlers: handlers)
+        }
+    }
+
+    private func runDelivery(
+        messageID: String,
+        conversationID: String,
+        _ operation: @escaping () async throws -> HostedAgentResult
+    ) -> Task<Void, Never> {
+        Task { [weak self] in
             defer {
                 self?.deliveryDidFinish(
                     messageID: messageID,
@@ -269,13 +381,7 @@ final class MessageDeliveryCoordinator: ObservableObject {
                 )
             }
             do {
-                if restartsSession {
-                    await transport.restartSession(
-                        agentAddress: delivery.agent.address,
-                        conversationID: conversationID
-                    )
-                }
-                let result = try await Self.deliver(delivery, over: transport, handlers: handlers)
+                let result = try await operation()
                 try Task.checkCancellation()
                 self?.completeDelivery(
                     result,
@@ -380,6 +486,7 @@ final class MessageDeliveryCoordinator: ObservableObject {
         guard activeMessageIDsByConversationID[conversationID] == messageID else {
             return
         }
+        mirroredMessageIDs.remove(messageID)
         deliveryTasksByConversationID[conversationID] = nil
         activeMessageIDsByConversationID[conversationID] = nil
         processingConversationIDs.remove(conversationID)
@@ -445,7 +552,8 @@ final class MessageDeliveryCoordinator: ObservableObject {
         }
         updated.messages.removeAll { $0.role == .thinking }
         Self.interruptRunningTools(in: &updated.messages)
-        if let index = updated.messages.firstIndex(where: { $0.id == messageID }) {
+        if let index = updated.messages.firstIndex(where: { $0.id == messageID }),
+           !mirroredMessageIDs.contains(messageID) {
             updated.messages[index].deliveryState = .failed
         }
         conversationState.clearCompletedUnread(conversationID: conversationID)
@@ -460,7 +568,8 @@ final class MessageDeliveryCoordinator: ObservableObject {
         }
         updated.messages.removeAll { $0.role == .thinking }
         Self.interruptRunningTools(in: &updated.messages)
-        if let index = updated.messages.firstIndex(where: { $0.id == messageID }) {
+        if let index = updated.messages.firstIndex(where: { $0.id == messageID }),
+           !mirroredMessageIDs.contains(messageID) {
             updated.messages[index].deliveryState = .cancelled
         }
         conversationState.clearCompletedUnread(conversationID: conversationID)
@@ -548,19 +657,18 @@ final class MessageDeliveryCoordinator: ObservableObject {
         conversationState.upsert(conversation, persistence: persistence)
     }
 
+    /// The first real message names the chat, stored whole so the row does the truncating. A
+    /// slash command doesn't: the chat stays "New chat" until a real message comes.
     private static func title(from text: String, imageCount: Int, fileCount: Int) -> String {
-        guard !text.isEmpty else {
-            if imageCount > 0, fileCount > 0 {
-                return "Attachments"
-            }
-            if imageCount > 0 {
-                return imageCount == 1 ? "Photo" : "\(imageCount) Photos"
-            }
-            return fileCount == 1 ? "File" : "\(fileCount) Files"
+        guard text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ChatTitle.from(text) ?? Conversation.defaultTitle
         }
-        if text.count > 38 {
-            return String(text.prefix(35)) + "..."
+        if imageCount > 0, fileCount > 0 {
+            return "Attachments"
         }
-        return text
+        if imageCount > 0 {
+            return imageCount == 1 ? "Photo" : "\(imageCount) Photos"
+        }
+        return fileCount == 1 ? "File" : "\(fileCount) Files"
     }
 }

@@ -121,6 +121,7 @@ final class MockAgentTransport: HostedAgentTransport {
 
     func connect(agentAddress: String, conversation: Conversation) async throws -> HostedAgentResult {
         connectedAddresses.append(agentAddress)
+        connectionCalls.append("connect")
         switch connectBehavior {
         case .succeed:
             return HostedAgentResult(
@@ -200,6 +201,29 @@ final class MockAgentTransport: HostedAgentTransport {
         return HostedAgentResult(output: output, endpointLabel: "mock", serverSession: nil)
     }
 
+    // How a turn another device started plays out here.
+    var mirroredBehavior: Behavior = .succeed(output: "mirrored reply")
+    private(set) var attachedMirroredTurns = 0
+
+    func attachMirroredTurn(
+        agentAddress: String,
+        conversation: Conversation,
+        handlers: HostedAgentPromptHandlers
+    ) async throws -> HostedAgentResult {
+        attachedMirroredTurns += 1
+        for event in streamedEvents {
+            await handlers.onEvent?(event)
+        }
+        let output = try await output(for: mirroredBehavior)
+        return HostedAgentResult(output: output, endpointLabel: "mock", serverSession: nil)
+    }
+
+    private(set) var releasedMirrorBuffers = 0
+
+    func releaseMirrorBuffer(agentAddress: String, conversationID: String) async {
+        releasedMirrorBuffers += 1
+    }
+
     func resumePrompt(
         agentAddress: String,
         conversation: Conversation,
@@ -269,6 +293,13 @@ final class MockAgentTransport: HostedAgentTransport {
 
     func noteNetworkLost() async {
         networkLossNotices += 1
+    }
+
+    /// Every connect and disconnectAll, in order.
+    private(set) var connectionCalls: [String] = []
+
+    func disconnectAll() async {
+        connectionCalls.append("disconnectAll")
     }
 
     func requestModeChange(

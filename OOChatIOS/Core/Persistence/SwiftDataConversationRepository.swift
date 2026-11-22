@@ -19,7 +19,7 @@ final class SwiftDataConversationRepository: ConversationRepository {
         } else {
             configuration = ModelConfiguration(isStoredInMemoryOnly: inMemory)
         }
-        let schema = Schema(versionedSchema: StoredModelsSchemaV4.self)
+        let schema = Schema(versionedSchema: StoredModelsSchemaV6.self)
         do {
             container = try ModelContainer(
                 for: schema,
@@ -313,6 +313,9 @@ final class SwiftDataConversationRepository: ConversationRepository {
         stored.createdAt = conversation.createdAt
         stored.updatedAt = conversation.updatedAt
         stored.serverSessionData = encodeSession(conversation.serverSession)
+        stored.identityAddress = conversation.identityAddress
+        stored.tombstoneUpdated = conversation.tombstoneUpdated
+        stored.hostUpdated = conversation.hostUpdated
     }
 
     private func syncMessages(_ messages: [ChatMessage], of stored: StoredConversation) {
@@ -404,7 +407,10 @@ final class SwiftDataConversationRepository: ConversationRepository {
             messages: stored.messages
                 .sorted { $0.createdAt < $1.createdAt }
                 .map(toMessage),
-            serverSession: decodeSession(stored.serverSessionData)
+            serverSession: decodeSession(stored.serverSessionData),
+            identityAddress: stored.identityAddress,
+            tombstoneUpdated: stored.tombstoneUpdated,
+            hostUpdated: stored.hostUpdated
         )
     }
 
@@ -443,6 +449,9 @@ final class SwiftDataConversationRepository: ConversationRepository {
             createdAt: conversation.createdAt,
             updatedAt: conversation.updatedAt,
             serverSessionData: encodeSession(conversation.serverSession),
+            identityAddress: conversation.identityAddress,
+            tombstoneUpdated: conversation.tombstoneUpdated,
+            hostUpdated: conversation.hostUpdated,
             messages: conversation.messages.map { toStoredMessage($0, conversationID: conversation.id) }
         )
     }

@@ -7,6 +7,11 @@ enum HostedAgentSessionUpdate: Equatable {
 
     // the host changed the mode on its own: a Full access turn finished, or the budget ran out.
     case modeChanged(mode: OIPPermissionMode, turnsLeft: Int?)
+
+    // Another device started a turn on this session: its prompt, then the rest streams to whoever attaches.
+    case mirroredTurn(prompt: String)
+    // CONNECTED carried the host's chat_items and no turn is running: catch the transcript up.
+    case caughtUp(items: [JSONValue])
     // The host wants an invite code (or took it, or refused it) before it lets this conversation connect.
     case onboarding(HostedAgentOnboarding)
     var kind: String {
@@ -17,6 +22,10 @@ enum HostedAgentSessionUpdate: Equatable {
             return "dashboard"
         case.modeChanged:
             return "mode"
+        case .mirroredTurn:
+            return "mirroredTurn"
+        case .caughtUp:
+            return "caughtUp"
         case .onboarding:
             return "onboarding"
         }
@@ -397,6 +406,34 @@ actor HostedAgentConnectionPool {
             await trimToSize()
             throw error
         }
+    }
+
+    func attachMirroredTurn(
+        agentAddress: String,
+        conversation: Conversation,
+        onEvent: (@MainActor (HostedAgentEvent) -> Void)?,
+        onInteraction: (@MainActor (HostedAgentInteraction) async -> HostedAgentInteractionDecision)?
+    ) async throws -> HostedAgentResult {
+        let lease = await acquire(agentAddress: agentAddress, conversationID: conversation.id)
+        do {
+            let result = try await lease.connection.attachMirroredTurn(
+                conversation: conversation,
+                onEvent: onEvent,
+                onInteraction: onInteraction
+            )
+            release(lease)
+            await trimToSize()
+            return result
+        } catch {
+            release(lease)
+            await trimToSize()
+            throw error
+        }
+    }
+
+    func releaseMirrorBuffer(agentAddress: String, conversationID: String) async {
+        let key = HostedAgentConnectionKey(agentAddress: agentAddress, conversationID: conversationID)
+        await connections[key]?.connection.releaseMirrorBuffer()
     }
 
     func submitOnboarding(agentAddress: String, conversationID: String, code: String) async throws {

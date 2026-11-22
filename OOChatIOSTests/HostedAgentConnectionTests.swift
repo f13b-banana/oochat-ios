@@ -1042,13 +1042,11 @@ final class HostedAgentConnectionTests: XCTestCase {
         await connection.close()
     }
 
-    var agentAddress: String {
-        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    }
+    var agentAddress: String { "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
 
     /// Signed commands:
 
-    private func signedPayload(of frame: [String: JSONValue]) throws -> [String: JSONValue] {
+    func signedPayload(of frame: [String: JSONValue]) throws -> [String: JSONValue] {
         guard case .object(let payload)? = frame["payload"] else {
             throw HostedAgentTestError.failed
         }
@@ -1895,7 +1893,8 @@ final class HostedAgentConnectionTests: XCTestCase {
         statusPollInterval: TimeInterval = 10,
         modeChangeTimeout: TimeInterval = 15,
         bookmarkStore: HostedAgentBookmarkStore = HostedAgentBookmarkStore(suiteName: "test.bookmarks.\(UUID().uuidString)"),
-        execTimeout: TimeInterval = 30
+        execTimeout: TimeInterval = 30,
+        mirrorAttachGrace: TimeInterval = 5
     ) -> HostedAgentConnection {
         let endpoint = endpoint
         return HostedAgentConnection(
@@ -1914,7 +1913,8 @@ final class HostedAgentConnectionTests: XCTestCase {
             statusPollInterval: statusPollInterval,
             modeChangeTimeout: modeChangeTimeout,
             bookmarkStore: bookmarkStore,
-            execTimeout: execTimeout
+            execTimeout: execTimeout,
+            mirrorAttachGrace: mirrorAttachGrace
         )
     }
 

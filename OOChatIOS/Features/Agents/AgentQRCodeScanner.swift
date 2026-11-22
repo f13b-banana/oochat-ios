@@ -33,6 +33,11 @@ enum AgentQRCodePayload {
 struct AgentQRCodeScannerView: View {
     let onCode: (String) -> Void
     let onUnavailable: (String) -> Void
+    /// What the person types instead when the camera can't scan.
+    var manualEntry = "the agent address"
+    /// Inside another screen (the Device Link sheet) rather than full screen: no close button of
+    /// its own, and it stays inside the safe area and the frame it is given.
+    var isEmbedded = false
     @Environment(\.dismiss) private var dismiss
     @State private var readiness: ScannerReadiness = .checking
 
@@ -69,8 +74,8 @@ struct AgentQRCodeScannerView: View {
             case .checking:
                 ProgressView()
             case .ready:
-                AgentQRCodeScannerController(onCode: onCode, onUnavailable: onUnavailable)
-                    .ignoresSafeArea()
+                AgentQRCodeScannerController(onCode: onCode, onUnavailable: onUnavailable, unavailableMessage: unavailableMessage)
+                    .ignoresSafeArea(edges: isEmbedded ? [] : .all)
                 RoundedRectangle(cornerRadius: 20)
                     .stroke(.white, lineWidth: 3)
                     .frame(width: 250, height: 250)
@@ -80,27 +85,12 @@ struct AgentQRCodeScannerView: View {
                 ContentUnavailableView(
                     "Camera Unavailable",
                     systemImage: "camera.fill",
-                    description: Text("Enter the agent address manually.")
+                    description: Text("Enter \(manualEntry) manually.")
                 )
             }
 
-            VStack {
-                HStack {
-                    Spacer()
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.headline)
-                            .frame(width: 44, height: 44)
-                            .foregroundStyle(.white)
-                            .background(.black.opacity(0.45), in: Circle())
-                    }
-                    .accessibilityLabel("Close scanner")
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                Spacer()
+            if !isEmbedded {
+                closeButton
             }
         }
         .task {
@@ -113,7 +103,32 @@ struct AgentQRCodeScannerView: View {
             guard !available else {
                 return
             }
-            onUnavailable("Camera scanning is unavailable. Enter the agent address manually.")
+            onUnavailable(unavailableMessage)
+        }
+    }
+
+    private var unavailableMessage: String {
+        "Camera scanning is unavailable. Enter \(manualEntry) manually."
+    }
+
+    private var closeButton: some View {
+        VStack {
+            HStack {
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.headline)
+                        .frame(width: 44, height: 44)
+                        .foregroundStyle(.white)
+                        .background(.black.opacity(0.45), in: Circle())
+                }
+                .accessibilityLabel("Close scanner")
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            Spacer()
         }
     }
 }
@@ -121,6 +136,7 @@ struct AgentQRCodeScannerView: View {
 private struct AgentQRCodeScannerController: UIViewControllerRepresentable {
     let onCode: (String) -> Void
     let onUnavailable: (String) -> Void
+    let unavailableMessage: String
 
     func makeUIViewController(context: Context) -> DataScannerViewController {
         let controller = DataScannerViewController(
@@ -147,17 +163,19 @@ private struct AgentQRCodeScannerController: UIViewControllerRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onCode: onCode, onUnavailable: onUnavailable)
+        Coordinator(onCode: onCode, onUnavailable: onUnavailable, unavailableMessage: unavailableMessage)
     }
 
     final class Coordinator: NSObject, DataScannerViewControllerDelegate {
         private let onCode: (String) -> Void
         private let onUnavailable: (String) -> Void
+        private let unavailableMessage: String
         private var didFinish = false
 
-        init(onCode: @escaping (String) -> Void, onUnavailable: @escaping (String) -> Void) {
+        init(onCode: @escaping (String) -> Void, onUnavailable: @escaping (String) -> Void, unavailableMessage: String) {
             self.onCode = onCode
             self.onUnavailable = onUnavailable
+            self.unavailableMessage = unavailableMessage
         }
 
         func dataScanner(
@@ -189,7 +207,7 @@ private struct AgentQRCodeScannerController: UIViewControllerRepresentable {
                 return
             }
             didFinish = true
-            onUnavailable("Camera scanning is unavailable. Enter the agent address manually.")
+            onUnavailable(unavailableMessage)
         }
     }
 }

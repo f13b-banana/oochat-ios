@@ -3,8 +3,10 @@ import ConnectOnionKit
 
 final class HostedAgentClient: HostedAgentTransport {
     private let connectionPool: HostedAgentConnectionPool
-    private let discovery: HostedAgentDiscovery
+    let discovery: HostedAgentDiscovery
     private let connectionStateObserver: HostedAgentConnectionStateObserver
+    let identityStore: IdentityStore
+    let urlSession: URLSession
 
     var onConnectionStateChange: (@MainActor (String, ConversationConnectionState) -> Void)? {
         get { connectionStateObserver.handler }
@@ -45,6 +47,8 @@ final class HostedAgentClient: HostedAgentTransport {
             localEndpoints: localEndpoints
         )
         let connectionStateObserver = HostedAgentConnectionStateObserver()
+        self.identityStore = identityStore
+        self.urlSession = session
         self.discovery = discovery
         self.connectionStateObserver = connectionStateObserver
         connectionPool = HostedAgentConnectionPool(
@@ -143,6 +147,26 @@ final class HostedAgentClient: HostedAgentTransport {
         )
     }
 
+    func attachMirroredTurn(
+        agentAddress: String,
+        conversation: Conversation,
+        handlers: HostedAgentPromptHandlers
+    ) async throws -> HostedAgentResult {
+        guard Self.isHostedAgentAddress(agentAddress) else {
+            throw HostedAgentClientError.invalidAddress
+        }
+        return try await connectionPool.attachMirroredTurn(
+            agentAddress: agentAddress,
+            conversation: conversation,
+            onEvent: handlers.onEvent,
+            onInteraction: handlers.onInteraction
+        )
+    }
+
+    func releaseMirrorBuffer(agentAddress: String, conversationID: String) async {
+        await connectionPool.releaseMirrorBuffer(agentAddress: agentAddress, conversationID: conversationID)
+    }
+
     func requestModeChange(
         agentAddress: String,
         conversation: Conversation,
@@ -177,6 +201,10 @@ final class HostedAgentClient: HostedAgentTransport {
 
     func noteNetworkLost() async {
         await connectionPool.noteNetworkLost()
+    }
+
+    func disconnectAll() async {
+        await connectionPool.closeAll()
     }
 
     func applicationDidBecomeActive() {

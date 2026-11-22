@@ -1,4 +1,5 @@
 import Combine
+import ConnectOnionKit
 import XCTest
 @testable import OOChatIOS
 
@@ -109,7 +110,7 @@ final class SettingsViewTests: XCTestCase {
         )
 
         XCTAssertNotNil(ViewHost.element(labelContains: "Settings", in: window))
-        XCTAssertNotNil(ViewHost.element(labelContains: hostedAddress, in: window))
+        XCTAssertNotNil(ViewHost.element(labelContains: "Your address 0xaaaaaaaa", in: window))
         XCTAssertNotNil(ViewHost.element(labelContains: "conversation-42", in: window))
         XCTAssertNotNil(ViewHost.element(labelContains: "Reconnect", in: window))
 
@@ -119,6 +120,41 @@ final class SettingsViewTests: XCTestCase {
 
         XCTAssertTrue(ViewHost.activateButton(labelContains: "Close", in: window))
         XCTAssertTrue(didClose)
+    }
+
+    func testIdentityOffersBothLinkRowsAndTheLinkSheetOpensAndCancels() {
+        let model = TestSettingsModel(identity: nil, connectionState: .disconnected, activeConversation: nil)
+        let window = ViewHost.host(SettingsView(viewModel: model))
+
+        XCTAssertNotNil(ViewHost.element(labelContains: "Link from another device", in: window))
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "Link a new device", in: window))
+        ViewHost.pump(0.5)
+
+        // The iPhone opens on code entry in both roles, so opening the sheet starts no listener.
+        XCTAssertNotNil(ViewHost.element(labelContains: "Link Code", in: window), "the giver's code entry is showing")
+        XCTAssertNotNil(ViewHost.element(labelContains: "Show my code instead", in: window))
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "Cancel", in: window))
+        ViewHost.pump(0.5)
+        XCTAssertNil(ViewHost.element(labelContains: "Link Code", in: window), "Cancel closes the sheet")
+    }
+
+    func testFirstLaunchOffersANewIdentityOrLinkingFromAnotherDevice() {
+        var finished = 0
+        let window = ViewHost.host(
+            IdentityOnboardingView(keyStore: InMemoryPrivateKeyStore(), onReplaced: { _ in }, onFinish: { finished += 1 })
+        )
+
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "Link from another device", in: window))
+        ViewHost.pump(0.5)
+        // The receive sheet from Settings: it opens on the scanner and says where the other device shows its code.
+        XCTAssertNotNil(ViewHost.element(labelContains: "Link a new device", in: window), "the receive sheet is showing")
+        XCTAssertNotNil(ViewHost.element(labelContains: "Show my code instead", in: window), "the receiver scans first")
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "Cancel", in: window))
+        ViewHost.pump(0.5)
+        XCTAssertEqual(finished, 0, "closing the link sheet goes back to the choice")
+
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "Create a new identity", in: window))
+        XCTAssertEqual(finished, 1)
     }
 
     func testSettingsShowsPlaceholdersWhenIdentityAndSessionAreMissing() {
@@ -177,6 +213,7 @@ private final class TestSettingsModel: SettingsFeatureModel {
     @Published var connectionState: ConversationConnectionState
     @Published var activeConversation: Conversation?
     private(set) var reconnectCallCount = 0
+    let deviceLinkKeyStore: any DeviceLinkKeyStore = InMemoryPrivateKeyStore()
 
     init(
         identity: StoredIdentity?,
@@ -191,4 +228,10 @@ private final class TestSettingsModel: SettingsFeatureModel {
     func reconnect() async {
         reconnectCallCount += 1
     }
+
+    func adoptReplacedIdentity(previousAddress: String) async {}
+
+    let linkAgentNames: [DeviceLinkAgentName] = []
+
+    func applyLinkedAgentNames(_ list: [DeviceLinkAgentName]) throws {}
 }

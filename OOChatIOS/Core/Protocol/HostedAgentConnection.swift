@@ -26,6 +26,8 @@ actor HostedAgentConnection {
         var requiresMatchingUserTurn = false
         // Called just before each INPUT write, so the app can save that it may have been sent.
         var onInputDispatched: (@MainActor () -> Void)?
+        // A turn another device started: Stop must tell the host, there is no INPUT of ours to cancel.
+        var isMirrored = false
     }
 
     let key: HostedAgentConnectionKey
@@ -44,6 +46,8 @@ actor HostedAgentConnection {
     let bookmarkStore: HostedAgentBookmarkStore
     let reconnectPolicy: ReconnectPolicy
     let execTimeout: TimeInterval
+    // How long the app has to attach to a Mirrored Turn before the held frames are handed on.
+    let mirrorAttachGrace: TimeInterval
     var eventLedger = EventLedger()
     var state: State = .disconnected
     var socket: (any HostedAgentWebSocketTask)?
@@ -58,6 +62,10 @@ actor HostedAgentConnection {
     var socketGeneration = 0
     var connectWaiters: [UUID: CheckedContinuation<HostedAgentResult, Error>] = [:]
     var pendingPrompt: PendingPrompt?
+    // Set from a Mirrored Turn's user_message until the app attaches and the frames queued meanwhile
+    // are replayed; later frames queue behind them so the order is kept.
+    var mirrorBuffer: [[String: JSONValue]]?
+    var mirrorEpoch = 0
     // The host answered CONNECT with ONBOARD_REQUIRED and waits for an invite code. The socket stays open.
     var awaitingOnboarding = false
 
@@ -90,7 +98,8 @@ actor HostedAgentConnection {
         statusPollInterval: TimeInterval = SessionStatusLabel.pollInterval,
         modeChangeTimeout: TimeInterval = 15,
         bookmarkStore: HostedAgentBookmarkStore = HostedAgentBookmarkStore(),
-        execTimeout: TimeInterval = 30
+        execTimeout: TimeInterval = 30,
+        mirrorAttachGrace: TimeInterval = 5
     ) {
         self.key = key
         self.identityStore = identityStore
@@ -115,6 +124,7 @@ actor HostedAgentConnection {
         self.bookmarkStore = bookmarkStore
         self.reconnectPolicy = ReconnectPolicy(maxAttempts: resumeAttemptLimit + 1, baseDelay: resumeRetryDelay)
         self.execTimeout = execTimeout
+        self.mirrorAttachGrace = mirrorAttachGrace
     }
 
     // Share one connection attempt across callers for this conversation.
@@ -185,6 +195,7 @@ actor HostedAgentConnection {
             throw HostedAgentClientError.busy
         }
         resumeAttemptsUsed = 0
+        mirrorBuffer = nil
 
         let promptID = UUID()
         return try await withTaskCancellationHandler {
@@ -330,6 +341,74 @@ actor HostedAgentConnection {
                 await self?.cancelPrompt(promptID)
             }
         }
+    }
+
+    // Joins the turn another device started (announced as `.mirroredTurn`). It settles with the
+    // reply like a prompt of our own, and cancelling it (Stop) interrupts the host's run.
+    func attachMirroredTurn(
+        conversation: Conversation,
+        onEvent: (@MainActor (HostedAgentEvent) -> Void)?,
+        onInteraction: (@MainActor (HostedAgentInteraction) async -> HostedAgentInteractionDecision)?
+    ) async throws -> HostedAgentResult {
+        try Task.checkCancellation()
+        guard pendingPrompt == nil else {
+            throw HostedAgentClientError.busy
+        }
+        guard mirrorBuffer != nil, state == .connected else {
+            throw HostedAgentClientError.closed
+        }
+        let promptID = UUID()
+        let generation = socketGeneration
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                pendingPrompt = PendingPrompt(
+                    id: promptID,
+                    inputID: "",
+                    continuation: continuation,
+                    onEvent: onEvent,
+                    onInteraction: onInteraction,
+                    prompt: "",
+                    images: [],
+                    files: [],
+                    inputDelivered: true,
+                    isMirrored: true
+                )
+                Task { [weak self] in
+                    await self?.drainMirrorBuffer(generation: generation)
+                }
+            }
+        } onCancel: {
+            Task { [weak self] in
+                await self?.cancelPrompt(promptID)
+            }
+        }
+    }
+
+    // The app declined the announced turn, so stop holding frames back and replay them now.
+    func releaseMirrorBuffer() async {
+        await replayHeldFrames(generation: socketGeneration)
+    }
+
+    /// Stops holding frames back and routes the held ones, unless a prompt has taken them over.
+    func replayHeldFrames(generation: Int) async {
+        guard pendingPrompt == nil, let held = mirrorBuffer else {
+            return
+        }
+        mirrorBuffer = nil
+        for frame in held {
+            await route(frame, generation: generation)
+        }
+    }
+
+    private func drainMirrorBuffer(generation: Int) async {
+        // Frames that arrive while a batch replays queue behind it, so order is kept.
+        while let batch = mirrorBuffer, !batch.isEmpty {
+            mirrorBuffer = []
+            for frame in batch {
+                await route(frame, generation: generation)
+            }
+        }
+        mirrorBuffer = nil
     }
 
     /// Runs tool on the host without the LLM (EXEC); each reply is matched to its request by `exec_id`. 
@@ -562,7 +641,15 @@ actor HostedAgentConnection {
         }
     }
 
-    private func cancelPrompt(_ promptID: UUID) {
+    private func cancelPrompt(_ promptID: UUID) async {
+        guard let pending = pendingPrompt, pending.id == promptID else {
+            return
+        }
+        let turn = ViewerTurnState(isActive: true, isMirrored: pending.isMirrored)
+        if pending.isMirrored, let socket,
+           let frame = try? frames.interrupt(inputID: turn.interruptInputID(local: pending.inputID)) {
+            try? await send(frame, over: socket)
+        }
         guard pendingPrompt?.id == promptID else {
             return
         }

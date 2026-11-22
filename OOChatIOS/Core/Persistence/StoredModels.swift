@@ -3,9 +3,9 @@
 import Foundation
 import SwiftData
 
-typealias StoredAgent = StoredModelsSchemaV4.StoredAgent
-typealias StoredConversation = StoredModelsSchemaV4.StoredConversation
-typealias StoredMessage = StoredModelsSchemaV4.StoredMessage
+typealias StoredAgent = StoredModelsSchemaV6.StoredAgent
+typealias StoredConversation = StoredModelsSchemaV6.StoredConversation
+typealias StoredMessage = StoredModelsSchemaV6.StoredMessage
 
 // V1 pins the shape shipped when schema versioning was adopted (2026-07). Structural changes
 // go into a new StoredModelsSchemaV(N+1) enum plus a MigrationStage in StoredModelsMigrationPlan;
@@ -445,6 +445,239 @@ enum StoredModelsSchemaV4: VersionedSchema {
     }
 }
 
+// V5 adds StoredConversation.identityAddress, the Previous-Identity stamp. It is optional, so
+// existing rows migrate lightweight and read as unstamped.
+enum StoredModelsSchemaV5: VersionedSchema {
+    static let versionIdentifier = Schema.Version(5, 0, 0)
+    static var models: [any PersistentModel.Type] {
+        [StoredAgent.self, StoredConversation.self, StoredMessage.self]
+    }
+
+    @Model
+    final class StoredAgent {
+        @Attribute(.unique) var id: String
+        var name: String
+        var address: String
+        var createdAt: Date
+        var updatedAt: Date
+
+        init(id: String, name: String, address: String, createdAt: Date, updatedAt: Date) {
+            self.id = id
+            self.name = name
+            self.address = address
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+        }
+    }
+
+    @Model
+    final class StoredConversation {
+        @Attribute(.unique) var id: String
+        var title: String
+        var agentID: String?
+        var agentAddress: String
+        var modeRaw: String
+        var createdAt: Date
+        var updatedAt: Date
+        var serverSessionData: Data?
+        /// The Address the conversation was made under, stamped on replace; nil = the current one.
+        var identityAddress: String?
+        @Relationship(deleteRule: .cascade, inverse: \StoredMessage.conversation)
+        var messages: [StoredMessage]
+
+        init(
+            id: String,
+            title: String,
+            agentID: String?,
+            agentAddress: String,
+            modeRaw: String,
+            createdAt: Date,
+            updatedAt: Date,
+            serverSessionData: Data?,
+            identityAddress: String? = nil,
+            messages: [StoredMessage]
+        ) {
+            self.id = id
+            self.title = title
+            self.agentID = agentID
+            self.agentAddress = agentAddress
+            self.modeRaw = modeRaw
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+            self.serverSessionData = serverSessionData
+            self.identityAddress = identityAddress
+            self.messages = messages
+        }
+    }
+
+    @Model
+    final class StoredMessage {
+        @Attribute(.unique) var id: String
+        var messageID: String = ""
+        var roleRaw: String
+        var content: String
+        var createdAt: Date
+        var deliveryStateRaw: String = "sent"
+        @Attribute(.externalStorage) var imageAttachmentsData: Data?
+        @Attribute(.externalStorage) var fileAttachmentsData: Data?
+        var toolName: String?
+        var toolArgumentsData: Data?
+        var toolStateRaw: String?
+        var conversation: StoredConversation?
+
+        init(
+            messageID: String,
+            conversationID: String,
+            roleRaw: String,
+            content: String,
+            createdAt: Date,
+            deliveryStateRaw: String = "sent",
+            imageAttachmentsData: Data? = nil,
+            fileAttachmentsData: Data? = nil,
+            toolName: String? = nil,
+            toolArgumentsData: Data? = nil,
+            toolStateRaw: String? = nil
+        ) {
+            self.id = StoredMessage.compositeID(conversationID: conversationID, messageID: messageID)
+            self.messageID = messageID
+            self.roleRaw = roleRaw
+            self.content = content
+            self.createdAt = createdAt
+            self.deliveryStateRaw = deliveryStateRaw
+            self.imageAttachmentsData = imageAttachmentsData
+            self.fileAttachmentsData = fileAttachmentsData
+            self.toolName = toolName
+            self.toolArgumentsData = toolArgumentsData
+            self.toolStateRaw = toolStateRaw
+        }
+
+        static func compositeID(conversationID: String, messageID: String) -> String {
+            "\(conversationID.utf8.count)#\(conversationID)#\(messageID)"
+        }
+    }
+}
+
+// V6 adds StoredConversation.tombstoneUpdated, which marks a deleted chat kept as a Tombstone, and
+// hostUpdated, the host's `updated` a Tombstone records. Both are optional, so existing rows migrate
+// lightweight and read as live chats that never came from the host.
+enum StoredModelsSchemaV6: VersionedSchema {
+    static let versionIdentifier = Schema.Version(6, 0, 0)
+    static var models: [any PersistentModel.Type] {
+        [StoredAgent.self, StoredConversation.self, StoredMessage.self]
+    }
+
+    @Model
+    final class StoredAgent {
+        @Attribute(.unique) var id: String
+        var name: String
+        var address: String
+        var createdAt: Date
+        var updatedAt: Date
+
+        init(id: String, name: String, address: String, createdAt: Date, updatedAt: Date) {
+            self.id = id
+            self.name = name
+            self.address = address
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+        }
+    }
+
+    @Model
+    final class StoredConversation {
+        @Attribute(.unique) var id: String
+        var title: String
+        var agentID: String?
+        var agentAddress: String
+        var modeRaw: String
+        var createdAt: Date
+        var updatedAt: Date
+        var serverSessionData: Data?
+        /// The Address the conversation was made under, stamped on replace; nil = the current one.
+        var identityAddress: String?
+        /// Set on a Tombstone: the session's `updated` recorded at deletion; nil = a live chat.
+        var tombstoneUpdated: Date?
+        /// The host's `updated` from the last History Restore; nil = the chat never came from the host.
+        var hostUpdated: Date?
+        @Relationship(deleteRule: .cascade, inverse: \StoredMessage.conversation)
+        var messages: [StoredMessage]
+
+        init(
+            id: String,
+            title: String,
+            agentID: String?,
+            agentAddress: String,
+            modeRaw: String,
+            createdAt: Date,
+            updatedAt: Date,
+            serverSessionData: Data?,
+            identityAddress: String? = nil,
+            tombstoneUpdated: Date? = nil,
+            hostUpdated: Date? = nil,
+            messages: [StoredMessage]
+        ) {
+            self.id = id
+            self.title = title
+            self.agentID = agentID
+            self.agentAddress = agentAddress
+            self.modeRaw = modeRaw
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+            self.serverSessionData = serverSessionData
+            self.identityAddress = identityAddress
+            self.tombstoneUpdated = tombstoneUpdated
+            self.hostUpdated = hostUpdated
+            self.messages = messages
+        }
+    }
+
+    @Model
+    final class StoredMessage {
+        @Attribute(.unique) var id: String
+        var messageID: String = ""
+        var roleRaw: String
+        var content: String
+        var createdAt: Date
+        var deliveryStateRaw: String = "sent"
+        @Attribute(.externalStorage) var imageAttachmentsData: Data?
+        @Attribute(.externalStorage) var fileAttachmentsData: Data?
+        var toolName: String?
+        var toolArgumentsData: Data?
+        var toolStateRaw: String?
+        var conversation: StoredConversation?
+
+        init(
+            messageID: String,
+            conversationID: String,
+            roleRaw: String,
+            content: String,
+            createdAt: Date,
+            deliveryStateRaw: String = "sent",
+            imageAttachmentsData: Data? = nil,
+            fileAttachmentsData: Data? = nil,
+            toolName: String? = nil,
+            toolArgumentsData: Data? = nil,
+            toolStateRaw: String? = nil
+        ) {
+            self.id = StoredMessage.compositeID(conversationID: conversationID, messageID: messageID)
+            self.messageID = messageID
+            self.roleRaw = roleRaw
+            self.content = content
+            self.createdAt = createdAt
+            self.deliveryStateRaw = deliveryStateRaw
+            self.imageAttachmentsData = imageAttachmentsData
+            self.fileAttachmentsData = fileAttachmentsData
+            self.toolName = toolName
+            self.toolArgumentsData = toolArgumentsData
+            self.toolStateRaw = toolStateRaw
+        }
+
+        static func compositeID(conversationID: String, messageID: String) -> String {
+            "\(conversationID.utf8.count)#\(conversationID)#\(messageID)"
+        }
+    }
+}
+
 // Stores older than V1 (written before versioning) hash-match no version here and make the
 // staged open throw; SwiftDataConversationRepository then falls back to a plan-less open whose
 // lightweight inference carries them to the current shape, so later opens match the plan.
@@ -454,7 +687,9 @@ enum StoredModelsMigrationPlan: SchemaMigrationPlan {
             StoredModelsSchemaV1.self,
             StoredModelsSchemaV2.self,
             StoredModelsSchemaV3.self,
-            StoredModelsSchemaV4.self
+            StoredModelsSchemaV4.self,
+            StoredModelsSchemaV5.self,
+            StoredModelsSchemaV6.self
         ]
     }
 
@@ -471,6 +706,14 @@ enum StoredModelsMigrationPlan: SchemaMigrationPlan {
             .lightweight(
                 fromVersion: StoredModelsSchemaV3.self,
                 toVersion: StoredModelsSchemaV4.self
+            ),
+            .lightweight(
+                fromVersion: StoredModelsSchemaV4.self,
+                toVersion: StoredModelsSchemaV5.self
+            ),
+            .lightweight(
+                fromVersion: StoredModelsSchemaV5.self,
+                toVersion: StoredModelsSchemaV6.self
             )
         ]
     }

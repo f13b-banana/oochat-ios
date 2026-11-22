@@ -137,6 +137,35 @@ final class ChatViewTests: XCTestCase {
         XCTAssertNotNil(ViewHost.element(labelContains: "Chat mode: Auto", in: window))
     }
 
+    func testAChatFromAPreviousIdentityOffersANewChatInPlaceOfTheComposer() {
+        let fixture = ChatContainerFixture()
+        var conversation = fixture.conversation(messages: [
+            ChatMessage(role: .user, content: "old question", deliveryState: .failed)
+        ])
+        conversation.identityAddress = "0x" + String(repeating: "0", count: 64)
+        let viewModel = makeContainerViewModel(
+            agents: [fixture.agent],
+            conversations: [conversation],
+            activeAgentID: fixture.agent.id,
+            activeConversationID: conversation.id
+        )
+        let window = ViewHost.host(ChatView(viewModel: viewModel))
+
+        XCTAssertNotNil(ViewHost.element(labelContains: "old question", in: window))
+        XCTAssertNotNil(ViewHost.element(labelContains: "From a previous identity", in: window))
+        XCTAssertNil(ViewHost.element(labelContains: "Send message", in: window))
+        XCTAssertNil(ViewHost.element(labelContains: "Retry sending message", in: window))
+        let newChat = ViewHost.element(labelContains: "Start a new chat with this agent", in: window)
+        XCTAssertNotNil(newChat)
+
+        newChat?.accessibilityActivate()
+        ViewHost.pump()
+
+        XCTAssertNotEqual(viewModel.activeConversationID, conversation.id)
+        XCTAssertEqual(viewModel.activeAgentID, fixture.agent.id)
+        XCTAssertNotNil(ViewHost.element(labelContains: "Send message", in: window))
+    }
+
     /// toolbar reports Conversation's session, not agent
     func testToolbarShowsSessionStatusRatherThanAgentPresence() async {
         let fixture = ChatContainerFixture()
@@ -162,7 +191,8 @@ final class ChatViewTests: XCTestCase {
 
         monitor.simulate(online: true)
         let deadline = Date().addingTimeInterval(1)
-        while !viewModel.isActiveAgentOnline, Date() < deadline {
+        // The failed reconnect passes through .reconnecting before it settles on .disconnected.
+        while !viewModel.isActiveAgentOnline || viewModel.connectionState != .disconnected, Date() < deadline {
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
         ViewHost.pump()

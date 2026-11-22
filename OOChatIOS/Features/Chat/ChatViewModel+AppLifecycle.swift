@@ -10,6 +10,7 @@ extension ChatViewModel {
             beginBackgroundDeliveryHold()
         case .active:
             client.applicationDidBecomeActive()
+            Task { await refreshHistory() }
             presenceCoordinator.applicationDidBecomeActive()
             endBackgroundDeliveryHold()
         case .inactive:

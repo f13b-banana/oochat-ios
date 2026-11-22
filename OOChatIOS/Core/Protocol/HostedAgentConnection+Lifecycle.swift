@@ -12,7 +12,17 @@ extension HostedAgentConnection {
         }
         await dispatch(frame, generation: generation)
     }
-    private func dispatch(_ frame: [String: JSONValue], generation: Int) async {
+    func dispatch(_ frame: [String: JSONValue], generation: Int) async {
+        // A Mirrored Turn waiting to be attached holds back its frames so none is lost.
+        if mirrorBuffer != nil, !Self.mirrorBypassTypes.contains(frame["type"]?.stringValue ?? "") {
+            mirrorBuffer?.append(frame)
+            return
+        }
+        await route(frame, generation: generation)
+    }
+
+    // Past the mirror buffer: replayed frames come straight here, or they would queue again.
+    func route(_ frame: [String: JSONValue], generation: Int) async {
         switch frame["type"]?.stringValue {
         case "PING":
             await handlePing(generation: generation)
@@ -29,6 +39,8 @@ extension HostedAgentConnection {
         }
     }
 
+    private static let mirrorBypassTypes: Set<String> = ["PING", "CONNECTED", "ERROR"]
+
     private func dispatchRemaining(_ frame: [String: JSONValue], generation: Int) async {
         switch frame["type"]?.stringValue {
         case "tool_call", "tool_result",
@@ -38,6 +50,8 @@ extension HostedAgentConnection {
              OIPFrameType.providerSession, OIPFrameType.providerControlAck,
              OIPFrameType.providerArtifact:
             await handleEvent(frame)
+        case "user_message":
+            handleUserMessage(frame)
         case "mode_changed":
             await handleModeChanged(frame)
         case "approval_needed", "APPROVAL_NEEDED", "ulw_turns_reached", "plan_review", "ask_user":
@@ -148,6 +162,7 @@ extension HostedAgentConnection {
             waiter.resume(returning: result)
         }
         await resumePendingPrompt(from: frame, isRunning: connected.isRunning, generation: generation)
+        catchUp(connected: connected)
         scheduleStatusPoll(after: connected.status, generation: generation)
     }
 
@@ -290,6 +305,53 @@ extension HostedAgentConnection {
             return
         }
         connectionStateObserver.notify(conversationID: key.conversationID, update: .dashboard(OIPDashboard(html: snapshot.html)))
+    }
+
+    // The prompt of a turn typed on another device. This device did not send it, so a turn of our own
+    // pending means the frame is not for us to mirror.
+    private func handleUserMessage(_ frame: [String: JSONValue]) {
+        guard pendingPrompt == nil, let prompt = MirroredTurn.prompt(fromUserMessage: frame) else {
+            return
+        }
+        beginMirroredTurn(prompt: prompt)
+    }
+
+    private func beginMirroredTurn(prompt: String) {
+        guard mirrorBuffer == nil else {
+            return
+        }
+        mirrorBuffer = []
+        mirrorEpoch += 1
+        let epoch = mirrorEpoch
+        let generation = socketGeneration
+        let grace = mirrorAttachGrace
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(grace * 1_000_000_000))
+            await self?.expireMirrorBuffer(epoch: epoch, generation: generation)
+        }
+        connectionStateObserver.notify(conversationID: key.conversationID, update: .mirroredTurn(prompt: prompt))
+    }
+
+    // Nobody attached (the app ignored the turn), so the connection must not keep swallowing frames.
+    private func expireMirrorBuffer(epoch: Int, generation: Int) async {
+        guard epoch == mirrorEpoch else {
+            return
+        }
+        await replayHeldFrames(generation: generation)
+    }
+
+    // Opening a chat that moved on elsewhere: join the turn still running, or hand over what finished.
+    private func catchUp(connected: OIPConnected) {
+        guard pendingPrompt == nil, let items = connected.chatItems, !items.isEmpty else {
+            return
+        }
+        if connected.isRunning {
+            if let prompt = MirroredTurn.items(fromChatItems: items).last(where: { $0.role == .user })?.text {
+                beginMirroredTurn(prompt: prompt)
+            }
+        } else {
+            connectionStateObserver.notify(conversationID: key.conversationID, update: .caughtUp(items: items))
+        }
     }
 
     private func handleEvent(_ frame: [String: JSONValue]) async {
@@ -710,6 +772,7 @@ extension HostedAgentConnection {
         statusPollTask?.cancel()
         statusPollTask = nil
         resumeAttemptsUsed = 0
+        mirrorBuffer = nil
         cancelInteractionTasks()
 
         let socket = socket

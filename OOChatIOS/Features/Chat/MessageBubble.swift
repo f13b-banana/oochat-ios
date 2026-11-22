@@ -279,11 +279,11 @@ struct MessageBubble: View {
                     Label("Not sent", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption2)
                         .foregroundStyle(.red)
-                    Button("Retry") {
-                        onRetry?()
+                    if let onRetry {
+                        Button("Retry", action: onRetry)
+                            .font(.caption2.weight(.semibold))
+                            .accessibilityLabel("Retry sending message")
                     }
-                    .font(.caption2.weight(.semibold))
-                    .accessibilityLabel("Retry sending message")
                 }
                 if let failureReason {
                     Text(failureReason)
@@ -307,11 +307,11 @@ struct MessageBubble: View {
                 Label("Cancelled", systemImage: "stop.circle")
                     .font(.caption2)
                     .foregroundStyle(OOColor.inkSecondary)
-                Button("Retry") {
-                    onRetry?()
+                if let onRetry {
+                    Button("Retry", action: onRetry)
+                        .font(.caption2.weight(.semibold))
+                        .accessibilityLabel("Retry cancelled message")
                 }
-                .font(.caption2.weight(.semibold))
-                .accessibilityLabel("Retry cancelled message")
             }
         }
     }

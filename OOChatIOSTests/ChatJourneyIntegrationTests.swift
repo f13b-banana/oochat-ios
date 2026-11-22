@@ -1,3 +1,4 @@
+import Security
 import XCTest
 import ConnectOnionKit
 @testable import OOChatIOS
@@ -271,6 +272,151 @@ final class ChatJourneyIntegrationTests: XCTestCase {
         )
     }
 
+    // Mirrored Turn: another device's prompt and streamed reply show here, and the lock follows the turn.
+    func testMirroredTurnShowsPromptLocksTheComposerThenUnlocksWithTheReply() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        let viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Bot", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+        let gate = PromptGate()
+        app.transport.mirroredBehavior = .wait(gate: gate, output: "Hola")
+        app.transport.streamedEvents = [.toolCall(id: "t1", name: "search", arguments: [:])]
+
+        app.transport.onSessionUpdate?(conversation.id, .mirroredTurn(prompt: "Translate hello"))
+        for _ in 0..<200 where !viewModel.isProcessing { await Task.yield() }
+
+        XCTAssertTrue(viewModel.isProcessing, "Send is disabled and Stop offered while the other device's turn streams")
+        for _ in 0..<200 where !(viewModel.activeConversation?.messages.contains { $0.role == .tool } ?? false) {
+            await Task.yield()
+        }
+        let during = try XCTUnwrap(viewModel.activeConversation).messages
+        XCTAssertEqual(during.first?.role, .user)
+        XCTAssertEqual(during.first?.content, "Translate hello")
+        XCTAssertEqual(during.first?.deliveryState, .sent)
+        XCTAssertEqual(during.last { $0.role == .thinking }?.content, "Replying…")
+        XCTAssertTrue(during.contains { $0.role == .tool && $0.toolName == "search" })
+
+        await gate.open()
+        for _ in 0..<200 where viewModel.isProcessing { await Task.yield() }
+
+        XCTAssertFalse(viewModel.isProcessing)
+        let after = try XCTUnwrap(viewModel.activeConversation).messages
+        XCTAssertEqual(after.filter { $0.role != .tool }.map(\.content), ["Translate hello", "Hola"])
+        XCTAssertEqual(app.transport.sentPrompts, [], "a mirrored turn is never sent from this device")
+    }
+
+    func testADeclinedMirroredTurnReleasesTheHeldFramesAtOnce() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        let viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Bot", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+        let gate = PromptGate()
+        app.transport.mirroredBehavior = .wait(gate: gate, output: "Hola")
+        app.transport.onSessionUpdate?(conversation.id, .mirroredTurn(prompt: "first"))
+        for _ in 0..<200 where !viewModel.isProcessing { await Task.yield() }
+        XCTAssertEqual(app.transport.releasedMirrorBuffers, 0)
+
+        app.transport.onSessionUpdate?(conversation.id, .mirroredTurn(prompt: "second"))
+        for _ in 0..<200 where app.transport.releasedMirrorBuffers == 0 { await Task.yield() }
+
+        XCTAssertEqual(app.transport.releasedMirrorBuffers, 1)
+        await gate.open()
+    }
+
+    func testStopOnAMirroredTurnCancelsItWithoutOfferingARetry() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        let viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Bot", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+        app.transport.mirroredBehavior = .waitUntilCancelled
+
+        app.transport.onSessionUpdate?(conversation.id, .mirroredTurn(prompt: "long job"))
+        for _ in 0..<200 where !viewModel.isProcessing { await Task.yield() }
+        viewModel.stopActiveResponse()
+        for _ in 0..<200 where viewModel.isProcessing { await Task.yield() }
+
+        XCTAssertFalse(viewModel.isProcessing)
+        let user = try XCTUnwrap(viewModel.activeConversation?.messages.first { $0.role == .user })
+        XCTAssertEqual(user.deliveryState, .sent, "the other device's prompt is not ours to retry")
+    }
+
+    func testCatchingUpAddsTheLatestTurnOnceAndIsIdempotent() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        let viewModel = try app.launch()
+        let agent = try XCTUnwrap(viewModel.saveAgent(name: "Bot", address: Self.address))
+        let conversation = viewModel.createConversation(for: agent)
+        let items: [JSONValue] = [
+            .object(["type": .string("user"), "content": .string("q")]),
+            .object(["type": .string("agent"), "content": .string("a")])
+        ]
+
+        app.transport.onSessionUpdate?(conversation.id, .caughtUp(items: items))
+        app.transport.onSessionUpdate?(conversation.id, .caughtUp(items: items))
+        for _ in 0..<50 { await Task.yield() }
+
+        XCTAssertEqual(viewModel.activeConversation?.messages.map(\.content), ["q", "a"])
+        XCTAssertFalse(viewModel.isProcessing)
+    }
+
+    // Link a freshly onboarded phone to a Mac: the Mac's agent arrives with its Agent Name, History Restore
+    // fills it with the Mac's chat, then a turn sent on the Mac plays here. Both devices run the Kit's link
+    // flow, joined in memory, and no agent is added by hand.
+    func testALinkedPhoneRestoresTheMacsChatThenWatchesATurnSentOnTheMac() async throws {
+        let app = try AppInstallation()
+        defer { app.tearDown() }
+        let viewModel = try app.launch()
+        let mac = InMemoryPrivateKeyStore()
+        let macAddress = try OIPSigner(keyStore: mac).address()
+        viewModel.historyFetcher = OwnerOnlyHost(owner: macAddress, asker: app.identityStore, owned: [
+            try hostedSession("shared", [("user", "Hi"), ("assistant", "Hello")])
+        ])
+        XCTAssertTrue(viewModel.agents.isEmpty)
+        XCTAssertFalse(app.identityStore.isLinked)
+        XCTAssertFalse(mac.isLinked)
+
+        let link = InMemoryLink()
+        let phoneFlow = DeviceLinkFlow(
+            role: .receiving,
+            keyStore: app.identityStore,
+            onReplaced: { previous in Task { await viewModel.adoptReplacedIdentity(previousAddress: previous) } },
+            onAgentNames: { try viewModel.applyLinkedAgentNames($0) },
+            receive: { try await link.receive($0, $1) }
+        )
+        let macAgents = [DeviceLinkAgentName(address: Self.address, name: "Bot")].compactMap { $0 }
+        let macFlow = DeviceLinkFlow(role: .giving, keyStore: mac, agentNames: { macAgents }, ownerCheck: { true },
+                                     give: { try await link.give($0, $1) })
+        phoneFlow.start()
+        guard case .showingCode(let offer) = phoneFlow.step else { return XCTFail("the phone shows its code") }
+        await eventually { link.isWaiting }
+        macFlow.start()
+        macFlow.submit(try offer.qrPayload)
+        await eventually { macFlow.step == .confirmingSend }
+        macFlow.confirm()
+        await eventually { if case .confirmingReplace = phoneFlow.step { true } else { false } }
+        phoneFlow.confirm()
+        await eventually { phoneFlow.step == .done(address: macAddress) && macFlow.step == .done(address: macAddress) }
+
+        XCTAssertTrue(app.identityStore.isLinked)
+        XCTAssertTrue(mac.isLinked)
+        // No refresh: the link itself brings the Mac's chats in.
+        await eventually { viewModel.conversation(withID: "shared") != nil }
+        XCTAssertEqual(viewModel.identity?.address, macAddress)
+        XCTAssertEqual(viewModel.agents.map(\.name), ["Bot"])
+        XCTAssertEqual(viewModel.conversation(withID: "shared")?.messages.map(\.content), ["Hi", "Hello"])
+
+        viewModel.selectConversation(withID: "shared")
+        app.transport.mirroredBehavior = .succeed(output: "Sure")
+        app.transport.onSessionUpdate?("shared", .mirroredTurn(prompt: "One more?"))
+        await eventually { !viewModel.isProcessing && viewModel.activeConversation?.messages.count == 4 }
+
+        XCTAssertEqual(viewModel.activeConversation?.messages.map(\.content), ["Hi", "Hello", "One more?", "Sure"])
+        XCTAssertEqual(app.transport.sentPrompts, [], "the turn was the Mac's")
+    }
+
     // tool call -> app killed -> tool is still running
     func testRunningToolCallIsCompleteOnDiskBeforeTheRoundTripEnds() async throws {
         let app = try AppInstallation()
@@ -507,6 +653,21 @@ final class ChatJourneyIntegrationTests: XCTestCase {
         XCTAssertEqual(tool?.toolState, .completed, "tool state \(phase)", file: file, line: line)
     }
 
+    private func eventually(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async {
+        for _ in 0..<400 where !condition() {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertTrue(condition(), "timed out", file: file, line: line)
+    }
+
+    private func hostedSession(_ id: String, _ pairs: [(String, String)]) throws -> ConnectOnionHostedSession {
+        let object: [String: Any] = [
+            "session_id": id, "status": "done", "prompt": pairs.first?.1 ?? "", "created": 100.0,
+            "session": ["messages": pairs.map { ["role": $0.0, "content": $0.1] }]
+        ]
+        return try JSONDecoder().decode(ConnectOnionHostedSession.self, from: JSONSerialization.data(withJSONObject: object))
+    }
+
     private func waitForPendingApproval(
         on viewModel: ChatViewModel,
         file: StaticString = #filePath,
@@ -519,12 +680,67 @@ final class ChatJourneyIntegrationTests: XCTestCase {
     }
 }
 
+/// A host that returns its Hosted History only to the Address that owns it, as signed by the asking device.
+private final class OwnerOnlyHost: SessionsFetching {
+    private let owner: String
+    private let asker: any PrivateKeyStoring
+    private let owned: [ConnectOnionHostedSession]
+
+    init(owner: String, asker: any PrivateKeyStoring, owned: [ConnectOnionHostedSession]) {
+        self.owner = owner
+        self.asker = asker
+        self.owned = owned
+    }
+
+    func sessions(agentAddress: String) async throws -> [ConnectOnionHostedSession] {
+        try OIPSigner(keyStore: asker).address() == owner ? owned : []
+    }
+}
+
+/// Two devices' link flows joined in memory: the receiver's side waits here and the giver's side plays
+/// the exchange against it, so no socket opens.
+@MainActor
+private final class InMemoryLink {
+    private var receiver: DeviceLinkReceiver?
+    private var accept: (@Sendable (DeviceLinkIdentity) async -> Bool)?
+    private var finish: CheckedContinuation<DeviceLinkIdentity, Error>?
+    var isWaiting: Bool { finish != nil }
+
+    func receive(
+        _ receiver: DeviceLinkReceiver,
+        _ accept: @escaping @Sendable (DeviceLinkIdentity) async -> Bool
+    ) async throws -> DeviceLinkIdentity {
+        try await withCheckedThrowingContinuation { finish in
+            self.receiver = receiver
+            self.accept = accept
+            self.finish = finish
+        }
+    }
+
+    func give(_ giver: DeviceLinkGiver, _ approve: @escaping @Sendable () async -> Bool) async throws {
+        guard let receiver, let accept, let finish else { throw DeviceLinkError.cancelled }
+        do {
+            let verified = try giver.verify(try receiver.start())
+            guard await approve() else { throw DeviceLinkError.cancelled }
+            let identity = try receiver.accept(try giver.seal(for: verified))
+            guard await accept(identity) else { throw DeviceLinkError.cancelled }
+            finish.resume(returning: identity)
+        } catch {
+            finish.resume(throwing: error)
+            throw error
+        }
+    }
+}
+
 // one install of an app
 @MainActor
 private final class AppInstallation {
     private(set) var transport: MockAgentTransport
     private(set) var monitor: MockNetworkMonitor
+    /// This install's own Keychain items, so a test can link without touching the simulator's real Identity.
+    let identityStore: IdentityStore
 
+    private let identityService = "OOChatIOSJourney.identity.\(UUID().uuidString)"
     private let storeURL: URL
     private let defaults: UserDefaults
     private let suiteName: String
@@ -540,6 +756,7 @@ private final class AppInstallation {
         storeURL = directory.appendingPathComponent("store.sqlite")
         transport = MockAgentTransport()
         monitor = MockNetworkMonitor()
+        identityStore = IdentityStore(service: identityService)
     }
 
     @discardableResult
@@ -548,7 +765,7 @@ private final class AppInstallation {
         let store = try SwiftDataConversationRepository(storeURL: storeURL, defaults: defaults)
         transport = MockAgentTransport()
         monitor = MockNetworkMonitor()
-        let next = ChatViewModel(store: store, client: transport, networkMonitor: monitor)
+        let next = ChatViewModel(store: store, identityStore: identityStore, client: transport, networkMonitor: monitor)
         viewModel = next
         return next
     }
@@ -566,5 +783,6 @@ private final class AppInstallation {
         viewModel = nil
         defaults.removePersistentDomain(forName: suiteName)
         try? FileManager.default.removeItem(at: storeURL.deletingLastPathComponent())
+        SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: identityService] as CFDictionary)
     }
 }

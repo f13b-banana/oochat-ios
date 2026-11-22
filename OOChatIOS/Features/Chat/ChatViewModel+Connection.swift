@@ -20,12 +20,7 @@ extension ChatViewModel {
         isConnecting = true
         errorMessage = nil
 
-        let agent: SavedAgent
-        if let activeAgent, activeAgent.address == address {
-            agent = activeAgent
-        } else {
-            agent = agents.first { $0.address == address } ?? SavedAgent(address: address)
-        }
+        let agent = conversationState.agent(withAddress: address) ?? SavedAgent(address: address)
         var conversation = conversations(for: agent).first ?? Conversation(agentID: agent.id, agentAddress: address)
         recoveryCoordinator.setConnectionState(.reconnecting, forConversationID: conversation.id)
 
@@ -82,6 +77,36 @@ extension ChatViewModel {
     func reconnect() async {
         errorMessage = nil
         await recoveryCoordinator.reconnectActiveConversation()
+    }
+
+    /// A Device Link replaced this device's key. The chats made under `previousAddress` become
+    /// Previous-Identity Conversations and lose their resume bookmarks, since the host won't resume
+    /// them for the new Address. Every agent connection signed in as the old Address, so all of them
+    /// close; the open chat reconnects only if it is a current one.
+    func adoptReplacedIdentity(previousAddress: String) async {
+        var loadError: Error?
+        do {
+            identity = try identityStore.loadOrCreateIdentity()
+        } catch {
+            // No current Address: every stamped chat stays locked rather than signing as an unknown one.
+            identity = nil
+            loadError = error
+        }
+        let bookmarks = HostedAgentBookmarkStore()
+        for conversation in conversationState.stampForReplace(previousAddress: previousAddress) {
+            bookmarks.remove(conversationID: conversation.id)
+            // A card or Control Center pane left open from before the link would act as the new Address.
+            cancelPendingInteractions(forConversationID: conversation.id)
+            forgetDashboard(forConversationID: conversation.id)
+        }
+        await client.disconnectAll()
+        await reconnect()
+        // The new Address owns its own Hosted History, so the chat list fills now, not at the next refresh.
+        await refreshHistory()
+        // After the reconnect, which clears the banner, so a failed reload stays visible.
+        if let loadError {
+            errorMessage = loadError.localizedDescription
+        }
     }
 
     func dismissError() {

@@ -1,3 +1,4 @@
+import ConnectOnionKit
 import SwiftUI
 import XCTest
 @testable import OOChatIOS
@@ -43,7 +44,6 @@ final class ChatSidebarHeaderViewTests: XCTestCase {
             )
         )
 
-        XCTAssertNotNil(ViewHost.element(labelContains: "1 agent online", in: window))
         XCTAssertNotNil(ViewHost.element(labelContains: "Clear search", in: window))
         XCTAssertTrue(ViewHost.activate(labelContains: "Clear search", in: window))
         XCTAssertNil(ViewHost.element(labelContains: "Clear search", in: window))
@@ -63,6 +63,7 @@ final class SidebarRowViewTests: XCTestCase {
                 agent: agent,
                 isExpanded: true,
                 isOnline: true,
+                isCurrent: true,
                 onToggle: { toggled = true },
                 onRename: {},
                 onEdit: {},
@@ -76,7 +77,7 @@ final class SidebarRowViewTests: XCTestCase {
         XCTAssertNotNil(ViewHost.element(labelContains: "Orbit Agent", in: window))
         XCTAssertTrue(ViewHost.activate(labelContains: "Orbit Agent", in: window))
         XCTAssertTrue(toggled)
-        XCTAssertTrue(ViewHost.activateButton(labelContains: "Add Chat", in: window))
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "New chat with Orbit Agent", in: window))
         XCTAssertEqual(addChatCount, 1)
     }
 
@@ -166,60 +167,40 @@ final class SidebarRowViewTests: XCTestCase {
     }
 
     func testConversationRowStatusIndicatorsUseDistinctAccessibilityLabels() {
-        let agent = ViewFixtures.agent()
-        let conversation = ViewFixtures.conversation(title: "Status Chat", agent: agent)
+        let cases = [
+            StatusCase(state: .actionRequired, label: "Status Chat, needs your approval"),
+            // A question waits on you too, but there's nothing to approve.
+            StatusCase(state: .actionRequired, status: .reply, label: "Status Chat, waiting for your reply"),
+            StatusCase(state: .working, label: "Status Chat, agent working"),
+            StatusCase(state: .failedDelivery, label: "Status Chat, message not sent"),
+            StatusCase(state: .completedUnread, label: "Status Chat, new reply")
+        ]
+        for item in cases {
+            let window = hostStatusRow(state: item.state, status: item.status)
+            XCTAssertNotNil(ViewHost.element(labelContains: item.label, in: window), item.label)
+        }
+    }
 
-        let pendingWindow = ViewHost.host(
+    private struct StatusCase {
+        let state: ConversationActivityState
+        var status: SidebarChatStatus?
+        let label: String
+    }
+
+    private func hostStatusRow(state: ConversationActivityState, status: SidebarChatStatus?) -> UIWindow {
+        let conversation = ViewFixtures.conversation(title: "Status Chat", agent: ViewFixtures.agent())
+        return ViewHost.host(
             SidebarConversationRow(
                 conversation: conversation,
                 isSelected: false,
-                activityState: .actionRequired,
+                activityState: state,
+                status: status,
                 onSelect: {},
                 onRename: {},
                 onDelete: {}
             )
             .padding()
         )
-        XCTAssertNotNil(ViewHost.element(labelContains: "Action required", in: pendingWindow))
-
-        let processingWindow = ViewHost.host(
-            SidebarConversationRow(
-                conversation: conversation,
-                isSelected: false,
-                activityState: .working,
-                onSelect: {},
-                onRename: {},
-                onDelete: {}
-            )
-            .padding()
-        )
-        XCTAssertNotNil(ViewHost.element(labelContains: "Agent working", in: processingWindow))
-
-        let failedWindow = ViewHost.host(
-            SidebarConversationRow(
-                conversation: conversation,
-                isSelected: false,
-                activityState: .failedDelivery,
-                onSelect: {},
-                onRename: {},
-                onDelete: {}
-            )
-            .padding()
-        )
-        XCTAssertNotNil(ViewHost.element(labelContains: "Message failed to send", in: failedWindow))
-
-        let completedWindow = ViewHost.host(
-            SidebarConversationRow(
-                conversation: conversation,
-                isSelected: false,
-                activityState: .completedUnread,
-                onSelect: {},
-                onRename: {},
-                onDelete: {}
-            )
-            .padding()
-        )
-        XCTAssertNotNil(ViewHost.element(labelContains: "Background task completed", in: completedWindow))
     }
 }
 

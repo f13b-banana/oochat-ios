@@ -165,10 +165,26 @@ struct Conversation: Identifiable, Equatable {
     var updatedAt: Date
     var messages: [ChatMessage]
     var serverSession: [String: JSONValue]?
+    /// The Address this conversation was made under, stamped when a Device Link replaced it.
+    /// nil means the current Address. See `PreviousIdentity` in the Kit.
+    var identityAddress: String?
+    /// Set when the chat is a Tombstone: deleted on this device, kept as an empty row so History
+    /// Restore skips its session. Holds the session's `updated` recorded at deletion; nil = live.
+    var tombstoneUpdated: Date?
 
-    /// Placeholder title; `MessageDeliveryCoordinator` compares against it to decide whether
-    /// the first prompt should name the conversation.
-    static let defaultTitle = "New mobile session"
+    /// Deleted on this device: the row stays so History Restore can skip its session.
+    var isTombstone: Bool { tombstoneUpdated != nil }
+    /// The host's `updated` for this session, as History Restore last saw it; nil = never came from the host.
+    var hostUpdated: Date?
+
+    /// Placeholder title until the first real message names the chat (story 182, kit ChatTitle).
+    static let defaultTitle = "New chat"
+    /// Saved by earlier builds; such a chat is still waiting for a name.
+    static let legacyDefaultTitles: Set<String> = ["New mobile session"]
+
+    var isUntitled: Bool {
+        title == Self.defaultTitle || Self.legacyDefaultTitles.contains(title)
+    }
 
     init(agentID: String? = nil, agentAddress: String = "") {
         let now = Date()
@@ -191,7 +207,10 @@ struct Conversation: Identifiable, Equatable {
         createdAt: Date,
         updatedAt: Date,
         messages: [ChatMessage],
-        serverSession: [String: JSONValue]?
+        serverSession: [String: JSONValue]?,
+        identityAddress: String? = nil,
+        tombstoneUpdated: Date? = nil,
+        hostUpdated: Date? = nil
     ) {
         self.id = id
         self.title = title
@@ -202,6 +221,9 @@ struct Conversation: Identifiable, Equatable {
         self.updatedAt = updatedAt
         self.messages = messages
         self.serverSession = serverSession
+        self.identityAddress = identityAddress
+        self.tombstoneUpdated = tombstoneUpdated
+        self.hostUpdated = hostUpdated
     }
 
 }

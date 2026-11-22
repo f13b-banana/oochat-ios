@@ -12,13 +12,20 @@ enum ConversationActivityState: Hashable {
 
 @MainActor
 final class ChatViewModel: ObservableObject {
-    @Published var identity: StoredIdentity?
+    @Published var identity: StoredIdentity? {
+        didSet { conversationState.currentAddress = identity?.address }
+    }
     @Published private(set) var agentProfilesByAddress: [String: OIPAgentProfile] = [:]
     // Request mode per conversation: Remains set until mode_changed confirms it.
     @Published private(set) var pendingModeByConversationID: [String: ChatMode] = [:]
     // Server reported full access turns budget, keyed by conversation.
     @Published private(set) var fullAccessTurnsLeftByConversationID: [String: Int] = [:]
     @Published var isConnecting = false
+    /// History Restore outcome per agent id.
+    @Published var restoreStates: [String: RestoreState] = [:]
+    /// Restores in flight, by agent id and the Address fetched as; an overlapping refresh skips its own.
+    var restoresInFlight: Set<String> = []
+    var historyFetcher: SessionsFetching?
     /// An agent asked for an invite code on this conversation's connection; the pane shows a prompt until it is granted.
     @Published var onboardingByConversationID: [String: OnboardingPrompt] = [:]
     /// The code typed for onboarding, kept in memory until the agent turns out to be a Station that needs it to attach.
@@ -254,6 +261,18 @@ final class ChatViewModel: ObservableObject {
         return nil
     }
 
+    /// What the chat's sidebar row says in place of its time. A pending approval says Approve;
+    /// a question, plan or checkpoint says Reply, since there's nothing to approve.
+    func sidebarStatus(forConversationID conversationID: String) -> SidebarChatStatus? {
+        guard let state = activityState(forConversationID: conversationID) else {
+            return nil
+        }
+        if state == .actionRequired {
+            return interactionCoordinator.hasPendingApproval(for: conversationID) ? .approval : .reply
+        }
+        return state.sidebarStatus
+    }
+
     var backgroundActivityState: ConversationActivityState? {
         let backgroundConversationIDs = conversations.lazy
             .map(\.id)
@@ -347,6 +366,8 @@ final class ChatViewModel: ObservableObject {
         )
     }
 
+    let identityStore: IdentityStore
+
     init(
         store: ConversationRepository? = nil,
         identityStore: IdentityStore = IdentityStore(),
@@ -381,6 +402,8 @@ final class ChatViewModel: ObservableObject {
         self.presenceCoordinator = presenceCoordinator
         self.skillCoordinator = skillCoordinator
         self.client = transport
+        self.identityStore = identityStore
+        self.historyFetcher = transport as? SessionsFetching
         self.voiceInputController = voiceInputController ?? VoiceInputController()
         self.agentAddressDraft = conversationState.activeAgent?.address ?? ""
         do {
@@ -388,6 +411,7 @@ final class ChatViewModel: ObservableObject {
         } catch {
             self.errorMessage = error.localizedDescription
         }
+        conversationState.currentAddress = identity?.address
         if let error = conversationState.persistenceError {
             self.errorMessage = error.localizedDescription
         }
@@ -425,6 +449,9 @@ final class ChatViewModel: ObservableObject {
         }
         client.onSessionUpdate = { [weak self] conversationID, update in
             self?.apply(update, forConversationID: conversationID)
+        }
+        recoveryCoordinator.onConnected = { [weak self] conversationID in
+            self?.retryPendingHistory(afterConnecting: conversationID)
         }
         client.onProviderUpdate = { [weak self] conversationID, update in
             self?.conversationState.applyProviderUpdate(update, forConversationID: conversationID)
@@ -487,6 +514,18 @@ final class ChatViewModel: ObservableObject {
         conversationState.conversations(for: agent)
     }
 
+    func isFromPreviousIdentity(_ conversation: Conversation) -> Bool {
+        conversationState.isFromPreviousIdentity(conversation)
+    }
+
+    /// "Start a new chat with this agent", in place of the composer of a chat from a previous identity.
+    func startNewChat(withAgentOf conversation: Conversation) {
+        guard let agent = agent(for: conversation) else {
+            return
+        }
+        _ = createConversation(for: agent)
+    }
+
     func selectAgent(_ agent: SavedAgent) {
         conversationState.selectAgent(agent, currentDraft: prompt)
         prompt = conversationState.activeDraft
@@ -526,6 +565,10 @@ final class ChatViewModel: ObservableObject {
 
         guard HostedAgentClient.isHostedAgentAddress(trimmedAddress) else {
             errorMessage = "That doesn't look like an agent address. It should start with 0x followed by 64 characters."
+            return nil
+        }
+        if let id, let other = conversationState.agent(withAddress: trimmedAddress), other.id != id {
+            errorMessage = "\(other.name) already has that address."
             return nil
         }
         errorMessage = nil
@@ -627,6 +670,7 @@ final class ChatViewModel: ObservableObject {
     // Asks the host to switch. The picker shows the mode as pending until mode_changed.
     func setMode(_ mode: ChatMode) {
         guard let conversation = activeConversation,
+              !isFromPreviousIdentity(conversation),
               conversation.mode != mode,
               pendingModeByConversationID[conversation.id] == nil else {
             return

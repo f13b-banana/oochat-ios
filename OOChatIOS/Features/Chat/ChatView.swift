@@ -138,7 +138,7 @@ struct ChatScreen: View {
                                             viewModel.activeAgentSkills ?? [],
                                             dashboard: viewModel.activeDashboard
                                         ),
-                                        showsSkills: showsComposer
+                                        showsSkills: showsComposer && !viewModel.isFromPreviousIdentity(conversation)
                                     ) { skill in
                                         viewModel.prompt = "/\(skill.name) "
                                         promptFocusRequest += 1
@@ -155,8 +155,10 @@ struct ChatScreen: View {
                                     .transition(AppMotion.materialize(reduceMotion: reduceMotion))
                                 }
 
+                                // A chat from a previous identity never sends again, so it offers no Retry.
+                                let offersRetry = !viewModel.isFromPreviousIdentity(conversation)
                                 ForEach(timelineEntries(for: conversation)) { entry in
-                                    timelineView(for: entry)
+                                    timelineView(for: entry, offersRetry: offersRetry)
                                         .id(entry.id)
                                         .transition(AppMotion.materialize(reduceMotion: reduceMotion))
                                 }
@@ -276,7 +278,15 @@ struct ChatScreen: View {
                         }
                     }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
-                        if showsComposer {
+                        if showsComposer, viewModel.isFromPreviousIdentity(conversation) {
+                            PreviousIdentityBar {
+                                viewModel.startNewChat(withAgentOf: conversation)
+                            }
+                            .background {
+                                ChatSurfacePalette.backgroundBase
+                                    .ignoresSafeArea(edges: .bottom)
+                            }
+                        } else if showsComposer {
                             Composer(
                                 viewModel: viewModel,
                                 focusRequest: promptFocusRequest
@@ -518,6 +528,25 @@ struct ChatScreen: View {
             }
             .frame(minHeight: 24)
         }
+    }
+}
+
+/// Sits where the composer would in a chat from a previous identity: the chat stays readable, and the
+/// only way on is a new chat with the same agent as the current Address.
+struct PreviousIdentityBar: View {
+    let onNewChat: () -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Label(PreviousIdentity.label, systemImage: "clock.arrow.circlepath")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Button(PreviousIdentity.startNewChat, action: onNewChat)
+                .buttonStyle(.ooPrimary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal)
+        .padding(.vertical, 12)
     }
 }
 

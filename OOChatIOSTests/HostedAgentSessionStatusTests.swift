@@ -107,6 +107,232 @@ extension HostedAgentConnectionTests {
     }
 }
 
+// Mirrored Turn: a turn another device started on this session, seen live.
+extension HostedAgentConnectionTests {
+    private struct MirrorFixture {
+        let connection: HostedAgentConnection
+        let recorder: MirrorRecorder
+        let socket: MockHostedAgentWebSocket
+        let conversation: Conversation
+    }
+
+    private func mirrorFixture(id: String) async throws -> MirrorFixture {
+        let factory = MockHostedAgentSocketFactory()
+        let recorder = MirrorRecorder()
+        let connection = makeConnection(factory: factory, observer: recorder.observer)
+        let conversation = makeConversation(id: id)
+        _ = try await establish(connection, conversation: conversation, factory: factory)
+        let socket = try await factory.socket(at: 0)
+        return MirrorFixture(connection: connection, recorder: recorder, socket: socket, conversation: conversation)
+    }
+
+    func testUserMessageFromAnotherDeviceStartsAMirroredTurnThatStreamsToItsEnd() async throws {
+        let mirror = try await mirrorFixture(id: "mirror-live")
+        let (connection, recorder, socket, conversation) = (mirror.connection, mirror.recorder, mirror.socket, mirror.conversation)
+        let events = MirrorRecorder()
+
+        try socket.enqueueFrame([
+            "type": .string("user_message"), "content": .string("Translate hello"), "session_id": .string("mirror-live")
+        ])
+        try await recorder.wait { $0.contains(.mirroredTurn(prompt: "Translate hello")) }
+
+        let turn = Task {
+            try await connection.attachMirroredTurn(
+                conversation: conversation,
+                onEvent: { events.events.append($0) },
+                onInteraction: nil
+            )
+        }
+        try socket.enqueueFrame(["type": .string("tool_call"), "id": .string("t1"), "name": .string("search"), "args": .object([:])])
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("Hola")])
+
+        let result = try await turn.value
+        XCTAssertEqual(result.output, "Hola")
+        XCTAssertEqual(events.events, [.toolCall(id: "t1", name: "search", arguments: [:])])
+        await connection.close()
+    }
+
+    func testFramesThatArriveBeforeTheTurnIsAttachedAreReplayedInOrder() async throws {
+        let mirror = try await mirrorFixture(id: "mirror-early")
+        let (connection, recorder, socket, conversation) = (mirror.connection, mirror.recorder, mirror.socket, mirror.conversation)
+        let events = MirrorRecorder()
+
+        try socket.enqueueFrame(["type": .string("user_message"), "content": .string("hi")])
+        try socket.enqueueFrame(["type": .string("tool_call"), "id": .string("t1"), "name": .string("a"), "args": .object([:])])
+        try socket.enqueueFrame(["type": .string("tool_result"), "id": .string("t1"), "name": .string("a"), "result": .string("ok")])
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("done")])
+        try await recorder.wait { $0.contains { if case .mirroredTurn = $0 { return true } else { return false } } }
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        let result = try await connection.attachMirroredTurn(
+            conversation: conversation,
+            onEvent: { events.events.append($0) },
+            onInteraction: nil
+        )
+        XCTAssertEqual(result.output, "done")
+        XCTAssertEqual(events.events, [
+            .toolCall(id: "t1", name: "a", arguments: [:]),
+            .toolResult(id: "t1", name: "a", output: "ok", state: .completed)
+        ])
+        await connection.close()
+    }
+
+    func testReleasingTheMirrorBufferStopsHoldingFramesBack() async throws {
+        let mirror = try await mirrorFixture(id: "mirror-release")
+        let (connection, recorder, socket, conversation) = (mirror.connection, mirror.recorder, mirror.socket, mirror.conversation)
+        try socket.enqueueFrame(["type": .string("user_message"), "content": .string("declined")])
+        try await recorder.wait { $0.contains { if case .mirroredTurn = $0 { return true } else { return false } } }
+        let held = await connection.mirrorBuffer
+        XCTAssertNotNil(held)
+
+        await connection.releaseMirrorBuffer()
+
+        let released = await connection.mirrorBuffer
+        XCTAssertNil(released)
+        do {
+            _ = try await connection.attachMirroredTurn(conversation: conversation, onEvent: nil, onInteraction: nil)
+            XCTFail("nothing is held for a declined turn")
+        } catch HostedAgentClientError.closed {
+        }
+        await connection.close()
+    }
+
+    func testStoppingAMirroredTurnInterruptsTheHost() async throws {
+        let mirror = try await mirrorFixture(id: "mirror-stop")
+        let (connection, recorder, socket, conversation) = (mirror.connection, mirror.recorder, mirror.socket, mirror.conversation)
+        try socket.enqueueFrame(["type": .string("user_message"), "content": .string("long job")])
+        try await recorder.wait { $0.contains { if case .mirroredTurn = $0 { return true } else { return false } } }
+
+        let turn = Task {
+            try await connection.attachMirroredTurn(conversation: conversation, onEvent: nil, onInteraction: nil)
+        }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        turn.cancel()
+
+        _ = try await socket.waitForSentFrame(type: "INTERRUPT")
+        do {
+            _ = try await turn.value
+            XCTFail("a stopped turn must not complete")
+        } catch is CancellationError {
+        }
+    }
+
+    func testAnApprovalOnAMirroredTurnIsAnsweredFromThisDevice() async throws {
+        let mirror = try await mirrorFixture(id: "mirror-approve")
+        let (connection, recorder, socket, conversation) = (mirror.connection, mirror.recorder, mirror.socket, mirror.conversation)
+        try socket.enqueueFrame(["type": .string("user_message"), "content": .string("write it")])
+        try await recorder.wait { $0.contains { if case .mirroredTurn = $0 { return true } else { return false } } }
+        let turn = Task {
+            try await connection.attachMirroredTurn(
+                conversation: conversation,
+                onEvent: nil,
+                onInteraction: { _ in .approval(.allowOnce) }
+            )
+        }
+        try socket.enqueueFrame([
+            "type": .string("approval_needed"), "id": .string("ap1"),
+            "tool": .string("write_file")
+        ])
+        let response = try await socket.waitForSentFrame(type: "APPROVAL_RESPONSE")
+        XCTAssertEqual(try signedPayload(of: response)["request_id"], .string("ap1"))
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("written")])
+        _ = try await turn.value
+        await connection.close()
+    }
+
+    func testAMirroredTurnNobodyAttachesToExpiresAndLaterTurnsAreStillSeen() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let recorder = MirrorRecorder()
+        let connection = makeConnection(factory: factory, observer: recorder.observer, mirrorAttachGrace: 0.05)
+        _ = try await establish(connection, conversation: makeConversation(id: "mirror-expire"), factory: factory)
+        let socket = try await factory.socket(at: 0)
+
+        try socket.enqueueFrame(["type": .string("user_message"), "content": .string("first")])
+        try await recorder.wait { $0.contains(.mirroredTurn(prompt: "first")) }
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        try socket.enqueueFrame(["type": .string("user_message"), "content": .string("second")])
+        try await recorder.wait { $0.contains(.mirroredTurn(prompt: "second")) }
+        await connection.close()
+    }
+
+    func testOpeningAChatWhoseTurnIsStillRunningJoinsIt() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let recorder = MirrorRecorder()
+        let connection = makeConnection(factory: factory, observer: recorder.observer)
+        let connect = Task { try await connection.ensureConnected(conversation: makeConversation(id: "join")) }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        try socket.enqueueFrame([
+            "type": .string("CONNECTED"), "status": .string("running"), "session_id": .string("join"),
+            "chat_items": .array([
+                .object(["type": .string("user"), "content": .string("earlier")]),
+                .object(["type": .string("agent"), "content": .string("answer")]),
+                .object(["type": .string("user"), "content": .string("still going")])
+            ])
+        ])
+        _ = try await connect.value
+        try await recorder.wait { $0.contains(.mirroredTurn(prompt: "still going")) }
+        await connection.close()
+    }
+
+    func testOpeningAChatThatMovedOnReportsTheHostsItems() async throws {
+        let factory = MockHostedAgentSocketFactory()
+        let recorder = MirrorRecorder()
+        let connection = makeConnection(factory: factory, observer: recorder.observer)
+        let connect = Task { try await connection.ensureConnected(conversation: makeConversation(id: "moved")) }
+        let socket = try await factory.socket(at: 0)
+        _ = try await socket.waitForSentFrame(type: "CONNECT")
+        let items: [JSONValue] = [
+            .object(["type": .string("user"), "content": .string("q")]),
+            .object(["type": .string("agent"), "content": .string("a")])
+        ]
+        try socket.enqueueFrame([
+            "type": .string("CONNECTED"), "status": .string("connected"), "session_id": .string("moved"),
+            "chat_items": .array(items)
+        ])
+        _ = try await connect.value
+        try await recorder.wait { $0.contains(.caughtUp(items: items)) }
+        await connection.close()
+    }
+
+    func testAMirroredPromptIsIgnoredWhileThisDeviceHasItsOwnTurnPending() async throws {
+        let mirror = try await mirrorFixture(id: "mirror-own")
+        let (connection, recorder, socket, conversation) = (mirror.connection, mirror.recorder, mirror.socket, mirror.conversation)
+        let own = Task {
+            try await connection.sendPrompt(conversation: conversation, prompt: "mine", onEvent: nil, onInteraction: nil)
+        }
+        _ = try await socket.waitForSentFrame(type: "INPUT")
+        try socket.enqueueFrame(["type": .string("user_message"), "content": .string("theirs")])
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertFalse(recorder.updates.contains(.mirroredTurn(prompt: "theirs")))
+        try socket.enqueueFrame(["type": .string("OUTPUT"), "result": .string("ok")])
+        _ = try await own.value
+        await connection.close()
+    }
+}
+
+@MainActor
+private final class MirrorRecorder {
+    let observer = HostedAgentConnectionStateObserver()
+    var events: [HostedAgentEvent] = []
+    private(set) var updates: [HostedAgentSessionUpdate] = []
+
+    init() {
+        observer.updateHandler = { [weak self] _, update in
+            self?.updates.append(update)
+        }
+    }
+
+    func wait(timeout: TimeInterval = 2, until condition: ([HostedAgentSessionUpdate]) -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(updates) {
+            guard Date() < deadline else { throw HostedAgentTestError.timedOut }
+            try await Task.sleep(nanoseconds: 2_000_000)
+        }
+    }
+}
+
 // OUTPUT and SESSION_STATUS are read by the kit's OIPServerFrame.decode.
 extension HostedAgentConnectionTests {
     func testOutputWithoutAResultFailsThePromptInsteadOfInventingAReply() async throws {

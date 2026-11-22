@@ -88,7 +88,7 @@ extension ChatScreen {
     }
 
     @ViewBuilder
-    func timelineView(for entry: ChatTimelineEntry) -> some View {
+    func timelineView(for entry: ChatTimelineEntry, offersRetry: Bool) -> some View {
         switch entry {
         case .message(let message):
             let failure = message.deliveryState == .failed ? viewModel.failure(forMessageID: message.id) : nil
@@ -96,10 +96,9 @@ extension ChatScreen {
                 message: message,
                 menu: messageMenu(for: message),
                 failureReason: failure?.reason,
-                failureDetails: failure?.details
-            ) {
-                viewModel.retryMessage(message)
-            }
+                failureDetails: failure?.details,
+                onRetry: offersRetry ? { viewModel.retryMessage(message) } : nil
+            )
         case .toolCallGroup(let messages):
             ToolCallGroupView(messages: messages)
         case .workRoom(let workRoom):

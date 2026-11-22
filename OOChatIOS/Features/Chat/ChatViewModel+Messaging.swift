@@ -66,7 +66,9 @@ extension ChatViewModel {
     }
 
     private func latestSentPromptIndex() -> Int? {
+        // A chat from a previous identity never sends again, so nothing in it is redone.
         guard !isProcessing,
+              activeConversation.map(isFromPreviousIdentity) != true,
               let messages = activeConversation?.messages,
               let index = messages.lastIndex(where: { $0.role == .user }),
               messages[index].deliveryState == .sent else {

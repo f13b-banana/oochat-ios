@@ -368,7 +368,8 @@ enum ViewFixtures {
     static func chatViewModel(
         transport: MockAgentTransport = MockAgentTransport(),
         messages: [ChatMessage] = [],
-        voiceInputController: VoiceInputController? = nil
+        voiceInputController: VoiceInputController? = nil,
+        identityStore: IdentityStore = IdentityStore()
     ) -> ChatViewModel {
         let agent = agent()
         let conversation = conversation(agent: agent, messages: messages)
@@ -383,6 +384,7 @@ enum ViewFixtures {
         let monitor = MockNetworkMonitor()
         return ChatViewModel(
             store: repo,
+            identityStore: identityStore,
             client: transport,
             networkMonitor: monitor,
             voiceInputController: voiceInputController

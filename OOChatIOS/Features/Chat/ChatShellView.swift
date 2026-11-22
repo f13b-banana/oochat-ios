@@ -63,7 +63,7 @@ struct ChatShellView: View {
         let paneWidth = ControlCenterLayout.paneWidth(contentWidth: contentWidth)
         let dashboard = activeContent == .chat && !isStationShown ? viewModel.activeDashboard : nil
         return HStack(spacing: 0) {
-            sidebar(safeAreaInsets: safeAreaInsets, isOpen: true)
+            sidebar(safeAreaInsets: safeAreaInsets, isOpen: true, controlCenterBeside: paneWidth != nil)
                 .frame(width: SidebarShellMetrics.permanentSidebarWidth)
 
             Divider()
@@ -106,7 +106,7 @@ struct ChatShellView: View {
             let cornerRadius = SidebarShellMetrics.cornerRadius * progress
 
             return ZStack(alignment: .leading) {
-                sidebar(safeAreaInsets: safeAreaInsets, isOpen: isSidebarOpen)
+                sidebar(safeAreaInsets: safeAreaInsets, isOpen: isSidebarOpen, controlCenterBeside: false)
                 .frame(width: drawerWidth)
                 .offset(x: reduceMotion ? 0 : -SidebarShellMetrics.sidebarParallax * (1 - progress))
                 .zIndex(0)
@@ -153,7 +153,7 @@ struct ChatShellView: View {
         isStationShown ? nil : viewModel.activeDashboard
     }
 
-    private func sidebar(safeAreaInsets: EdgeInsets, isOpen: Bool) -> some View {
+    private func sidebar(safeAreaInsets: EdgeInsets, isOpen: Bool, controlCenterBeside: Bool) -> some View {
         ChatSidebarView(
             viewModel: viewModel,
             safeAreaInsets: safeAreaInsets,
@@ -178,8 +178,44 @@ struct ChatShellView: View {
             onSelectStation: { agent in
                 viewModel.selectStation(agent)
                 showContentFromSidebar(.chat)
-            }
+            },
+            opensLatestChatOnPick: isRegularWidth,
+            onOpenWorkRoom: openWorkRoom,
+            onShowChat: {
+                agentView = .chat
+                showContentFromSidebar(.chat)
+            },
+            controlCenterTitle: controlCenterTitle(beside: controlCenterBeside),
+            onShowControlCenter: { showControlCenter(beside: controlCenterBeside) }
         )
+    }
+
+    /// From the agent pane: the Work Room opens over the chat, with Back to return.
+    private func openWorkRoom(_ workRoomID: String) {
+        agentView = .chat
+        workRoomPath = [workRoomID]
+        showContentFromSidebar(.chat)
+    }
+
+    private func controlCenterTitle(beside: Bool) -> String {
+        guard beside else {
+            return "Open Control Center"
+        }
+        return isControlCenterOpen ? "Hide Control Center" : "Show Control Center"
+    }
+
+    /// Beside the chat it shows or hides its pane; on a phone it opens the Control tab.
+    private func showControlCenter(beside: Bool) {
+        guard !beside else {
+            withAnimation(AppMotion.stateChange(reduceMotion: reduceMotion)) {
+                isControlCenterOpen.toggle()
+                workRoomPath = []
+            }
+            return
+        }
+        workRoomPath = []
+        agentView = .control
+        showContentFromSidebar(.chat)
     }
 
     // Control Center
@@ -467,17 +503,18 @@ enum ControlCenterLayout {
 
 // Sidebar metrics and constants.
 private enum SidebarShellMetrics {
-    static let drawerWidthRatio: CGFloat = 0.80
-    static let maxDrawerWidth: CGFloat = 332
-    static let permanentSidebarWidth: CGFloat = 320
-    static let visibleChatWidth: CGFloat = 78
+    /// Wide enough for the rail and a pane whose chat titles still read: 334 pt on a 390 pt phone.
+    static let drawerWidthRatio: CGFloat = 0.86
+    static let maxDrawerWidth: CGFloat = 360
+    static let permanentSidebarWidth: CGFloat = 340
+    static let visibleChatWidth: CGFloat = 56
     static let cornerRadius: CGFloat = 34
     static let shadowOpacity: Double = 0.08
     static let shadowRadius: CGFloat = 16
     static let shadowOffset = CGSize(width: -2, height: 0)
     static let sidebarParallax: CGFloat = 18
-    static let scrimOpacity: Double = 0.025
-    static let reducedTransparencyScrimOpacity: Double = 0.05
+    static let scrimOpacity: Double = 0.3
+    static let reducedTransparencyScrimOpacity: Double = 0.45
     static let dragMinimumDistance: CGFloat = 16
     static let openEdgeWidth: CGFloat = 24
     static let closeThreshold: CGFloat = 0.40

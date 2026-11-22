@@ -167,6 +167,11 @@ final class ConversationState: ObservableObject {
     }
 
     /// Created on first use, so a view that reads it before the first provider frame observes the same store.
+    /// The store a chat already has, without making one: for views, which mustn't create state.
+    func existingWorkRoomStore(for conversationID: String) -> WorkRoomStore? {
+        workRoomStoresByConversationID[conversationID]
+    }
+
     func workRoomStore(for conversationID: String) -> WorkRoomStore {
         if let existing = workRoomStoresByConversationID[conversationID] {
             return existing

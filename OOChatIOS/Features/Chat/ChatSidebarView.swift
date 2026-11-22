@@ -1,6 +1,10 @@
 import ConnectOnionKit
 import SwiftUI
 
+/// The sidebar, as on the Mac: the agent rail, then the pane for the agent picked on it. On a
+/// phone, picking an agent only turns the pane to it; the chat changes when you pick one of its
+/// chats, so the drawer never swaps what's behind it unseen. Beside the chat (iPad), picking an
+/// agent opens its latest chat, as the Mac does.
 struct ChatSidebarView: View {
     @ObservedObject var viewModel: ChatViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -15,8 +19,24 @@ struct ChatSidebarView: View {
     /// Each change opens the Add Agent form (sent from the chat's empty state).
     var addAgentRequest = 0
     var onSelectStation: (SavedAgent) -> Void = { _ in }
+    /// Beside the chat, picking an agent on the rail opens its latest chat.
+    var opensLatestChatOnPick = false
+    var onOpenWorkRoom: (String) -> Void = { _ in }
+    /// Back to the chat, after a skill is put in its message box.
+    var onShowChat: () -> Void = {}
+    var controlCenterTitle: String?
+    var onShowControlCenter: () -> Void = {}
 
-    @State private var expandedAgentIDs = Set<String>()
+    /// The agent picked on the rail, kept only while the open chat's agent stays the same, so a
+    /// new open chat brings the pane with it in the same update.
+    @State private var railPick: RailPick?
+    @AppStorage("agentRailOrder") private var railOrder = ""
+    @State private var isChatsExpanded = true
+    @State private var isRoomsExpanded = true
+    /// Folded at first: skills are occasional, chats are the point.
+    @State private var isSkillsExpanded = false
+    @State private var showsAllSkills = false
+    @State private var showsAllChats = false
     @State private var deleteTarget: Conversation?
     @State private var conversationRenameTarget: Conversation?
     @State private var conversationRenameText = ""
@@ -25,7 +45,6 @@ struct ChatSidebarView: View {
     @State private var agentDeleteTarget: SavedAgent?
     @State private var agentFormDraft: AgentFormDraft?
     @State private var qrCodeShareURL: URL?
-    @State private var focusedAgentID: String?
     @State private var isSearchVisible = false
     @State private var sidebarSearchText = ""
     @FocusState private var isSearchFieldFocused: Bool
@@ -35,35 +54,29 @@ struct ChatSidebarView: View {
     }
 
     private var baseContent: some View {
-        ZStack(alignment: .bottom) {
-            sidebarList
-                .contentMargins(
-                    .bottom,
-                    SidebarMetrics.footerOverlayHeight + safeAreaInsets.bottom,
-                    for: .scrollContent
-                )
-
-            footer
-        }
-        .background {
-            OOColor.surface
-                .ignoresSafeArea()
-        }
-        .onAppear {
-            if expandedAgentIDs.isEmpty {
-                expandedAgentIDs = Set(viewModel.agents.prefix(1).map(\.id))
+        HStack(spacing: 0) {
+            AgentRail(
+                viewModel: viewModel,
+                agents: railAgents,
+                selectedID: paneAgent?.id,
+                safeAreaInsets: safeAreaInsets,
+                actions: railActions
+            )
+            VStack(spacing: 0) {
+                paneContent
             }
-            if let activeAgentID = viewModel.activeAgentID {
-                expandedAgentIDs.insert(activeAgentID)
-                focusedAgentID = activeAgentID
-            } else {
-                focusedAgentID = viewModel.agents.first?.id
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(OOColor.surface)
         }
-        .onChange(of: viewModel.activeAgentID) {
-            if let activeAgentID = viewModel.activeAgentID {
-                expandedAgentIDs.insert(activeAgentID)
-                focusedAgentID = activeAgentID
+        // A different agent starts with its search closed and its chats folded back to five.
+        .onChange(of: paneAgent?.id) {
+            resetSidebarSearch()
+            showsAllChats = false
+        }
+        // A removed agent leaves the saved order; a new one joins it at the end.
+        .onChange(of: viewModel.agents.map(\.id)) {
+            if !railOrder.isEmpty {
+                railOrder = AgentRailOrder.encode(railAgents.map(\.id))
             }
         }
         .onChange(of: addAgentRequest) {
@@ -84,6 +97,60 @@ struct ChatSidebarView: View {
         }
     }
 
+    /// Every agent, in the order you've put them on the rail.
+    private var railAgents: [SavedAgent] {
+        AgentRailOrder.ordered(viewModel.agents, by: AgentRailOrder.decode(railOrder))
+    }
+
+    /// The one picked on the rail, else the open chat's, else the first.
+    private var paneAgent: SavedAgent? {
+        let agents = viewModel.agents
+        if let railPick, railPick.activeAgentID == viewModel.activeAgentID,
+           let picked = agents.first(where: { $0.id == railPick.agentID }) {
+            return picked
+        }
+        return agents.first { $0.id == viewModel.activeAgentID } ?? railAgents.first
+    }
+
+    private var railActions: AgentRailActions {
+        AgentRailActions(
+            pick: pick,
+            newChat: { agent in
+                railPick = nil
+                if viewModel.isStation(agent) {
+                    onSelectStation(agent)
+                } else {
+                    onAddChat(agent)
+                }
+            },
+            move: { id, targetID in
+                railOrder = AgentRailOrder.encode(AgentRailOrder.moving(id, to: targetID, in: railAgents.map(\.id)))
+            },
+            step: { id, step in
+                railOrder = AgentRailOrder.encode(AgentRailOrder.moving(id, by: step, in: railAgents.map(\.id)))
+            },
+            addAgent: beginAddingAgent,
+            settings: onSettings
+        )
+    }
+
+    /// A Station opens at once: it has no chats to pick from.
+    private func pick(_ agent: SavedAgent) {
+        railPick = RailPick(agentID: agent.id, activeAgentID: viewModel.activeAgentID)
+        if viewModel.isStation(agent) {
+            onSelectStation(agent)
+            return
+        }
+        guard opensLatestChatOnPick, viewModel.activeAgentID != agent.id else {
+            return
+        }
+        if let latest = listedConversations(for: agent).first {
+            onSelectConversation(latest)
+        } else {
+            onAddChat(agent)
+        }
+    }
+
     private func alerts(_ view: some View) -> some View {
         view
             .alert("Delete Chat", isPresented: isDeleting, presenting: deleteTarget) { conversation in
@@ -95,7 +162,7 @@ struct ChatSidebarView: View {
                     deleteTarget = nil
                 }
             } message: { conversation in
-                Text("\"\(conversation.title)\" will be permanently deleted.")
+                Text("Deleting \"\(conversation.title)\" also deletes its messages and keeps its server record hidden on this device.")
             }
             .alert("Rename Chat", isPresented: isRenamingConversation, presenting: conversationRenameTarget) { conversation in
                 TextField("Title", text: $conversationRenameText)
@@ -154,65 +221,220 @@ struct ChatSidebarView: View {
             }
     }
 
-    private var sidebarList: some View {
+    @ViewBuilder
+    private var paneContent: some View {
+        if let agent = paneAgent {
+            AgentPaneHeader(
+                agent: agent,
+                isOnline: viewModel.isAgentOnline(agent),
+                isStation: viewModel.isStation(agent),
+                actions: AgentPaneHeaderActions(
+                    rename: beginRenaming,
+                    edit: beginEditing,
+                    showQRCode: { qrCodeShareURL = $0 },
+                    delete: { agentDeleteTarget = $0 }
+                ),
+                topInset: safeAreaInsets.top
+            )
+            OOColor.hairline
+                .frame(height: 1)
+                .accessibilityHidden(true)
+            paneList(agent)
+        } else {
+            emptyPane
+        }
+    }
+
+    /// No agents yet: the pane says what to do, and its button is the rail's ＋ spelled out.
+    private var emptyPane: some View {
+        VStack(alignment: .leading, spacing: OOSpace.medium) {
+            Text("Add an agent by its address to start chatting.")
+                .font(.subheadline)
+                .foregroundStyle(OOColor.inkSecondary)
+            Button(action: beginAddingAgent) {
+                Label("Add agent", systemImage: "plus")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(OOColor.onPrimary)
+                    .padding(.horizontal, OOSpace.medium)
+                    .frame(height: 34)
+                    .background(
+                        OOColor.primary,
+                        in: RoundedRectangle(cornerRadius: OOSidebarMetrics.rowCornerRadius, style: .continuous)
+                    )
+                    .frame(minHeight: ooMinimumTarget)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(SidebarFooterButtonStyle())
+        }
+        .padding(.horizontal, OOSpace.medium)
+        .padding(.top, safeAreaInsets.top + AgentRail.headerHeight + OOSpace.medium)
+    }
+
+    private func paneList(_ agent: SavedAgent) -> some View {
         List {
-            header
-                .listRowInsets(
-                    EdgeInsets(
-                        top: safeAreaInsets.top + SidebarMetrics.headerTopPadding,
-                        leading: SidebarMetrics.outerLeading,
-                        bottom: SidebarMetrics.headerBottomPadding,
-                        trailing: SidebarMetrics.outerTrailing
-                    )
-                )
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-
-            agentsHeader
-                .listRowInsets(
-                    EdgeInsets(
-                        top: SidebarMetrics.agentsHeaderTopPadding,
-                        leading: SidebarMetrics.outerLeading,
-                        bottom: SidebarMetrics.agentsHeaderBottomPadding,
-                        trailing: SidebarMetrics.outerTrailing
-                    )
-                )
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-
-            if viewModel.agents.isEmpty {
-                Button(action: beginAddingAgent) {
-                    Label("Add agent", systemImage: "plus")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(AppTheme.primary)
-                        .frame(maxWidth: .infinity, minHeight: ooMinimumTarget, alignment: .leading)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .listRowInsets(SidebarMetrics.emptyRowInsets)
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-            } else if visibleAgents.isEmpty {
-                Text("No matches")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .listRowInsets(SidebarMetrics.emptyRowInsets)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
+            if viewModel.isStation(agent) {
+                stationRows(agent)
             } else {
-                ForEach(visibleAgents) { agent in
-                    agentRows(for: agent)
+                header(for: agent)
+                    .paneRow(top: OOSpace.small)
+                if let state = viewModel.restoreStates[agent.id] {
+                    Text(Self.restoreCaption(state))
+                        .font(.caption)
+                        .foregroundStyle(OOColor.inkSecondary)
+                        .padding(.horizontal, OOSidebarMetrics.horizontalPadding)
+                        .paneRow(top: OOSpace.tiny)
+                }
+                chatsSection(agent)
+            }
+            if agent.id == viewModel.activeAgentID, !viewModel.isStation(agent),
+               let conversationID = viewModel.activeConversationID {
+                agentSections(conversationID: conversationID)
+            }
+        }
+        .refreshable { await viewModel.refreshHistory() }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .contentMargins(.bottom, safeAreaInsets.bottom + OOSpace.medium, for: .scrollContent)
+        .environment(\.defaultMinListRowHeight, SidebarMetrics.minimumRowHeight)
+    }
+
+    @ViewBuilder
+    private func stationRows(_ agent: SavedAgent) -> some View {
+        AgentPaneSectionHeader(title: "Station")
+            .paneRow(top: OOSpace.small)
+        AgentPaneActionRow(title: "Open Station", systemImage: "terminal", isProminent: true) {
+            onSelectStation(agent)
+        }
+        .paneRow()
+    }
+
+    /// What the open chat offers, under its agent's chats: its Work Rooms, its skills (tap one to put
+    /// it in the composer) and the agent's Control Center. Only for the open chat's agent, because
+    /// these belong to a live connection. Rows of this list, not a view of their own, so the list
+    /// diffs them like the chats when the open chat changes.
+    @ViewBuilder
+    private func agentSections(conversationID: String) -> some View {
+        let rooms = viewModel.conversationState.existingWorkRoomStore(for: conversationID)?.workRooms ?? []
+        if !rooms.isEmpty {
+            foldingHeader("Work Rooms", isExpanded: $isRoomsExpanded)
+            if isRoomsExpanded {
+                ForEach(rooms) { room in
+                    AgentPaneActionRow(title: room.displayTitle, systemImage: "terminal") {
+                        onOpenWorkRoom(room.id)
+                    }
+                    .paneRow()
                 }
             }
         }
-        .listStyle(.plain)
-        .listSectionSpacing(.compact)
-        .scrollContentBackground(.hidden)
-        .environment(\.defaultMinListRowHeight, SidebarMetrics.minimumRowHeight)
-        .animation(
-            AppMotion.stateChange(reduceMotion: reduceMotion),
-            value: expandedAgentIDs
+        if let skills = viewModel.activeAgentSkills, !skills.isEmpty {
+            foldingHeader("Skills", isExpanded: $isSkillsExpanded)
+            if isSkillsExpanded {
+                skillRows(skills)
+            }
+        }
+        AgentPaneSectionHeader(title: "Agent")
+            .paneRow(top: OOSpace.small)
+        if viewModel.activeDashboard != nil, let controlCenterTitle {
+            AgentPaneActionRow(title: controlCenterTitle, systemImage: "square.grid.2x2", action: onShowControlCenter)
+                .paneRow()
+        }
+        AgentPaneActionRow(title: "Refresh dashboard", systemImage: "arrow.clockwise", action: refreshDashboard)
+            .accessibilityHint("Reconnects to the agent, which sends its dashboard again")
+            .paneRow()
+    }
+
+    @ViewBuilder
+    private func skillRows(_ skills: [OIPAgentSkill]) -> some View {
+        let shown = showsAllSkills ? skills : Array(skills.prefix(Self.skillsBeforeShowAll))
+        ForEach(shown, id: \.name) { skill in
+            AgentPaneActionRow(title: "/\(skill.name)", systemImage: "sparkle") {
+                viewModel.prompt = "/\(skill.name) "
+                onShowChat()
+            }
+            .accessibilityHint(skill.description ?? "Puts the skill in the message box")
+            .paneRow()
+        }
+        // The first four, then "Show all (n)" / "Show less", as the chats do.
+        if skills.count > Self.skillsBeforeShowAll {
+            AgentPaneShowAllRow(isShowingAll: showsAllSkills, total: skills.count, indent: 0) {
+                withAnimation(AppMotion.stateChange(reduceMotion: reduceMotion)) {
+                    showsAllSkills.toggle()
+                }
+            }
+            .paneRow()
+        }
+    }
+
+    private func foldingHeader(_ title: String, isExpanded: Binding<Bool>) -> some View {
+        AgentPaneSectionHeader(title: title, isExpanded: isExpanded.wrappedValue) {
+            withAnimation(AppMotion.stateChange(reduceMotion: reduceMotion)) {
+                isExpanded.wrappedValue.toggle()
+            }
+        }
+        .paneRow(top: OOSpace.small)
+    }
+
+    private func refreshDashboard() {
+        Task {
+            await viewModel.reconnect()
+        }
+    }
+
+    static let skillsBeforeShowAll = 4
+
+    @ViewBuilder
+    private func chatsSection(_ agent: SavedAgent) -> some View {
+        let listed = listedConversations(for: agent)
+        let conversations = visibleConversations(for: agent)
+        let isExpanded = isSearching || isChatsExpanded
+        // No chats yet: no section, as New chat sits right above (no filler under an empty agent).
+        if !listed.isEmpty || isSearching {
+            chatsList(listed: listed, conversations: conversations, isExpanded: isExpanded)
+        }
+    }
+
+    @ViewBuilder
+    private func chatsList(listed: [Conversation], conversations: [Conversation], isExpanded: Bool) -> some View {
+        // Searching opens the section and lists every match, so the header doesn't fold it then.
+        AgentPaneSectionHeader(
+            title: listed.isEmpty ? "Chats" : "Chats · \(listed.count)",
+            isExpanded: isExpanded,
+            toggle: isSearching ? nil : toggleChats
         )
+        .paneRow(top: OOSpace.small)
+        if isExpanded {
+            if conversations.isEmpty {
+                Text("No matches")
+                    .font(.subheadline)
+                    .foregroundStyle(OOColor.inkTertiary)
+                    .padding(.leading, OOSidebarMetrics.horizontalPadding)
+                    .frame(maxWidth: .infinity, minHeight: OOSidebarMetrics.rowHeight, alignment: .leading)
+                    .paneRow()
+            }
+            let shown = isSearching || showsAllChats ? conversations : firstChats(of: conversations)
+            ForEach(Array(shown.enumerated()), id: \.element.id) { index, conversation in
+                conversationButton(conversation, showsSeparator: index < shown.count - 1)
+                    .transition(AppMotion.disclosure(reduceMotion: reduceMotion))
+            }
+            if !isSearching && conversations.count > SidebarMetrics.chatsBeforeShowAll {
+                AgentPaneShowAllRow(
+                    isShowingAll: showsAllChats,
+                    total: conversations.count,
+                    indent: OOSidebarMetrics.horizontalPadding
+                ) {
+                    withAnimation(AppMotion.stateChange(reduceMotion: reduceMotion)) {
+                        showsAllChats.toggle()
+                    }
+                }
+                .paneRow()
+            }
+        }
+    }
+
+    private func toggleChats() {
+        withAnimation(AppMotion.stateChange(reduceMotion: reduceMotion)) {
+            isChatsExpanded.toggle()
+        }
     }
 
     private var searchQuery: String {
@@ -223,77 +445,59 @@ struct ChatSidebarView: View {
         !searchQuery.isEmpty
     }
 
-    private var visibleAgents: [SavedAgent] {
-        ChatSidebarSearch.visibleAgents(agents: viewModel.agents, query: searchQuery) { agent in
-            matchingConversations(for: agent, query: searchQuery)
-        }
-    }
-
-    private var sidebarResultCount: Int {
-        ChatSidebarSearch.resultCount(visibleAgents: visibleAgents, query: searchQuery) { agent in
-            matchingConversations(for: agent, query: searchQuery)
-        }
-    }
-
-    private var header: some View {
+    private func header(for agent: SavedAgent) -> some View {
         ChatSidebarHeaderView(
-            onlineAgentCount: viewModel.onlineAgentCount,
             isSearchVisible: isSearchVisible,
             searchText: $sidebarSearchText,
             searchFieldFocus: $isSearchFieldFocused,
-            onToggleSearch: toggleSidebarSearch
+            attentionItems: attentionItems(for: agent),
+            onOpenChat: onSelectConversation,
+            onNewChat: { onAddChat(agent) },
+            onToggleSearch: toggleSidebarSearch,
+            agentID: agent.id
         )
     }
 
-    private var agentsHeader: some View {
-        HStack {
-            Text(isSearching ? "SEARCH RESULTS" : "AGENTS")
-            Spacer()
-            Text("\(sidebarResultCount)")
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, SidebarMetrics.sectionHeaderHorizontalPadding)
-    }
-
-    private var footer: some View {
-        ChatSidebarFooterView(
-            safeAreaInsets: safeAreaInsets,
-            onAddAgent: beginAddingAgent,
-            onSettings: onSettings
-        )
-    }
-
-    @ViewBuilder
-    private func agentRows(for agent: SavedAgent) -> some View {
-        agentRow(for: agent)
-            .listRowInsets(SidebarMetrics.agentRowInsets)
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
-
-        if expandedAgentIDs.contains(agent.id) || isSearching {
-            let conversations = visibleConversations(for: agent)
-            if conversations.isEmpty {
-                if !isSearching {
-                    Text("No chat sessions")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .transition(AppMotion.disclosure(reduceMotion: reduceMotion))
-                        .listRowInsets(SidebarMetrics.emptySessionRowInsets)
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                }
-            } else {
-                ForEach(conversations) { conversation in
-                    conversationButton(conversation)
-                        .transition(AppMotion.disclosure(reduceMotion: reduceMotion))
-                }
+    /// Only this agent's chats: the ✋ on another agent's tile says where else you're needed.
+    private func attentionItems(for agent: SavedAgent) -> [SidebarAttentionItem] {
+        viewModel.conversations(for: agent).compactMap { conversation -> SidebarAttentionItem? in
+            guard let status = viewModel.sidebarStatus(forConversationID: conversation.id),
+                  status.needsYou else {
+                return nil
             }
+            return SidebarAttentionItem(conversation: conversation, status: status)
+        }
+    }
+
+    static func restoreCaption(_ state: RestoreState) -> String {
+        switch state {
+        case .restored: return "History restored"
+        case .pending: return "History pending: agent unreachable"
+        case .failed: return "Couldn't restore history"
+        }
+    }
+
+    /// The first few chats, plus the open one when it's further down: opening an older chat
+    /// from the attention panel must not highlight a row you can't see.
+    private func firstChats(of conversations: [Conversation]) -> [Conversation] {
+        var shown = Array(conversations.prefix(SidebarMetrics.chatsBeforeShowAll))
+        if case .conversation(let selectedID)? = selection,
+           !shown.contains(where: { $0.id == selectedID }),
+           let selected = conversations.first(where: { $0.id == selectedID }) {
+            shown.append(selected)
+        }
+        return shown
+    }
+
+    /// A chat is listed once it has a message; an empty one only while it's the open chat.
+    private func listedConversations(for agent: SavedAgent) -> [Conversation] {
+        viewModel.conversations(for: agent).filter {
+            !$0.messages.isEmpty || selection == .conversation($0.id)
         }
     }
 
     private func visibleConversations(for agent: SavedAgent) -> [Conversation] {
-        let conversations = viewModel.conversations(for: agent)
+        let conversations = listedConversations(for: agent)
         guard isSearching else {
             return conversations
         }
@@ -331,47 +535,16 @@ struct ChatSidebarView: View {
         isSearchFocused = false
     }
 
-    private func agentRow(for agent: SavedAgent) -> some View {
-        SidebarAgentRow(
-            agent: agent,
-            isExpanded: expandedAgentIDs.contains(agent.id),
-            isOnline: viewModel.isAgentOnline(agent),
-            onToggle: {
-                if viewModel.isStation(agent) {
-                    focusedAgentID = agent.id
-                    onSelectStation(agent)
-                } else {
-                    toggleAgent(agent)
-                }
-            },
-            onRename: {
-                beginRenaming(agent)
-            },
-            onEdit: {
-                beginEditing(agent)
-            },
-            onAddChat: {
-                focusedAgentID = agent.id
-                expandedAgentIDs.insert(agent.id)
-                onAddChat(agent)
-            },
-            onShowQRCode: { shareURL in
-                qrCodeShareURL = shareURL
-            },
-            onDelete: {
-                agentDeleteTarget = agent
-            },
-            isStation: viewModel.isStation(agent)
-        )
-    }
-
-    private func conversationButton(_ conversation: Conversation) -> some View {
+    private func conversationButton(_ conversation: Conversation, showsSeparator: Bool) -> some View {
         SidebarConversationRow(
             conversation: conversation,
             isSelected: selection == .conversation(conversation.id),
             activityState: viewModel.activityState(forConversationID: conversation.id),
+            isFromPreviousIdentity: viewModel.isFromPreviousIdentity(conversation),
+            status: viewModel.sidebarStatus(forConversationID: conversation.id),
+            showsSeparator: showsSeparator,
+            indent: OOSidebarMetrics.horizontalPadding,
             onSelect: {
-                focusedAgentID = conversation.agentID
                 onSelectConversation(conversation)
             },
             onRename: {
@@ -383,19 +556,7 @@ struct ChatSidebarView: View {
         )
     }
 
-    private func toggleAgent(_ agent: SavedAgent) {
-        focusedAgentID = agent.id
-        withAnimation(AppMotion.stateChange(reduceMotion: reduceMotion)) {
-            if expandedAgentIDs.contains(agent.id) {
-                expandedAgentIDs.remove(agent.id)
-            } else {
-                expandedAgentIDs.insert(agent.id)
-            }
-        }
-    }
-
     private func beginRenaming(_ agent: SavedAgent) {
-        focusedAgentID = agent.id
         agentRenameText = agent.name
         agentRenameTarget = agent
     }
@@ -405,7 +566,6 @@ struct ChatSidebarView: View {
     }
 
     private func beginEditing(_ agent: SavedAgent) {
-        focusedAgentID = agent.id
         agentFormDraft = AgentFormDraft(agent: agent)
     }
 
@@ -419,8 +579,7 @@ struct ChatSidebarView: View {
             return false
         }
 
-        focusedAgentID = agent.id
-        expandedAgentIDs.insert(agent.id)
+        railPick = nil
         agentFormDraft = nil
 
         if savedDraft.shouldConnectAfterSave {
@@ -434,8 +593,7 @@ struct ChatSidebarView: View {
     }
 
     private func connect(_ agent: SavedAgent) {
-        focusedAgentID = agent.id
-        expandedAgentIDs.insert(agent.id)
+        railPick = nil
         viewModel.selectAgent(agent)
 
         Task { @MainActor in
@@ -464,7 +622,6 @@ struct ChatSidebarView: View {
     }
 
     private func beginRenaming(_ conversation: Conversation) {
-        focusedAgentID = conversation.agentID
         conversationRenameText = conversation.title
         conversationRenameTarget = conversation
     }
@@ -525,4 +682,10 @@ struct ChatSidebarView: View {
             }
         )
     }
+}
+
+/// An agent picked on the rail, and the open chat's agent when it was picked.
+private struct RailPick: Equatable {
+    let agentID: String
+    let activeAgentID: String?
 }

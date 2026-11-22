@@ -35,4 +35,17 @@ struct SavedAgent: Identifiable, Equatable {
         }
         return "Agent \(address.prefix(8))...\(address.suffix(6))"
     }
+
+    /// The name the sidebar shows. A blank name says "Agent"; the default name (the address) is
+    /// shortened to 0x1234...abcd.
+    var displayName: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return "Agent"
+        }
+        guard trimmed == Self.defaultName(for: address), address.count > 12 else {
+            return trimmed
+        }
+        return "\(address.prefix(6))...\(address.suffix(4))"
+    }
 }

@@ -23,14 +23,40 @@ final class ChatSidebarViewTests: XCTestCase {
 
         XCTAssertNil(ViewHost.element(labelContains: "No agents connected", in: window))
         XCTAssertNotNil(ViewHost.element(labelContains: "Add agent", in: window))
-        XCTAssertNotNil(ViewHost.element(labelContains: "AGENTS", in: window))
         XCTAssertTrue(ViewHost.activateButton(labelContains: "Settings", in: window))
         XCTAssertEqual(settingsCount, 1)
 
-        XCTAssertTrue(ViewHost.activateButton(labelContains: "Add Agent", in: window))
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "Add agent", in: window))
         ViewHost.pump(0.3)
         XCTAssertNotNil(ViewHost.element(labelContains: "Agent address", in: window))
         XCTAssertTrue(ViewHost.activateButton(labelContains: "Cancel", in: window))
+    }
+
+    func testSidebarLabelsAChatFromAPreviousIdentity() {
+        let fixture = SidebarFixture()
+        var old = fixture.alphaConversation
+        old.identityAddress = "0x" + String(repeating: "0", count: 64)
+        let viewModel = makeViewModel(
+            agents: [fixture.alphaAgent],
+            conversations: [old],
+            activeAgentID: fixture.alphaAgent.id,
+            activeConversationID: old.id
+        )
+        let window = ViewHost.host(
+            ChatSidebarView(
+                viewModel: viewModel,
+                safeAreaInsets: .init(),
+                isSidebarOpen: true,
+                isSearchFocused: .constant(false),
+                selection: .conversation(old.id),
+                onSelectConversation: { _ in },
+                onAddChat: { _ in },
+                onConnected: {},
+                onSettings: {}
+            )
+        )
+
+        XCTAssertNotNil(ViewHost.element(labelContains: "From a previous identity", in: window))
     }
 
     func testSidebarShowsActiveAgentConversationAndSelectsIt() {
@@ -65,7 +91,7 @@ final class ChatSidebarViewTests: XCTestCase {
         XCTAssertEqual(selectedConversationID, fixture.alphaConversation.id)
     }
 
-    func testSidebarExpandsAnotherAgent() {
+    func testPickingAnAgentOnTheRailShowsItsChats() {
         let fixture = SidebarFixture()
         let viewModel = makeViewModel(
             agents: [fixture.alphaAgent, fixture.betaAgent],
@@ -88,11 +114,10 @@ final class ChatSidebarViewTests: XCTestCase {
         )
 
         XCTAssertTrue(ViewHost.activateButton(labelContains: "Beta Agent", in: window))
-        ViewHost.pump(0.2)
-        XCTAssertNotNil(ViewHost.element(labelContains: "Beta Backlog", in: window))
+        XCTAssertNotNil(ViewHost.waitForElement(labelContains: "Beta Backlog", in: window, timeout: 2))
     }
 
-    func testSidebarExpandsAgentWhenActiveAgentChanges() {
+    func testPaneFollowsTheActiveAgent() {
         let fixture = SidebarFixture()
         let viewModel = makeViewModel(
             agents: [fixture.alphaAgent, fixture.betaAgent],
@@ -116,8 +141,34 @@ final class ChatSidebarViewTests: XCTestCase {
 
         XCTAssertNil(ViewHost.element(labelContains: "Beta Backlog", in: window))
         viewModel.selectAgent(fixture.betaAgent)
-        ViewHost.pump(0.2)
+        XCTAssertNotNil(ViewHost.waitForElement(labelContains: "Beta Backlog", in: window, timeout: 2))
+    }
+
+    func testPaneShowsTheActiveAgentsChats() {
+        let fixture = SidebarFixture()
+        let viewModel = makeViewModel(
+            agents: [fixture.alphaAgent, fixture.betaAgent],
+            conversations: [fixture.alphaConversation, fixture.betaConversation],
+            activeAgentID: fixture.betaAgent.id,
+            activeConversationID: fixture.betaConversation.id
+        )
+        let window = ViewHost.host(
+            ChatSidebarView(
+                viewModel: viewModel,
+                safeAreaInsets: .init(),
+                isSidebarOpen: true,
+                isSearchFocused: .constant(false),
+                selection: .conversation(fixture.betaConversation.id),
+                onSelectConversation: { _ in },
+                onAddChat: { _ in XCTFail("unexpected add chat") },
+                onConnected: { XCTFail("unexpected connection") },
+                onSettings: {}
+            )
+        )
+
         XCTAssertNotNil(ViewHost.element(labelContains: "Beta Backlog", in: window))
+        XCTAssertNotNil(ViewHost.element(labelContains: "Refresh dashboard", in: window))
+        XCTAssertNil(ViewHost.element(labelContains: "Alpha Planning", in: window))
     }
 
     func testSidebarShowsNoChatSessionsForExpandedAgent() {
@@ -142,7 +193,7 @@ final class ChatSidebarViewTests: XCTestCase {
         )
 
         XCTAssertNotNil(ViewHost.element(labelContains: "Alpha Agent", in: window))
-        XCTAssertNotNil(ViewHost.element(labelContains: "No chat sessions", in: window))
+        XCTAssertNil(ViewHost.element(labelContains: "No chats yet", in: window), "no filler under an empty agent")
     }
 
     func testSidebarDefaultsToFirstAgentWhenNoAgentIsActive() {
@@ -169,56 +220,31 @@ final class ChatSidebarViewTests: XCTestCase {
         XCTAssertNil(ViewHost.element(labelContains: "Beta Backlog", in: window))
     }
 
-    func testSidebarSearchShowsMatchingConversations() {
-        let fixture = SidebarFixture()
-        let conversations = [fixture.alphaConversation, fixture.betaConversation]
-        let query = ChatSidebarSearch.query(from: "  Beta  ")
-        let visibleAgents = ChatSidebarSearch.visibleAgents(
-            agents: [fixture.alphaAgent, fixture.betaAgent],
-            query: query
-        ) { agent in
-            conversations.matching(query, for: agent)
-        }
+    func testRailOrderKeepsNewAgentsLastAndMovesTiles() {
+        let start = Date(timeIntervalSince1970: 0)
+        let first = SavedAgent(id: "a", address: sidebarHostedAddress, name: "A", createdAt: start)
+        let second = SavedAgent(id: "b", address: sidebarHostedAddress, name: "B", createdAt: start.addingTimeInterval(1))
+        let third = SavedAgent(id: "c", address: sidebarHostedAddress, name: "C", createdAt: start.addingTimeInterval(2))
 
-        XCTAssertEqual(visibleAgents.map(\.id), [fixture.betaAgent.id])
-        XCTAssertEqual(
-            ChatSidebarSearch.resultCount(visibleAgents: visibleAgents, query: query) { agent in
-                conversations.matching(query, for: agent)
-            },
-            2
-        )
+        // The saved list is newest first; with no order yet the rail is oldest first.
+        XCTAssertEqual(AgentRailOrder.ordered([third, second, first], by: []).map(\.id), ["a", "b", "c"])
+        // A known order wins, and an agent it doesn't know yet goes under the last one.
+        XCTAssertEqual(AgentRailOrder.ordered([third, second, first], by: ["b", "a"]).map(\.id), ["b", "a", "c"])
+
+        XCTAssertEqual(AgentRailOrder.moving("a", to: "c", in: ["a", "b", "c"]), ["b", "c", "a"])
+        XCTAssertEqual(AgentRailOrder.moving("c", to: "a", in: ["a", "b", "c"]), ["c", "a", "b"])
+        XCTAssertEqual(AgentRailOrder.moving("b", by: -1, in: ["a", "b", "c"]), ["b", "a", "c"])
+        XCTAssertEqual(AgentRailOrder.moving("c", by: 1, in: ["a", "b", "c"]), ["a", "b", "c"])
+        XCTAssertEqual(AgentRailOrder.decode(AgentRailOrder.encode(["a", "b"])), ["a", "b"])
     }
 
-    func testSidebarSearchCanMatchAgentAddress() {
-        let fixture = SidebarFixture()
-        let visibleAgents = ChatSidebarSearch.visibleAgents(
-            agents: [fixture.alphaAgent, fixture.betaAgent],
-            query: "bbbb"
-        ) { _ in
-            []
-        }
-
-        XCTAssertEqual(visibleAgents.map(\.id), [fixture.betaAgent.id])
-        XCTAssertEqual(
-            ChatSidebarSearch.resultCount(visibleAgents: visibleAgents, query: "bbbb") { _ in [] },
-            1
-        )
-    }
-
-    func testSidebarSearchShowsNoMatches() {
-        let fixture = SidebarFixture()
-        let visibleAgents = ChatSidebarSearch.visibleAgents(
-            agents: [fixture.alphaAgent, fixture.betaAgent],
-            query: "Gamma"
-        ) { _ in
-            []
-        }
-
-        XCTAssertTrue(visibleAgents.isEmpty)
-        XCTAssertEqual(
-            ChatSidebarSearch.resultCount(visibleAgents: visibleAgents, query: "Gamma") { _ in [] },
-            0
-        )
+    func testRailDropFindsTheTileUnderThePointer() {
+        // 8 pt top padding, then 48 pt slots 4 pt apart.
+        XCTAssertEqual(AgentRailDropDelegate.index(atY: 0, count: 3), 0)
+        XCTAssertEqual(AgentRailDropDelegate.index(atY: 30, count: 3), 0)
+        XCTAssertEqual(AgentRailDropDelegate.index(atY: 70, count: 3), 1)
+        XCTAssertEqual(AgentRailDropDelegate.index(atY: 500, count: 3), 2, "below the last tile is the last tile")
+        XCTAssertNil(AgentRailDropDelegate.index(atY: 30, count: 0))
     }
 
     func testSidebarAddAgentSheetSavesAgent() {
@@ -238,7 +264,7 @@ final class ChatSidebarViewTests: XCTestCase {
             )
         )
 
-        XCTAssertTrue(ViewHost.activateButton(labelContains: "Add Agent", in: window))
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "Add agent", in: window))
         XCTAssertNotNil(ViewHost.waitForElement(labelContains: "Agent address", in: window))
 
         XCTAssertTrue(ViewHost.enterText("Saved Agent", intoTextInput: "Name", in: window))
@@ -283,15 +309,6 @@ final class ChatSidebarViewTests: XCTestCase {
 }
 
 private let sidebarHostedAddress = "0x" + String(repeating: "dd", count: 32)
-
-private extension Array where Element == Conversation {
-    func matching(_ query: String, for agent: SavedAgent) -> [Conversation] {
-        filter { conversation in
-            conversation.agentID == agent.id
-                && conversation.title.localizedStandardContains(query)
-        }
-    }
-}
 
 private struct SidebarOpenHarness: View {
     @ObservedObject var viewModel: ChatViewModel
@@ -367,7 +384,8 @@ private struct SidebarFixture {
             mode: .safe,
             createdAt: Date(timeIntervalSince1970: 500),
             updatedAt: updatedAt,
-            messages: [],
+            // A chat is only listed once it has a message (story 182).
+            messages: [ChatMessage(role: .user, content: title)],
             serverSession: nil
         )
     }

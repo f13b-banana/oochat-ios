@@ -182,10 +182,10 @@ final class MockHostedAgentTests: XCTestCase {
         XCTAssertEqual(
             HostedAgentEvent.from([
                 "type": .string("mode_changed"),
-                "mode": .string("safe"),
-                "triggered_by": .string("ulw_checkpoint")
+                "mode": .string("auto"),
+                "turns_left": .null
             ]),
-            .modeChanged(.safe)
+            .modeChanged(mode: .auto, turnsLeft: nil)
         )
     }
 
@@ -487,7 +487,9 @@ final class MockHostedAgentTests: XCTestCase {
         XCTAssertNotNil(agent)
         let conversation = viewModel.createConversation(for: agent!)
         viewModel.selectConversation(conversation)
-        viewModel.setMode(.plan)
+        var seeded = conversation
+        seeded.serverSession = ["session_id": .string(conversation.id)]
+        viewModel.upsertForTesting(seeded)
         XCTAssertNotNil(viewModel.conversations.first { $0.id == conversation.id }?.serverSession)
 
         let updated = viewModel.saveAgent(id: agent!.id, name: "Renamed", address: endpointB)
@@ -538,6 +540,98 @@ final class MockHostedAgentTests: XCTestCase {
         XCTAssertEqual(viewModel.activeAgentID, agent.id)
         XCTAssertEqual(viewModel.activeConversation?.agentID, agent.id)
         XCTAssertEqual(viewModel.activeConversation?.agentAddress, endpointA)
+    }
+
+    func testModeChangedFramesParseTurnsLeft() throws {
+        XCTAssertEqual(
+            HostedAgentEvent.from(try KitFixtures.frame("mode_changed.full_access")),
+            .modeChanged(mode: .fullAccess, turnsLeft: 5)
+        )
+        XCTAssertEqual(
+            HostedAgentEvent.from(try KitFixtures.frame("mode_changed")),
+            .modeChanged(mode: .auto, turnsLeft: nil)
+        )
+    }
+
+    func testChatModesMapToOIPModesAsMacOSDoes() {
+        for mode in ChatMode.offered {
+            XCTAssertEqual(ChatMode(permissionMode: mode.oipPermissionMode), mode)
+        }
+        XCTAssertEqual(ChatMode.plan.oipPermissionMode, .readOnly)
+        XCTAssertEqual(ChatMode.safe.oipPermissionMode, .auto)
+        XCTAssertEqual(ChatMode.ulw.oipPermissionMode, .fullAccess)
+        XCTAssertEqual(ChatMode.accept.oipPermissionMode, .auto)
+    }
+
+    @MainActor
+    func testSetModeIsPendingUntilTheHostAnswers() async throws {
+        for reply in [
+            nil,
+            HostedAgentEvent.modeChangeTimedOut,
+            .modeChangeFailed("Mode not offered")
+        ] {
+            let (viewModel, transport) = try makeModeEnvironment()
+            transport.modeChangeReply = reply
+
+            viewModel.setMode(.plan)
+            XCTAssertEqual(viewModel.activePendingMode, .plan)
+            XCTAssertEqual(viewModel.activeMode, .safe)
+            await viewModel.settleModeChange()
+
+            XCTAssertNil(viewModel.activePendingMode)
+            XCTAssertEqual(viewModel.activeMode, reply == nil ? .plan : .safe)
+            XCTAssertEqual(viewModel.errorMessage != nil, reply != nil)
+        }
+
+        let (viewModel, transport) = try makeModeEnvironment()
+        transport.modeChangeError = HostedAgentClientError.closed
+        viewModel.setMode(.plan)
+        await viewModel.settleModeChange()
+        XCTAssertNil(viewModel.activePendingMode)
+        XCTAssertEqual(viewModel.activeMode, .safe)
+        XCTAssertNotNil(viewModel.errorMessage)
+    }
+
+    @MainActor
+    func testTurnsLeftOnlyShowsInFullAccess() async throws {
+        let (viewModel, transport) = try makeModeEnvironment()
+        transport.modeChangeReply = .modeChanged(mode: .fullAccess, turnsLeft: 5)
+        viewModel.setMode(.ulw)
+        await viewModel.settleModeChange()
+        XCTAssertEqual(viewModel.activeFullAccessTurnsLeft, 5)
+
+        transport.modeChangeReply = .modeChanged(mode: .auto, turnsLeft: 5)
+        viewModel.setMode(.safe)
+        await viewModel.settleModeChange()
+        XCTAssertNil(viewModel.activeFullAccessTurnsLeft)
+    }
+
+    @MainActor
+    func testFullAccessIsOfferedOnlyOnceConnectedListsIt() async throws {
+        let (viewModel, transport) = try makeModeEnvironment()
+        XCTAssertEqual(viewModel.offeredModes, [.plan, .safe])
+
+        viewModel.agentAddressDraft = endpointA
+        transport.connectSessionModes = try KitFixtures.sessionModes("CONNECTED.new", folder: "handshake")
+        _ = await viewModel.connectToAgent()
+        XCTAssertEqual(viewModel.offeredModes, [.plan, .safe])
+
+        transport.connectSessionModes = try KitFixtures.sessionModes("CONNECTED")
+        _ = await viewModel.connectToAgent()
+        XCTAssertEqual(viewModel.offeredModes, [.plan, .safe, .ulw])
+    }
+
+    @MainActor
+    private func makeModeEnvironment() throws -> (ChatViewModel, MockAgentTransport) {
+        let suiteName = "OOChatIOSTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let store = try SwiftDataConversationRepository(inMemory: true, defaults: defaults)
+        let transport = MockAgentTransport()
+        let viewModel = ChatViewModel(store: store, client: transport, networkMonitor: MockNetworkMonitor())
+        let agent = viewModel.saveAgent(name: "Modes", address: endpointA)!
+        _ = viewModel.createConversation(for: agent)
+        return (viewModel, transport)
     }
 
     @MainActor

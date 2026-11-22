@@ -26,6 +26,34 @@ enum HostedAgentSessionState {
     }
 }
 
+// Same mapping as macOS AgentExecutionMode.permissionMode.
+extension ChatMode {
+    // The picker's modes, in order. accept_edits is legacy: kept so stored rows decode.
+    static let offered: [ChatMode] = [.plan, .safe, .ulw]
+
+    var oipPermissionMode: OIPPermissionMode {
+        switch self {
+        case .plan:
+            return .readOnly
+        case .safe, .accept:
+            return .auto
+        case .ulw:
+            return .fullAccess
+        }
+    }
+
+    init(permissionMode: OIPPermissionMode) {
+        switch permissionMode {
+        case .readOnly:
+            self = .plan
+        case .fullAccess:
+            self = .ulw
+        case .auto, .unknown:
+            self = .safe
+        }
+    }
+}
+
 /// One SessionBookmark per conversation, mirroring macOS
 /// ConnectOnionRemoteSessionStore keeping its sesssion state
 

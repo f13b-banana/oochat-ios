@@ -50,12 +50,51 @@ extension ChatViewModel {
 
     func apply(_ update: HostedAgentSessionUpdate, forConversationID conversationID: String) {
         switch update {
+        case .hostStatus(let status):
+            hostStatuses[conversationID] = status
         case .dashboard(let dashboard):
+            guard dashboards[conversationID] != dashboard else {
+                return
+            }
             dashboards[conversationID] = dashboard
         }
     }
 
     var activeDashboard: OIPDashboard? {
         activeConversationID.flatMap { dashboards[$0] }
+    }
+
+    /// chat header
+    var activeSessionStatusText: String {
+        SessionStatusLabel.text(state: activeSessionState, hasBookmark: activeHasBookmark, hostStatus: activeHostStatus)
+    }
+
+    var isActiveSessionLive: Bool {
+        activeSessionState == .connected && activeHostStatus != "not_found"
+    }
+
+    private var activeHostStatus: String? {
+        activeConversationID.flatMap { hostStatuses[$0] }
+    }
+
+    private var activeHasBookmark: Bool {
+        activeConversationID.flatMap { HostedAgentBookmarkStore().load(conversationID: $0) } != nil
+    }
+
+    // iOS socket states from kit
+    private var activeSessionState: SessionState {
+        switch connectionState {
+        case .connected:
+            return SessionStatusLabel.event(for: activeHostStatus ?? "").map { reduce(.connected, $0) } ?? .connected
+        case .reconnecting:
+            // retry
+            return .connecting(attempt: activeHostStatus == nil ? 0 : 1)
+        case .disconnected:
+            return isOffline ? .failed(.offline) : .idle
+        }
+    }
+
+    func forgetDashboard(forConversationID conversationID: String) {
+        dashboards[conversationID] = nil
     }
 }

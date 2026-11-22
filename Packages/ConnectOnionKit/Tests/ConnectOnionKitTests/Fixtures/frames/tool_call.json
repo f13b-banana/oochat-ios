@@ -1,0 +1,10 @@
+{
+  "type": "tool_call",
+  "id": "ev-tc-1",
+  "tool_id": "call_1",
+  "name": "bash",
+  "args": {
+    "command": "ls"
+  },
+  "status": "running"
+}

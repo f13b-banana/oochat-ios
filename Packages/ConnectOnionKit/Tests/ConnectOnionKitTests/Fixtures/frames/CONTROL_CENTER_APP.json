@@ -1,0 +1,10 @@
+{
+  "type": "CONTROL_CENTER_APP",
+  "app": {
+    "url": "https://apps.openonion.ai/0x3d4017c3/9f86d081884c7d65/index.html",
+    "revision": "sha256:9f86d081884c7d65000000000000000000000000000000000000000000000000",
+    "review": {
+      "status": "approved"
+    }
+  }
+}

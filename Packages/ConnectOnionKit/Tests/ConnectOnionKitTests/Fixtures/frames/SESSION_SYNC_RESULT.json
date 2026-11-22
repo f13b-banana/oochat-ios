@@ -1,0 +1,18 @@
+{
+  "type": "SESSION_SYNC_RESULT",
+  "request_id": "sync-1",
+  "sessions": [
+    {
+      "session_id": "550e8400-e29b-41d4-a716-446655440000",
+      "revision": 7,
+      "title": "Translate the report",
+      "activity": "idle",
+      "created_at": "2026-09-01T08:00:00Z",
+      "updated_at": "2026-09-01T08:03:12Z",
+      "last_sequence": 12,
+      "preview": "The translated report is ready"
+    }
+  ],
+  "removed_session_ids": [],
+  "cursor": "opaque"
+}

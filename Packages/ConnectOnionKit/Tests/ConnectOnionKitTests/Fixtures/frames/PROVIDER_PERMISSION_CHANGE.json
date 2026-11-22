@@ -1,0 +1,8 @@
+{
+  "type": "PROVIDER_PERMISSION_CHANGE",
+  "requestId": "permission-1",
+  "invocationId": "codex:call-7",
+  "stateRevision": 4,
+  "optionId": "codex:workspace-auto",
+  "confirmRisk": false
+}

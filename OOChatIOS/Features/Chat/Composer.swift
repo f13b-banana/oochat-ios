@@ -32,6 +32,7 @@ struct Composer: View {
 
             modeMenu
                 .padding(.leading, ComposerMetrics.modeLeadingPadding)
+                .padding(.bottom, -ComposerMetrics.modeTargetBottomInset)
 
             inputBar
         }

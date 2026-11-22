@@ -18,6 +18,10 @@ struct MessageBubble: View {
     var failureReason: String?
     /// The raw error, offered as "Copy error details".
     var failureDetails: String?
+    /// Named in the waiting row while a reply is on its way.
+    var agentName = "Agent"
+    /// Stops the reply in flight; nil when nothing is running.
+    var onStop: (() -> Void)?
     var onRetry: (() -> Void)?
     // The text being edited in place; nil while the bubble shows the sent message.
     @State private var editDraft: String?
@@ -239,7 +243,7 @@ struct MessageBubble: View {
     }
 
     private var thinkingMessage: some View {
-        ClaudeCodeThinkingIndicator(text: message.content)
+        WaitingForAgentRow(startedAt: message.createdAt, agentName: agentName, onStop: onStop)
             .font(.subheadline)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -266,7 +270,7 @@ struct MessageBubble: View {
     @ViewBuilder
     private var deliveryStatus: some View {
         switch message.deliveryState {
-        // A transmitted message is in flight; the "Waiting for hosted agent…" bubble shows that.
+        // A transmitted message is in flight; the waiting row shows that.
         case .sent, .transmitted:
             EmptyView()
         case .queued:
@@ -279,9 +283,8 @@ struct MessageBubble: View {
                     Label("Not sent", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption2)
                         .foregroundStyle(.red)
-                    if let onRetry {
-                        Button("Retry", action: onRetry)
-                            .font(.caption2.weight(.semibold))
+                    if onRetry != nil {
+                        retryButton
                             .accessibilityLabel("Retry sending message")
                     }
                 }
@@ -307,13 +310,30 @@ struct MessageBubble: View {
                 Label("Cancelled", systemImage: "stop.circle")
                     .font(.caption2)
                     .foregroundStyle(OOColor.inkSecondary)
-                if let onRetry {
-                    Button("Retry", action: onRetry)
-                        .font(.caption2.weight(.semibold))
+                if onRetry != nil {
+                    retryButton
                         .accessibilityLabel("Retry cancelled message")
                 }
             }
         }
+    }
+
+    /// A small tinted pill so it reads as a button. Taps anywhere in the 44 pt around it count.
+    private var retryButton: some View {
+        Button {
+            onRetry?()
+        } label: {
+            Text("Retry")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(OOColor.primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(OOColor.currentTint, in: Capsule())
+                .overlay(Capsule().stroke(OOColor.primary.opacity(0.35), lineWidth: 1))
+                .frame(minWidth: ooMinimumTarget, minHeight: ooMinimumTarget)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(AppPressButtonStyle())
     }
 }
 
@@ -369,124 +389,66 @@ private struct FullScreenChatImage: View {
 struct UlwCheckpointCard: View {
     let checkpoint: PendingUlwCheckpoint
     var onContinue: () -> Void
-    var onAcceptEdits: () -> Void
-    var onSafeMode: () -> Void
+    var onSwitchToAuto: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label("Ultra Work checkpoint", systemImage: "bolt.fill")
-                .font(.headline)
-                .foregroundStyle(AppTheme.primary)
+        OONotice(
+            .decision,
+            title: "Full access checkpoint",
+            message: "The agent completed \(checkpoint.request.turnsUsed) of "
+                + "\(checkpoint.request.maxTurns) autonomous turns without tool approvals."
+        ) {
+            VStack(spacing: OOSpace.small) {
+                Button("Continue \(UlwCheckpointDecision.continueTurns) turns", action: onContinue)
+                    .buttonStyle(CardPrimaryButtonStyle())
+                    .accessibilityHint("Full access ends after these turns.")
+                    .accessibilityIdentifier("ulw.continue.\(checkpoint.id)")
 
-            Text("Completed \(checkpoint.request.turnsUsed) of \(checkpoint.request.maxTurns) turns")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            Button("Continue (+100 turns)", action: onContinue)
-                .buttonStyle(.borderedProminent)
-                .tint(AppTheme.primary)
-                .frame(maxWidth: .infinity)
-                .accessibilityIdentifier("ulw.continue.\(checkpoint.id)")
-
-            HStack(spacing: 8) {
-                Button("Accept Edits", action: onAcceptEdits)
-                    .buttonStyle(.bordered)
-                    .frame(maxWidth: .infinity)
-                    .accessibilityIdentifier("ulw.acceptEdits.\(checkpoint.id)")
-                Button("Safe Mode", action: onSafeMode)
-                    .buttonStyle(.bordered)
-                    .frame(maxWidth: .infinity)
-                    .accessibilityIdentifier("ulw.safe.\(checkpoint.id)")
+                Button("Switch to Auto", action: onSwitchToAuto)
+                    .buttonStyle(CardSecondaryButtonStyle())
+                    .accessibilityIdentifier("ulw.auto.\(checkpoint.id)")
             }
+            .padding(.top, OOSpace.tiny)
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            Color(.secondarySystemBackground),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
     }
 }
 
-private struct ClaudeCodeThinkingIndicator: View {
-    private static let glyphFrames = ["·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢"]
-    private static let glyphFrameDuration = 0.12
-    private static let shimmerFrameDuration = 0.2
-    private static let shimmerBandWidth = 4
+/// Shown while the agent works on a reply: how long you've waited, and Stop after a while.
+struct WaitingForAgentRow: View {
+    /// Stop only appears after this long, so a quick reply doesn't flash a button.
+    static let stopDelay = 10
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var startedAt = Date()
-
-    let text: String
+    let startedAt: Date
+    let agentName: String
+    /// Nil when there's nothing to stop.
+    let onStop: (() -> Void)?
 
     var body: some View {
-        if reduceMotion {
-            content(glyph: "✻", shimmerFrame: nil)
-        } else {
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
-                let elapsed = max(0, context.date.timeIntervalSince(startedAt))
-                let glyphFrame = Int(elapsed / Self.glyphFrameDuration)
-                let shimmerFrame = Int(elapsed / Self.shimmerFrameDuration)
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let seconds = max(0, Int(context.date.timeIntervalSince(startedAt)))
+            HStack(spacing: OOSpace.small) {
+                ProgressView()
+                    .tint(OOColor.primary)
+                    .accessibilityHidden(true)
 
-                content(
-                    glyph: Self.glyphFrames[glyphFrame % Self.glyphFrames.count],
-                    shimmerFrame: shimmerFrame
-                )
+                Text("Waiting for \(agentName) · \(seconds) s")
+                    .foregroundStyle(OOColor.inkSecondary)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+
+                if seconds >= Self.stopDelay, let onStop {
+                    Button("Stop", action: onStop)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(OOColor.inkSecondary)
+                        .underline()
+                        .padding(.horizontal, OOSpace.small)
+                        .frame(minHeight: ooMinimumTarget)
+                        .contentShape(Rectangle())
+                        .accessibilityLabel("Stop \(agentName)")
+                }
             }
+            // Always the height of the Stop button, so the row doesn't grow when it appears.
+            .frame(minHeight: ooMinimumTarget)
         }
-    }
-
-    private func content(glyph: String, shimmerFrame: Int?) -> some View {
-        HStack(spacing: 6) {
-            Text(glyph)
-                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                .foregroundStyle(AppTheme.primary)
-                .frame(width: 16, height: 16)
-                .accessibilityHidden(true)
-
-            Text(shimmeredText(frame: shimmerFrame))
-        }
-    }
-
-    private func shimmeredText(frame: Int?) -> AttributedString {
-        var attributed = AttributedString(text)
-        let characterCount = attributed.characters.count
-
-        guard let frame, characterCount > 0 else {
-            attributed.foregroundColor = AppTheme.primary
-            return attributed
-        }
-
-        let cycleLength = characterCount + Self.shimmerBandWidth * 2
-        let position = cycleLength - 1 - (frame % cycleLength)
-
-        for (offset, index) in attributed.characters.indices.enumerated() {
-            let nextIndex = attributed.characters.index(after: index)
-            let distance = abs(offset - position)
-            let amount = max(0, 1 - Double(distance) / Double(Self.shimmerBandWidth))
-            attributed[index..<nextIndex].foregroundColor = shimmerColor(blending: amount)
-        }
-
-        return attributed
-    }
-
-    private func shimmerColor(blending amount: Double) -> Color {
-        let clampedAmount = min(max(amount, 0), 1)
-        let baseRGB = colorScheme == .dark
-            ? (red: 139.0, green: 92.0, blue: 246.0)
-            : (red: 109.0, green: 40.0, blue: 217.0)
-        let highlightRGB = colorScheme == .dark
-            ? (red: 196.0, green: 181.0, blue: 253.0)
-            : (red: 139.0, green: 92.0, blue: 246.0)
-        let red = baseRGB.red + (highlightRGB.red - baseRGB.red) * clampedAmount
-        let green = baseRGB.green + (highlightRGB.green - baseRGB.green) * clampedAmount
-        let blue = baseRGB.blue + (highlightRGB.blue - baseRGB.blue) * clampedAmount
-
-        return Color(
-            red: red / 255.0,
-            green: green / 255.0,
-            blue: blue / 255.0
-        )
     }
 }

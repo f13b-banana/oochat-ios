@@ -18,7 +18,7 @@ final class ComposerTests: XCTestCase {
         let window = ViewHost.host(Composer(viewModel: viewModel))
 
         XCTAssertNotNil(ViewHost.element(labelContains: "Send message", in: window))
-        XCTAssertNotNil(ViewHost.element(labelContains: "Chat mode: Auto", in: window))
+        XCTAssertNotNil(ViewHost.element(labelContains: "Permission mode: Auto", in: window))
         XCTAssertNotNil(ViewHost.element(labelContains: "Add attachment", in: window))
         XCTAssertNotNil(ViewHost.element(labelContains: "Start voice input", in: window))
         XCTAssertNil(ViewHost.element(labelContains: "Add photos", in: window))
@@ -295,7 +295,7 @@ final class ComposerTests: XCTestCase {
         let viewModel = ViewFixtures.chatViewModel(transport: makeTransport())
         let window = ViewHost.host(Composer(viewModel: viewModel))
 
-        XCTAssertTrue(ViewHost.activate(labelContains: "Chat mode: Auto", in: window))
+        XCTAssertTrue(ViewHost.activate(labelContains: "Permission mode: Auto", in: window))
         ViewHost.pump(0.5)
 
         let sheetWindow = UIApplication.shared.connectedScenes

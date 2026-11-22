@@ -20,6 +20,9 @@ struct ChatView: View {
     @Binding var workRoomPath: [String]
     let onAddAgent: () -> Void
     let onOpenSidebar: () -> Void
+    /// The open drawer covers the chat. A hidden modifier outside the NavigationStack doesn't
+    /// reach VoiceOver in here, so the shell passes it in.
+    var isCoveredByDrawer = false
 
     init(
         viewModel: ChatViewModel,
@@ -28,7 +31,8 @@ struct ChatView: View {
         controlCenter: ChatControlCenter? = nil,
         workRoomPath: Binding<[String]> = .constant([]),
         onAddAgent: @escaping () -> Void = {},
-        onOpenSidebar: @escaping () -> Void = {}
+        onOpenSidebar: @escaping () -> Void = {},
+        isCoveredByDrawer: Bool = false
     ) {
         self.viewModel = viewModel
         self.showsComposer = showsComposer
@@ -37,6 +41,7 @@ struct ChatView: View {
         _workRoomPath = workRoomPath
         self.onAddAgent = onAddAgent
         self.onOpenSidebar = onOpenSidebar
+        self.isCoveredByDrawer = isCoveredByDrawer
     }
 
     /// The chat stays mounted under the Control tab, so VoiceOver must not read it there.
@@ -61,7 +66,7 @@ struct ChatView: View {
             .navigationDestination(for: String.self) { workRoomID in
                 WorkRoomScreen(viewModel: viewModel, workRoomID: workRoomID)
             }
-            .accessibilityHidden(isControlTabShowing)
+            .accessibilityHidden(isControlTabShowing || isCoveredByDrawer)
             .overlay {
                 if case .tabs(let dashboard, let selection, _) = controlCenter {
                     // Mounted once and only shown or hidden, so the page keeps its state across tab switches.
@@ -122,9 +127,17 @@ struct ChatScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // The solid bar draws no line of its own, so this marks where the header ends.
+            OOColor.hairline
+                .frame(height: 1)
+                .accessibilityHidden(true)
+
             if showsComposer {
-                    balanceNotice
-                }
+                AgentBalanceNotice(
+                    balanceUSD: viewModel.activeAgentProfile?.balanceUSD,
+                    agentAddress: viewModel.activeAgent?.address
+                )
+            }
 
             if let conversation = viewModel.activeConversation {
                 ScrollViewReader { proxy in
@@ -186,9 +199,7 @@ struct ChatScreen: View {
                                 if let checkpoint = viewModel.activePendingUlwCheckpoint {
                                     UlwCheckpointCard(checkpoint: checkpoint) {
                                         viewModel.continueUlw(id: checkpoint.id)
-                                    } onAcceptEdits: {
-                                        viewModel.switchModeFromUlwCheckpoint(id: checkpoint.id, to: .accept)
-                                    } onSafeMode: {
+                                    } onSwitchToAuto: {
                                         viewModel.switchModeFromUlwCheckpoint(id: checkpoint.id, to: .safe)
                                     }
                                     .id("pendingUlwCheckpoint")
@@ -200,6 +211,8 @@ struct ChatScreen: View {
                                         viewModel.approvePendingPlan(id: review.id)
                                     } onRequestChanges: { feedback in
                                         viewModel.requestPlanChanges(id: review.id, feedback: feedback)
+                                    } onDiscard: {
+                                        viewModel.discardPendingPlan(id: review.id)
                                     }
                                     .id("pendingPlanReview")
                                     .transition(AppMotion.materialize(reduceMotion: reduceMotion))
@@ -332,6 +345,9 @@ struct ChatScreen: View {
         }
         .navigationTitle(viewModel.activeConversation?.title ?? "Chat")
         .navigationBarTitleDisplayMode(.inline)
+        // Solid, so messages scrolling underneath never sit behind the title and status.
+        .toolbarBackground(OOColor.paper, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 2) {
@@ -370,10 +386,9 @@ struct ChatScreen: View {
                     .accessibilityLabel(backgroundAttentionLabel)
                 }
 
-                // Invisible mirror of the leading button: with a leading item only, UIKit
-                // centers an overflowing principal title in the leftover asymmetric space,
-                // pushing the title and status pill right of screen center.
-                trailingBalanceItem
+                // Also balances the leading button. With a leading item only, UIKit centres a
+                // long title in the space left over, which pushes it right of centre.
+                newChatItem
             }
         }
     }
@@ -461,72 +476,6 @@ struct ChatScreen: View {
             mark
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(detail)
-        }
-    }
-
-    @ViewBuilder
-    private var balanceNotice: some View {
-        if let profile = viewModel.activeAgentProfile,
-           let notice = AgentBalance.notice(for: profile.balanceUSD) {
-
-            let message = AgentBalance.message(for: notice)
-
-            let background = Color(
-                red: 42.0 / 255.0,
-                green: 32.0 / 255.0,
-                blue: 25.0 / 255.0
-            )
-
-            let border = Color(
-                red: 58.0 / 255.0,
-                green: 37.0 / 255.0,
-                blue: 29.0 / 255.0
-            )
-
-            let textColor = Color(
-                red: 253.0 / 255.0,
-                green: 142.0 / 255.0,
-                blue: 134.0 / 255.0
-            )
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) {
-                    Text(message)
-                        .multilineTextAlignment(.center)
-
-                    addCreditsLink(color: textColor)
-                }
-
-                VStack(spacing: 4) {
-                    Text(message)
-                        .multilineTextAlignment(.center)
-
-                    addCreditsLink(color: textColor)
-                }
-            }
-            .font(.system(size: 11))
-            .foregroundStyle(textColor)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(background)
-            .overlay(alignment: .top) {
-                border.frame(height: 1)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func addCreditsLink(color: Color) -> some View {
-        if let address = viewModel.activeAgent?.address,
-           let url = AgentBalance.topUpURL(agentAddress: address) {
-            Link(destination: url) {
-                Text("Add credits")
-                    .fontWeight(.semibold)
-                    .underline()
-                    .foregroundStyle(color)
-            }
-            .frame(minHeight: 24)
         }
     }
 }

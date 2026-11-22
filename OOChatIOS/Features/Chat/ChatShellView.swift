@@ -6,6 +6,7 @@ struct ChatShellView: View {
     @ObservedObject var viewModel: ChatViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var isSidebarOpen = false
     @State private var isSidebarSearchFocused = false
@@ -108,6 +109,8 @@ struct ChatShellView: View {
             return ZStack(alignment: .leading) {
                 sidebar(safeAreaInsets: safeAreaInsets, isOpen: isSidebarOpen, controlCenterBeside: false)
                 .frame(width: drawerWidth)
+                // While open, VoiceOver stays in the drawer, like a sheet.
+                .accessibilityAddTraits(isSidebarOpen ? .isModal : [])
                 .offset(x: reduceMotion ? 0 : -SidebarShellMetrics.sidebarParallax * (1 - progress))
                 .zIndex(0)
 
@@ -116,6 +119,7 @@ struct ChatShellView: View {
                 .background(OOColor.paper)
                 .ignoresSafeArea(contentKeyboardSafeAreaRegions, edges: .bottom)
                 .allowsHitTesting(progress == 0)
+                .accessibilityHidden(isSidebarOpen)
                 .clipShape(contentMask(cornerRadius: cornerRadius))
                 .compositingGroup()
                 .shadow(
@@ -128,10 +132,7 @@ struct ChatShellView: View {
                 .zIndex(1)
 
                 if isSidebarOpen {
-                    Color.black.opacity(
-                        (reduceTransparency ? SidebarShellMetrics.reducedTransparencyScrimOpacity : SidebarShellMetrics.scrimOpacity)
-                            * progress
-                    )
+                    Color.black.opacity(scrimOpacity * progress)
                         .frame(width: max(0, proxy.size.width - contentOffset), height: proxy.size.height)
                         .clipShape(contentMask(cornerRadius: cornerRadius))
                         .contentShape(Rectangle())
@@ -147,6 +148,10 @@ struct ChatShellView: View {
             .simultaneousGesture(sidebarDrag(openOffset: openOffset))
             .background(OOColor.paper)
             .clipped()
+    }
+
+    private var scrimOpacity: Double {
+        SidebarShellLayout.scrimOpacity(isDark: colorScheme == .dark, reduceTransparency: reduceTransparency)
     }
 
     private var drawerDashboard: OIPDashboard? {
@@ -257,7 +262,8 @@ struct ChatShellView: View {
                 controlCenter: controlCenter,
                 workRoomPath: $workRoomPath,
                 onAddAgent: { addAgentRequest += 1 },
-                onOpenSidebar: { openSidebar() }
+                onOpenSidebar: { openSidebar() },
+                isCoveredByDrawer: !isRegularWidth && isSidebarOpen
             )
         case .settings:
             SettingsView(viewModel: viewModel) {
@@ -476,6 +482,13 @@ enum SidebarShellLayout {
         return min(1, max(0, contentOffset / openOffset))
     }
 
+    /// Dark enough that the strip of chat beside the open drawer reads as "tap to close".
+    /// Dark mode needs more to show on a dark chat; Reduce Transparency never goes lighter.
+    static func scrimOpacity(isDark: Bool, reduceTransparency: Bool) -> Double {
+        let opacity = isDark ? SidebarShellMetrics.darkScrimOpacity : SidebarShellMetrics.lightScrimOpacity
+        return reduceTransparency ? max(opacity, SidebarShellMetrics.reducedTransparencyScrimOpacity) : opacity
+    }
+
     static func rubberBand(_ overshoot: CGFloat, dimension: CGFloat) -> CGFloat {
         guard dimension > 0 else {
             return 0
@@ -513,7 +526,8 @@ private enum SidebarShellMetrics {
     static let shadowRadius: CGFloat = 16
     static let shadowOffset = CGSize(width: -2, height: 0)
     static let sidebarParallax: CGFloat = 18
-    static let scrimOpacity: Double = 0.3
+    static let lightScrimOpacity: Double = 0.35
+    static let darkScrimOpacity: Double = 0.5
     static let reducedTransparencyScrimOpacity: Double = 0.45
     static let dragMinimumDistance: CGFloat = 16
     static let openEdgeWidth: CGFloat = 24

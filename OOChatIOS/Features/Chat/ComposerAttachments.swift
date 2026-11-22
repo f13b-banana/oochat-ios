@@ -1,3 +1,4 @@
+import ConnectOnionKit
 import PhotosUI
 import SwiftUI
 import UIKit
@@ -37,6 +38,7 @@ extension Composer {
             }
             .foregroundStyle(AppTheme.primary)
             .frame(width: ComposerMetrics.attachmentButtonSize, height: ComposerMetrics.attachmentButtonSize)
+            .frame(width: ooMinimumTarget, height: ooMinimumTarget)
             .contentShape(Rectangle())
         }
         .menuOrder(.fixed)

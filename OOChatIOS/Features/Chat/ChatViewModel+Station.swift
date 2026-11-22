@@ -8,6 +8,18 @@ extension ChatViewModel {
     /// The paired Station session id by agent address, so the row reopens that conversation.
     private static let stationSessionsKey = "ClaudeStationSessions"
 
+    /// Every agent a new chat can go to. A Claude Station is left out: a new chat there would
+    /// be an ordinary chat, not the Station.
+    var chattableAgents: [SavedAgent] {
+        agents.filter { !isStation($0) }
+    }
+
+    /// Where New chat goes: the current agent, or the first one if none is chosen yet.
+    var newChatAgent: SavedAgent? {
+        let chattable = chattableAgents
+        return chattable.first { $0.id == activeAgentID } ?? chattable.first
+    }
+
     /// The profile arrives after CONNECTED, so the address is remembered to draw the row before the next connect.
     func isStation(_ agent: SavedAgent) -> Bool {
         let address = agent.address.lowercased()

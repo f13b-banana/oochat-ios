@@ -47,18 +47,23 @@ struct AgentFormView: View {
             Form {
                 Section("Agent") {
                     HStack {
-                        TextField("Name", text: $draft.name)
+                        TextField("Name", text: $draft.name, prompt: Text("Name").foregroundStyle(OOColor.inkSecondary))
                             .textInputAutocapitalization(.words)
-                            .foregroundStyle(OOColor.inkSecondary)
+                            .foregroundStyle(OOColor.ink)
                         if isFetchingAgentName {
                             ProgressView()
                                 .controlSize(.small)
                                 .accessibilityLabel("Looking up agent name")
                         }
                     }
-                    TextField("Agent address", text: $draft.address, axis: .vertical)
+                    TextField(
+                        "Agent address",
+                        text: $draft.address,
+                        prompt: Text("Agent address").foregroundStyle(OOColor.inkSecondary),
+                        axis: .vertical
+                    )
                         .textInputAutocapitalization(.never)
-                        .foregroundStyle(OOColor.inkSecondary)
+                        .foregroundStyle(OOColor.ink)
                         .autocorrectionDisabled()
                         .font(.system(.body, design: .monospaced))
                         .onChange(of: draft.address) {

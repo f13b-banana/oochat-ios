@@ -134,7 +134,7 @@ final class ChatViewTests: XCTestCase {
         let window = ViewHost.host(ChatView(viewModel: viewModel))
 
         XCTAssertNotNil(ViewHost.element(labelContains: "Send message", in: window))
-        XCTAssertNotNil(ViewHost.element(labelContains: "Chat mode: Auto", in: window))
+        XCTAssertNotNil(ViewHost.element(labelContains: "Permission mode: Auto", in: window))
     }
 
     func testAChatFromAPreviousIdentityOffersANewChatInPlaceOfTheComposer() {
@@ -446,6 +446,13 @@ final class SidebarShellLayoutTests: XCTestCase {
         XCTAssertEqual(SidebarShellLayout.sidebarProgress(contentOffset: -10, openOffset: 100), 0)
         XCTAssertEqual(SidebarShellLayout.sidebarProgress(contentOffset: 50, openOffset: 100), 0.5)
         XCTAssertEqual(SidebarShellLayout.sidebarProgress(contentOffset: 140, openOffset: 100), 1)
+    }
+
+    func testScrimIsDarkerInDarkModeAndNeverLighterWithReduceTransparency() {
+        XCTAssertEqual(SidebarShellLayout.scrimOpacity(isDark: false, reduceTransparency: false), 0.35)
+        XCTAssertEqual(SidebarShellLayout.scrimOpacity(isDark: true, reduceTransparency: false), 0.5)
+        XCTAssertEqual(SidebarShellLayout.scrimOpacity(isDark: false, reduceTransparency: true), 0.45)
+        XCTAssertEqual(SidebarShellLayout.scrimOpacity(isDark: true, reduceTransparency: true), 0.5)
     }
 
     func testRubberBandHandlesZeroDimension() {

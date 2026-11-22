@@ -160,6 +160,8 @@ extension PlanReviewDecision {
             let trimmed = feedback?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let detail = trimmed.isEmpty ? "Plan needs revision." : trimmed
             message = "Plan rejected. Revise with write_plan(). Feedback: \(detail)"
+        case .discard:
+            message = "Plan cancelled. Do not implement it. Return to Safe mode and wait for new instructions."
         }
         return [
             "type": .string("PLAN_REVIEW_RESPONSE"),

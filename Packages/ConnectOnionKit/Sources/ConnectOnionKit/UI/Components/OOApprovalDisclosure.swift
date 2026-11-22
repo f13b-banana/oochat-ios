@@ -6,6 +6,7 @@ public enum OOApprovalDisclosure {
         case runsCommand
         case changesFiles
         case usesNetwork
+        case readsOnly
         case other
     }
 
@@ -21,6 +22,9 @@ public enum OOApprovalDisclosure {
     private static let networkTools: Set<String> = [
         "web_fetch", "fetch", "fetch_url", "http_request"
     ]
+    private static let readOnlyTools: Set<String> = [
+        "read", "read_file", "glob", "grep"
+    ]
 
     /// What the person is agreeing to if they allow the call. The whole tool name has to match.
     public static func effect(tool: String, arguments: [String: JSONValue]) -> Effect {
@@ -34,6 +38,9 @@ public enum OOApprovalDisclosure {
         }
         if networkTools.contains(name) {
             return .usesNetwork
+        }
+        if readOnlyTools.contains(name) {
+            return .readsOnly
         }
         return .other
     }
@@ -53,7 +60,7 @@ public enum OOApprovalDisclosure {
                 return "This call only, to \(url)."
             }
             return "This call only."
-        case .other:
+        case .readsOnly, .other:
             return "This call only."
         }
     }
@@ -67,6 +74,8 @@ public enum OOApprovalDisclosure {
             return "Changes files on the agent's host. Check the path before you allow it."
         case .usesNetwork:
             return "Sends a request over the network from the agent's host."
+        case .readsOnly:
+            return "Reads only. Nothing is changed."
         case .other:
             return unrecognisedConsequence
         }
@@ -85,7 +94,7 @@ public enum OOApprovalDisclosure {
 
     /// Said for every tool the app does not recognise. It makes no claim about what the tool does.
     public static let unrecognisedConsequence =
-        "The app does not recognise this tool, so it cannot say what it will change. Review the parameters before you allow it."
+        "The app does not recognise this tool, so it cannot say what it will change. Check the values shown below before you allow it."
 
     /// The label on the wider-grant button. The host trusts a whole tool, not one command,
     /// so the label names the tool, for example "Trust all bash calls".

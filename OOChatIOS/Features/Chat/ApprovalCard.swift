@@ -25,7 +25,7 @@ struct ApprovalCard: View {
         OONotice(
             .decision,
             title: OOApprovalDisclosure.summary(tool: request.tool, arguments: request.arguments),
-            message: ApprovalDisclosure.consequence(for: request)
+            message: OOApprovalDisclosure.consequence(tool: request.tool, arguments: request.arguments)
         ) {
             VStack(alignment: .leading, spacing: OOSpace.medium) {
                 if let description = request.description, !description.isEmpty {
@@ -38,6 +38,7 @@ struct ApprovalCard: View {
 
                 commandPreview
                 argumentList
+                noValuesNote
 
                 if !request.batchRemaining.isEmpty {
                     Text("\(request.batchRemaining.count) more action\(request.batchRemaining.count == 1 ? "" : "s") waiting")
@@ -84,6 +85,17 @@ struct ApprovalCard: View {
                 .background(codeBackground)
         }
     }
+    /// The unrecognised-tool line says to check the values below; when the call sent none, say so.
+    @ViewBuilder
+    private var noValuesNote: some View {
+        if commandArgument == nil, ToolActionSummary.argumentsDescription(displayArguments).isEmpty {
+            Text("This call has no values.")
+                .font(.footnote)
+                .foregroundStyle(OOColor.inkSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     // New Code Background
     private var codeBackground: some View {
         RoundedRectangle(cornerRadius: OORadius.large, style: .continuous)
@@ -243,62 +255,5 @@ struct ApprovalCard: View {
         request.arguments["cmd"]?.stringValue
             ?? request.arguments["command"]?.stringValue
             ?? request.arguments["script"]?.stringValue
-    }
-}
-
-// The plain-language lines an approval shows between the action and the buttons.
-//
-// The host sends a tool name, its arguments and an optional description; it does not
-// say what the call will do. These lines are worked out from the name and the
-// arguments, so they describe the kind of effect, never a guarantee. Keep the wording
-// in step with the 2.1 frames.
-
-enum ApprovalDisclosure {
-    enum Effect: Equatable {
-        case runsCommand
-        case changesFiles
-        case usesNetwork
-        case readsOnly
-        case other
-    }
-
-    static func effect(for request: ToolApprovalRequest) -> Effect {
-        let name = request.tool.lowercased()
-        let hasCommand = ["cmd", "command", "script"].contains { request.arguments[$0]?.stringValue != nil }
-
-        if hasCommand || name.hasPrefix("run") || containsAny(name, ["command", "exec", "shell", "bash", "terminal"]) {
-            return .runsCommand
-        }
-        if containsAny(name, ["write", "edit", "patch", "delete", "remove", "move", "rename", "create"]) {
-            return .changesFiles
-        }
-        if containsAny(name, ["fetch", "http", "browse", "download", "upload", "send"])
-            || request.arguments["url"]?.stringValue != nil {
-            return .usesNetwork
-        }
-        if containsAny(name, ["read", "search", "find", "grep", "list", "glob"]) {
-            return .readsOnly
-        }
-        return .other
-    }
-
-    /// What happens if the person taps Allow once.
-    static func consequence(for request: ToolApprovalRequest) -> String {
-        switch effect(for: request) {
-        case .runsCommand:
-            return "Runs on the agent's host with its permissions. It can change files or settings, and that may not be undoable."
-        case .changesFiles:
-            return "Changes files on the agent's host. Check the path before you allow it."
-        case .usesNetwork:
-            return "Sends a request over the network from the agent's host."
-        case .readsOnly:
-            return "Reads only. Nothing is changed."
-        case .other:
-            return "The agent runs this tool with the values shown above."
-        }
-    }
-
-    private static func containsAny(_ text: String, _ needles: [String]) -> Bool {
-        needles.contains { text.contains($0) }
     }
 }

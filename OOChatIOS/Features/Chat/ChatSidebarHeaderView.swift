@@ -142,6 +142,8 @@ struct ChatSidebarHeaderView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(SidebarFooterButtonStyle())
+        // ⌘N with a keyboard. The sidebar is always on screen on iPad, so the shortcut lives here.
+        .keyboardShortcut("n", modifiers: .command)
     }
 
     private func actionRow(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
@@ -187,7 +189,8 @@ struct SidebarSearchField: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color(.secondaryLabel))
-                        .frame(width: SidebarMetrics.searchClearButtonSize, height: SidebarMetrics.searchClearButtonSize)
+                        .frame(width: ooMinimumTarget, height: ooMinimumTarget)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear search")

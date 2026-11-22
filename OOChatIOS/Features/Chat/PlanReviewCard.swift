@@ -1,53 +1,57 @@
+import ConnectOnionKit
 import SwiftUI
 
 struct PlanReviewCard: View {
     let review: PendingPlanReview
     var onApprove: () -> Void
     var onRequestChanges: (String?) -> Void
+    var onDiscard: () -> Void
 
     @State private var feedback = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: OOSpace.medium) {
             Label("Review implementation plan", systemImage: "list.bullet.clipboard")
                 .font(.headline)
                 .foregroundStyle(AppTheme.primary)
 
             ScrollView {
-                Text(review.request.planContent)
-                    .font(.subheadline)
+                MarkdownMessageView(content: review.request.planContent)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxHeight: 240)
-            .padding(10)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(OOSpace.medium)
             .background(
-                Color(.tertiarySystemBackground),
-                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                OOColor.paper,
+                in: RoundedRectangle(cornerRadius: OORadius.card, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: OORadius.card, style: .continuous)
+                    .stroke(OOColor.hairline, lineWidth: 1)
             )
 
             TextField("Feedback for changes (optional)", text: $feedback, axis: .vertical)
                 .lineLimit(2...5)
                 .textFieldStyle(.roundedBorder)
 
-            Button("Approve & Implement", action: onApprove)
-                .buttonStyle(.borderedProminent)
-                .tint(AppTheme.primary)
-                .frame(maxWidth: .infinity)
-                .accessibilityIdentifier("plan.approve.\(review.id)")
+            VStack(spacing: OOSpace.small) {
+                Button("Approve & Implement", action: onApprove)
+                    .buttonStyle(CardPrimaryButtonStyle())
+                    .accessibilityIdentifier("plan.approve.\(review.id)")
 
-            Button("Request Changes") {
-                onRequestChanges(feedback)
+                Button("Request Changes") {
+                    onRequestChanges(feedback)
+                }
+                .buttonStyle(CardSecondaryButtonStyle())
+                .accessibilityIdentifier("plan.requestChanges.\(review.id)")
+
+                Button("Discard plan", action: onDiscard)
+                    .buttonStyle(CardQuietButtonStyle())
+                    .accessibilityIdentifier("plan.discard.\(review.id)")
             }
-            .buttonStyle(.bordered)
-            .frame(maxWidth: .infinity)
-            .accessibilityIdentifier("plan.requestChanges.\(review.id)")
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            Color(.secondarySystemBackground),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
+        .conversationCard()
     }
 }

@@ -32,7 +32,7 @@ struct IncompatibleAgentView: View {
             }
         } actions: {
             Button("Close", action: onDismiss)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.ooPrimary)
         }
         .accessibilityIdentifier("incompatibleAgentScreen")
     }

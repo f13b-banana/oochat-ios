@@ -1,7 +1,7 @@
 import SwiftUI
 import ConnectOnionKit
 
-// The words next to the mode capsule while Ultra Work counts turns.
+// The words next to the mode capsule while Full access counts turns.
 enum ComposerTurnsLeft {
     static func label(_ turnsLeft: Int) -> String {
         "\(turnsLeft) \(turnsLeft == 1 ? "turn" : "turns") left"
@@ -9,7 +9,7 @@ enum ComposerTurnsLeft {
 }
 
 extension Composer {
-    // The execution mode and, beside it, how many turns Ultra Work has left (16.2).
+    // The permission mode and, beside it, how many turns Full access has left (16.2).
     var modeMenu: some View {
         HStack(spacing: OOSpace.small) {
             modeButton
@@ -61,11 +61,14 @@ extension Composer {
                 Capsule()
                     .stroke(OOColor.hairline, lineWidth: 1)
             }
+            // The capsule stays about 28 pt tall; the space above and below it is tappable too.
+            .frame(minHeight: ooMinimumTarget)
+            .contentShape(Rectangle())
         }
         .buttonStyle(AppPressButtonStyle(pressedScale: 0.96, pressedOpacity: 0.88))
         .disabled(viewModel.activeConversation == nil || viewModel.isProcessing || viewModel.activePendingMode != nil)
-        .accessibilityLabel(viewModel.activePendingMode.map { "Chat mode: \($0.label), pending" }
-                            ?? "Chat mode: \(viewModel.activeMode.label)")
+        .accessibilityLabel(viewModel.activePendingMode.map { "Permission mode: \($0.label), pending" }
+                            ?? "Permission mode: \(viewModel.activeMode.label)")
         .popover(isPresented: $showModeMenu) {
             modeSheet
                 .frame(idealWidth: ComposerMetrics.modePopoverWidth)
@@ -77,7 +80,7 @@ extension Composer {
 
     var modeSheet: some View {
         VStack(spacing: 0) {
-            Text("Response Mode")
+            Text("Permission mode")
                 .font(.headline)
                 .foregroundStyle(OOColor.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)

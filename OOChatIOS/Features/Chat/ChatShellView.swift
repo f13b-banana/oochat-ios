@@ -11,7 +11,11 @@ struct ChatShellView: View {
     @State private var isSidebarOpen = false
     @State private var isSidebarSearchFocused = false
     @State private var dragOffset: CGFloat = 0
-    @State private var activeContent: SidebarContent = .chat
+    @State private var isSettingsPresented = false
+    /// iPad only: the agent pane beside the rail, shown or hidden as on the Mac (same key, ⌃⌘S).
+    @AppStorage(ChatShellView.paneVisibleKey) private var isPaneVisible = true
+    /// The Mac's key, so the setting reads the same on both.
+    static let paneVisibleKey = "isSidebarVisible"
     @State private var isControlCenterOpen = true
     @State private var agentView: OOAgentView = .chat
     @State private var workRoomPath: [String] = []
@@ -29,7 +33,7 @@ struct ChatShellView: View {
     ) {
         self.viewModel = viewModel
         _isSidebarOpen = State(initialValue: startsSidebarOpen)
-        _activeContent = State(initialValue: startsInSettings ? .settings : .chat)
+        _isSettingsPresented = State(initialValue: startsInSettings)
     }
 
     // The outer reader keeps its safe area so it can report the real insets; the inner one
@@ -52,6 +56,13 @@ struct ChatShellView: View {
         .onChange(of: viewModel.activeConversationID) {
             workRoomPath = []
         }
+        // A sheet, so Done leaves you on the chat or in the drawer, wherever you opened it from.
+        .sheet(isPresented: $isSettingsPresented) {
+            // On iPad a sheet is already a form sheet.
+            SettingsView(viewModel: viewModel) {
+                isSettingsPresented = false
+            }
+        }
     }
 
     // On a regular-width canvas the sidebar is permanent and sits beside the content
@@ -60,16 +71,25 @@ struct ChatShellView: View {
     // Slide Over — keep the drawer below.
     // with dashboard, tabs in portrait, side by side in landscape
     private func sideBySideLayout(proxy: GeometryProxy, safeAreaInsets: EdgeInsets) -> some View {
-        let contentWidth = proxy.size.width - SidebarShellMetrics.permanentSidebarWidth - 1
+        // With the pane hidden only the rail stays, and the chat and Control Center share what it gave up.
+        let sidebarWidth = isPaneVisible
+            ? SidebarShellMetrics.permanentSidebarWidth
+            : AgentRail.width + safeAreaInsets.leading
+        let contentWidth = proxy.size.width - sidebarWidth - 1
         let paneWidth = ControlCenterLayout.paneWidth(contentWidth: contentWidth)
-        let dashboard = activeContent == .chat && !isStationShown ? viewModel.activeDashboard : nil
+        let dashboard = isStationShown ? nil : viewModel.activeDashboard
         return HStack(spacing: 0) {
-            sidebar(safeAreaInsets: safeAreaInsets, isOpen: true, controlCenterBeside: paneWidth != nil)
-                .frame(width: SidebarShellMetrics.permanentSidebarWidth)
+            sidebar(
+                safeAreaInsets: safeAreaInsets,
+                isOpen: true,
+                controlCenterBeside: paneWidth != nil,
+                showsPane: isPaneVisible
+            )
+            .frame(width: sidebarWidth)
 
             Divider()
 
-            contentView(for: activeContent, controlCenter: controlCenter(for: dashboard, paneWidth: paneWidth))
+            contentView(controlCenter: controlCenter(for: dashboard, paneWidth: paneWidth))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea(contentKeyboardSafeAreaRegions, edges: .bottom)
 
@@ -93,6 +113,19 @@ struct ChatShellView: View {
         }
         .frame(width: proxy.size.width, height: proxy.size.height)
         .background(OOColor.paper)
+        .background {
+            // ⌃⌘S with a hardware keyboard, wherever focus is; also listed when you hold ⌘.
+            Button(isPaneVisible ? "Hide Agent Pane" : "Show Agent Pane", action: togglePane)
+                .keyboardShortcut("s", modifiers: [.control, .command])
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func togglePane() {
+        withAnimation(AppMotion.stateChange(reduceMotion: reduceMotion)) {
+            isPaneVisible.toggle()
+        }
     }
 
     private func drawerLayout(proxy: GeometryProxy, safeAreaInsets: EdgeInsets) -> some View {
@@ -114,7 +147,7 @@ struct ChatShellView: View {
                 .offset(x: reduceMotion ? 0 : -SidebarShellMetrics.sidebarParallax * (1 - progress))
                 .zIndex(0)
 
-                contentView(for: activeContent, controlCenter: controlCenter(for: drawerDashboard, paneWidth: nil))
+                contentView(controlCenter: controlCenter(for: drawerDashboard, paneWidth: nil))
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .background(OOColor.paper)
                 .ignoresSafeArea(contentKeyboardSafeAreaRegions, edges: .bottom)
@@ -145,7 +178,7 @@ struct ChatShellView: View {
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
-            .simultaneousGesture(sidebarDrag(openOffset: openOffset))
+            .simultaneousGesture(sidebarDrag(openOffset: openOffset, paneStart: AgentRail.width + safeAreaInsets.leading))
             .background(OOColor.paper)
             .clipped()
     }
@@ -158,7 +191,12 @@ struct ChatShellView: View {
         isStationShown ? nil : viewModel.activeDashboard
     }
 
-    private func sidebar(safeAreaInsets: EdgeInsets, isOpen: Bool, controlCenterBeside: Bool) -> some View {
+    private func sidebar(
+        safeAreaInsets: EdgeInsets,
+        isOpen: Bool,
+        controlCenterBeside: Bool,
+        showsPane: Bool = true
+    ) -> some View {
         ChatSidebarView(
             viewModel: viewModel,
             safeAreaInsets: safeAreaInsets,
@@ -167,31 +205,36 @@ struct ChatShellView: View {
             selection: sidebarSelection,
             onSelectConversation: { conversation in
                 viewModel.selectConversation(conversation)
-                showContentFromSidebar(.chat)
+                showChatFromSidebar()
             },
             onAddChat: { agent in
                 _ = viewModel.createConversation(for: agent)
-                showContentFromSidebar(.chat)
+                showChatFromSidebar()
             },
             onConnected: {
-                showContentFromSidebar(.chat)
+                showChatFromSidebar()
             },
-            onSettings: {
-                showContentFromSidebar(.settings)
-            },
+            onSettings: presentSettings,
             addAgentRequest: addAgentRequest,
             onSelectStation: { agent in
                 viewModel.selectStation(agent)
-                showContentFromSidebar(.chat)
+                showChatFromSidebar()
             },
             opensLatestChatOnPick: isRegularWidth,
             onOpenWorkRoom: openWorkRoom,
             onShowChat: {
                 agentView = .chat
-                showContentFromSidebar(.chat)
+                showChatFromSidebar()
             },
             controlCenterTitle: controlCenterTitle(beside: controlCenterBeside),
-            onShowControlCenter: { showControlCenter(beside: controlCenterBeside) }
+            onShowControlCenter: { showControlCenter(beside: controlCenterBeside) },
+            showsPane: showsPane,
+            // A tile tapped while the pane is hidden brings it back, showing that agent.
+            onRailPick: {
+                if !showsPane {
+                    togglePane()
+                }
+            }
         )
     }
 
@@ -199,7 +242,7 @@ struct ChatShellView: View {
     private func openWorkRoom(_ workRoomID: String) {
         agentView = .chat
         workRoomPath = [workRoomID]
-        showContentFromSidebar(.chat)
+        showChatFromSidebar()
     }
 
     private func controlCenterTitle(beside: Bool) -> String {
@@ -220,7 +263,7 @@ struct ChatShellView: View {
         }
         workRoomPath = []
         agentView = .control
-        showContentFromSidebar(.chat)
+        showChatFromSidebar()
     }
 
     // Control Center
@@ -243,18 +286,17 @@ struct ChatShellView: View {
     }
 
     @ViewBuilder
-    private func contentView(for content: SidebarContent, controlCenter: ChatControlCenter? = nil) -> some View {
-        switch content {
-        case .chat where viewModel.activeOnboarding != nil:
+    private func contentView(controlCenter: ChatControlCenter? = nil) -> some View {
+        if viewModel.activeOnboarding != nil {
             OnboardingPaneView(viewModel: viewModel, showsSidebarButton: !isRegularWidth) {
                 openSidebar()
             }
-        case .chat where isStationShown:
+        } else if isStationShown {
             // A Station's Work Room is the pane itself, so the Control Center has no place beside it.
             StationPaneView(viewModel: viewModel, showsSidebarButton: !isRegularWidth) {
                 openSidebar()
             }
-        case .chat:
+        } else {
             ChatView(
                 viewModel: viewModel,
                 showsComposer: isRegularWidth || !isSidebarSearchFocused,
@@ -263,64 +305,32 @@ struct ChatShellView: View {
                 workRoomPath: $workRoomPath,
                 onAddAgent: { addAgentRequest += 1 },
                 onOpenSidebar: { openSidebar() },
-                isCoveredByDrawer: !isRegularWidth && isSidebarOpen
+                isCoveredByDrawer: !isRegularWidth && isSidebarOpen,
+                paneToggle: isRegularWidth ? ChatPaneToggle(isVisible: isPaneVisible, toggle: togglePane) : nil
             )
-        case .settings:
-            SettingsView(viewModel: viewModel) {
-                returnToSidebar()
-            }
         }
     }
 
-    private func showContent(_ content: SidebarContent) {
-        withAnimation(AppMotion.stateChange(reduceMotion: reduceMotion)) {
-            activeContent = content
-            isSidebarOpen = false
-            isSidebarSearchFocused = false
-            dragOffset = 0
-        }
-    }
-
-    private func returnToSidebar() {
-        guard !isRegularWidth else {
-            withAnimation(AppMotion.stateChange(reduceMotion: reduceMotion)) {
-                activeContent = .chat
-            }
+    /// A tap that lands while another sheet is still closing gets dropped with the flag left on,
+    /// and the next tap would change nothing. Turning it off first lets that tap present it.
+    private func presentSettings() {
+        guard isSettingsPresented else {
+            isSettingsPresented = true
             return
         }
-
-        withAnimation(AppMotion.drawer(reduceMotion: reduceMotion)) {
-            isSidebarOpen = true
-            dragOffset = 0
-        }
-    }
-
-    private func showContentFromSidebar(_ content: SidebarContent) {
-        guard !isRegularWidth else {
-            withAnimation(AppMotion.stateChange(reduceMotion: reduceMotion)) {
-                activeContent = content
-            }
-            return
-        }
-
-        guard isSidebarOpen else {
-            showContent(content)
-            return
-        }
-
-        guard activeContent != content else {
-            closeSidebar()
-            return
-        }
-
-        withTransaction(Transaction(animation: nil)) {
-            activeContent = content
-            dragOffset = 0
-        }
-
+        isSettingsPresented = false
         DispatchQueue.main.async {
-            closeSidebar()
+            isSettingsPresented = true
         }
+    }
+
+    /// On a phone, picking something in the drawer closes it onto the chat. Side by side, the
+    /// chat is already showing.
+    private func showChatFromSidebar() {
+        guard !isRegularWidth else {
+            return
+        }
+        closeSidebar()
     }
 
     private func openSidebar() {
@@ -360,21 +370,19 @@ struct ChatShellView: View {
     }
 
     private var sidebarSelection: ChatSidebarSelection? {
-        switch activeContent {
-        case .chat:
-            guard let conversationID = viewModel.activeConversationID else {
-                return nil
-            }
-            return .conversation(conversationID)
-        case .settings:
-            return nil
-        }
+        viewModel.activeConversationID.map { .conversation($0) }
     }
 
-    private func sidebarDrag(openOffset: CGFloat) -> some Gesture {
+    /// `paneStart`: where the agent pane begins. While the drawer is open, a drag that starts in
+    /// the pane belongs to its chat rows (swipe to delete or rename), so only the rail and the strip
+    /// of chat beside the drawer drag it closed.
+    private func sidebarDrag(openOffset: CGFloat, paneStart: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: SidebarShellMetrics.dragMinimumDistance, coordinateSpace: .global)
             .onChanged { value in
-                guard isHorizontalDrag(value) else {
+                guard isHorizontalDrag(value),
+                      !isSidebarOpen || SidebarShellLayout.dragClosesDrawer(
+                          startX: value.startLocation.x, paneStart: paneStart, openOffset: openOffset
+                      ) else {
                     return
                 }
 
@@ -385,7 +393,10 @@ struct ChatShellView: View {
                 }
             }
             .onEnded { value in
-                guard isHorizontalDrag(value) else {
+                guard isHorizontalDrag(value),
+                      !isSidebarOpen || SidebarShellLayout.dragClosesDrawer(
+                          startX: value.startLocation.x, paneStart: paneStart, openOffset: openOffset
+                      ) else {
                     return
                 }
 
@@ -456,11 +467,6 @@ struct ChatShellView: View {
     }
 }
 
-private enum SidebarContent {
-    case chat
-    case settings
-}
-
 enum SidebarShellLayout {
     static func contentOffset(isSidebarOpen: Bool, dragOffset: CGFloat, openOffset: CGFloat) -> CGFloat {
         let baseOffset = isSidebarOpen ? openOffset : CGFloat.zero
@@ -473,6 +479,10 @@ enum SidebarShellLayout {
             return openOffset + rubberBand(rawOffset - openOffset, dimension: openOffset)
         }
         return rawOffset
+    }
+
+    static func dragClosesDrawer(startX: CGFloat, paneStart: CGFloat, openOffset: CGFloat) -> Bool {
+        startX < paneStart || startX >= openOffset
     }
 
     static func sidebarProgress(contentOffset: CGFloat, openOffset: CGFloat) -> CGFloat {

@@ -1,5 +1,6 @@
 import ConnectOnionKit
 import SwiftUI
+import UIKit
 
 /// The sidebar, as on the Mac: the agent rail, then the pane for the agent picked on it. On a
 /// phone, picking an agent only turns the pane to it; the chat changes when you pick one of its
@@ -26,11 +27,10 @@ struct ChatSidebarView: View {
     var onShowChat: () -> Void = {}
     var controlCenterTitle: String?
     var onShowControlCenter: () -> Void = {}
+    /// False on iPad when the pane is hidden: the rail stands alone.
+    var showsPane = true
+    var onRailPick: () -> Void = {}
 
-    /// The agent picked on the rail, kept only while the open chat's agent stays the same, so a
-    /// new open chat brings the pane with it in the same update.
-    @State private var railPick: RailPick?
-    @AppStorage("agentRailOrder") private var railOrder = ""
     @State private var isChatsExpanded = true
     @State private var isRoomsExpanded = true
     /// Folded at first: skills are occasional, chats are the point.
@@ -62,11 +62,14 @@ struct ChatSidebarView: View {
                 safeAreaInsets: safeAreaInsets,
                 actions: railActions
             )
-            VStack(spacing: 0) {
-                paneContent
+            if showsPane {
+                VStack(spacing: 0) {
+                    paneContent
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .background(OOColor.surface)
+                .transition(AppMotion.slide(reduceMotion: reduceMotion, edge: .leading))
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(OOColor.surface)
         }
         // A different agent starts with its search closed and its chats folded back to five.
         .onChange(of: paneAgent?.id) {
@@ -75,8 +78,8 @@ struct ChatSidebarView: View {
         }
         // A removed agent leaves the saved order; a new one joins it at the end.
         .onChange(of: viewModel.agents.map(\.id)) {
-            if !railOrder.isEmpty {
-                railOrder = AgentRailOrder.encode(railAgents.map(\.id))
+            if !viewModel.savedRailOrder.isEmpty {
+                viewModel.saveRailOrder(railAgents.map(\.id))
             }
         }
         .onChange(of: addAgentRequest) {
@@ -97,26 +100,20 @@ struct ChatSidebarView: View {
         }
     }
 
-    /// Every agent, in the order you've put them on the rail.
     private var railAgents: [SavedAgent] {
-        AgentRailOrder.ordered(viewModel.agents, by: AgentRailOrder.decode(railOrder))
+        viewModel.railAgents
     }
 
-    /// The one picked on the rail, else the open chat's, else the first.
+    /// The same agent the nav bar's New chat uses.
     private var paneAgent: SavedAgent? {
-        let agents = viewModel.agents
-        if let railPick, railPick.activeAgentID == viewModel.activeAgentID,
-           let picked = agents.first(where: { $0.id == railPick.agentID }) {
-            return picked
-        }
-        return agents.first { $0.id == viewModel.activeAgentID } ?? railAgents.first
+        viewModel.paneAgent
     }
 
     private var railActions: AgentRailActions {
         AgentRailActions(
             pick: pick,
             newChat: { agent in
-                railPick = nil
+                viewModel.clearRailPick()
                 if viewModel.isStation(agent) {
                     onSelectStation(agent)
                 } else {
@@ -124,10 +121,10 @@ struct ChatSidebarView: View {
                 }
             },
             move: { id, targetID in
-                railOrder = AgentRailOrder.encode(AgentRailOrder.moving(id, to: targetID, in: railAgents.map(\.id)))
+                viewModel.saveRailOrder(AgentRailOrder.moving(id, to: targetID, in: railAgents.map(\.id)))
             },
             step: { id, step in
-                railOrder = AgentRailOrder.encode(AgentRailOrder.moving(id, by: step, in: railAgents.map(\.id)))
+                viewModel.saveRailOrder(AgentRailOrder.moving(id, by: step, in: railAgents.map(\.id)))
             },
             addAgent: beginAddingAgent,
             settings: onSettings
@@ -136,7 +133,8 @@ struct ChatSidebarView: View {
 
     /// A Station opens at once: it has no chats to pick from.
     private func pick(_ agent: SavedAgent) {
-        railPick = RailPick(agentID: agent.id, activeAgentID: viewModel.activeAgentID)
+        onRailPick()
+        viewModel.pickOnRail(agent)
         if viewModel.isStation(agent) {
             onSelectStation(agent)
             return
@@ -153,7 +151,7 @@ struct ChatSidebarView: View {
 
     private func alerts(_ view: some View) -> some View {
         view
-            .alert("Delete Chat", isPresented: isDeleting, presenting: deleteTarget) { conversation in
+            .alert("Delete chat?", isPresented: isDeleting, presenting: deleteTarget) { conversation in
                 Button("Delete", role: .destructive) {
                     viewModel.deleteConversation(conversation)
                     deleteTarget = nil
@@ -161,8 +159,9 @@ struct ChatSidebarView: View {
                 Button("Cancel", role: .cancel) {
                     deleteTarget = nil
                 }
-            } message: { conversation in
-                Text("Deleting \"\(conversation.title)\" also deletes its messages and keeps its server record hidden on this device.")
+            } message: { _ in
+                // The agent keeps its copy; a Tombstone only stops a refresh bringing the chat back here.
+                Text("This chat and its messages will be removed from this \(UIDevice.current.model).")
             }
             .alert("Rename Chat", isPresented: isRenamingConversation, presenting: conversationRenameTarget) { conversation in
                 TextField("Title", text: $conversationRenameText)
@@ -190,8 +189,8 @@ struct ChatSidebarView: View {
             } message: { agent in
                 Text("Enter a new name for \(agent.name).")
             }
-            .alert("Delete Agent?", isPresented: isDeletingAgent, presenting: agentDeleteTarget) { agent in
-                Button("Delete", role: .destructive) {
+            .alert("Remove agent?", isPresented: isDeletingAgent, presenting: agentDeleteTarget) { agent in
+                Button("Remove", role: .destructive) {
                     viewModel.deleteAgent(agent)
                     agentDeleteTarget = nil
                 }
@@ -199,7 +198,7 @@ struct ChatSidebarView: View {
                     agentDeleteTarget = nil
                 }
             } message: { agent in
-                Text("This removes \(agent.name) and its chat sessions.")
+                Text("This removes \(agent.displayName) and all of its chats from this \(UIDevice.current.model).")
             }
     }
 
@@ -210,15 +209,7 @@ struct ChatSidebarView: View {
                     AgentQRCodeShareView(url: qrCodeShareURL)
                 }
             }
-            .sheet(item: $agentFormDraft) { draft in
-                AgentFormView(draft: draft) { savedDraft in
-                    saveAgentDraft(savedDraft)
-                } onCancel: {
-                    agentFormDraft = nil
-                } fetchAgentName: { address in
-                    await viewModel.fetchAgentName(for: address)
-                }
-            }
+            .agentFormSheet($agentFormDraft, fetchAgentName: viewModel.fetchAgentName, onSave: saveAgentDraft)
     }
 
     @ViewBuilder
@@ -491,9 +482,11 @@ struct ChatSidebarView: View {
 
     /// A chat is listed once it has a message; an empty one only while it's the open chat.
     private func listedConversations(for agent: SavedAgent) -> [Conversation] {
-        viewModel.conversations(for: agent).filter {
-            !$0.messages.isEmpty || selection == .conversation($0.id)
-        }
+        viewModel.conversations(for: agent).filter(isListed)
+    }
+
+    private func isListed(_ conversation: Conversation) -> Bool {
+        !conversation.messages.isEmpty || selection == .conversation(conversation.id)
     }
 
     private func visibleConversations(for agent: SavedAgent) -> [Conversation] {
@@ -505,8 +498,9 @@ struct ChatSidebarView: View {
         return matchingConversations(for: agent, query: searchQuery)
     }
 
+    /// Searching "new" must not turn up every empty "New chat" the list hides.
     private func matchingConversations(for agent: SavedAgent, query: String) -> [Conversation] {
-        viewModel.searchConversations(query, for: agent)
+        viewModel.searchConversations(query, for: agent).filter(isListed)
     }
 
     private func toggleSidebarSearch() {
@@ -579,8 +573,7 @@ struct ChatSidebarView: View {
             return false
         }
 
-        railPick = nil
-        agentFormDraft = nil
+        viewModel.clearRailPick()
 
         if savedDraft.shouldConnectAfterSave {
             connect(agent)
@@ -593,7 +586,7 @@ struct ChatSidebarView: View {
     }
 
     private func connect(_ agent: SavedAgent) {
-        railPick = nil
+        viewModel.clearRailPick()
         viewModel.selectAgent(agent)
 
         Task { @MainActor in
@@ -682,10 +675,4 @@ struct ChatSidebarView: View {
             }
         )
     }
-}
-
-/// An agent picked on the rail, and the open chat's agent when it was picked.
-private struct RailPick: Equatable {
-    let agentID: String
-    let activeAgentID: String?
 }

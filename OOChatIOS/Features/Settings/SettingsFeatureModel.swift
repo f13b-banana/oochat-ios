@@ -5,8 +5,14 @@ import ConnectOnionKit
 @MainActor
 protocol SettingsFeatureModel: ObservableObject {
     var identity: StoredIdentity? { get }
-    var connectionState: ConversationConnectionState { get }
+    /// The open chat's connection, in the words the chat header uses.
+    var connectionStatus: ChatConnectionStatus { get }
     var activeConversation: Conversation? { get }
+    var activeAgent: SavedAgent? { get }
+    var agents: [SavedAgent] { get }
+
+    func saveAgent(id: String?, name: String, address: String) -> SavedAgent?
+    func fetchAgentName(for address: String) async -> String?
 
     func reconnect() async
     /// Where a Device Link reads and replaces this device's key.
@@ -22,4 +28,5 @@ protocol SettingsFeatureModel: ObservableObject {
 
 extension ChatViewModel: SettingsFeatureModel {
     var deviceLinkKeyStore: any DeviceLinkKeyStore { identityStore }
+    var connectionStatus: ChatConnectionStatus { activeConnectionStatus() }
 }

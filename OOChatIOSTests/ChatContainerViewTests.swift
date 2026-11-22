@@ -311,7 +311,7 @@ final class ChatShellViewTests: XCTestCase {
         XCTAssertNotNil(ViewHost.element(labelContains: "Container Agent", in: window))
     }
 
-    func testShellSettingsCanReturnToSidebar() {
+    func testShellSettingsSheetClosesOntoTheOpenChat() {
         let fixture = ChatContainerFixture()
         let conversation = fixture.conversation()
         let viewModel = makeContainerViewModel(
@@ -322,13 +322,15 @@ final class ChatShellViewTests: XCTestCase {
         )
         let window = ViewHost.host(ChatShellView(viewModel: viewModel, startsInSettings: true))
 
-        XCTAssertNotNil(ViewHost.waitForElement(labelContains: "Settings", in: window))
-        XCTAssertNotNil(ViewHost.element(labelContains: "Reconnect", in: window))
-        XCTAssertNotNil(ViewHost.element(labelContains: conversation.id, in: window))
+        // "Settings" also matches the sidebar's button, so wait for something only the sheet has.
+        XCTAssertNotNil(ViewHost.waitForElement(labelContains: "Diagnostics", in: window, timeout: 3))
 
-        XCTAssertTrue(ViewHost.activateButton(labelContains: "Close", in: window))
-        ViewHost.pump(0.4)
-        XCTAssertNotNil(ViewHost.waitForElement(labelContains: "Container Agent", in: window))
+        // Done closes the sheet onto the chat that was open under it.
+        XCTAssertTrue(ViewHost.activateButton(labelContains: "Done", in: window))
+        ViewHost.pump(0.6)
+        XCTAssertNil(ViewHost.element(labelContains: "Diagnostics", in: window))
+        XCTAssertNotNil(ViewHost.waitForElement(labelContains: "Send message", in: window))
+        XCTAssertEqual(viewModel.activeConversationID, conversation.id)
     }
 
     func testShellSelectingActiveConversationFromOpenSidebarReturnsToChat() {
@@ -422,6 +424,12 @@ final class ControlCenterLayoutTests: XCTestCase {
 }
 
 final class SidebarShellLayoutTests: XCTestCase {
+    func testOpenDrawerLeavesDragsInThePaneToItsChatRows() {
+        XCTAssertTrue(SidebarShellLayout.dragClosesDrawer(startX: 30, paneStart: 64, openOffset: 334), "the rail")
+        XCTAssertFalse(SidebarShellLayout.dragClosesDrawer(startX: 200, paneStart: 64, openOffset: 334), "a chat row")
+        XCTAssertTrue(SidebarShellLayout.dragClosesDrawer(startX: 360, paneStart: 64, openOffset: 334), "the chat strip")
+    }
+
     func testContentOffsetCoversClosedOpenAndRubberBandStates() {
         XCTAssertEqual(
             SidebarShellLayout.contentOffset(isSidebarOpen: false, dragOffset: 0, openOffset: 100),

@@ -326,10 +326,9 @@ struct MessageBubble: View {
             Text("Retry")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(OOColor.primary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
+                .padding(.horizontal, OOSpace.medium)
+                .padding(.vertical, OOSpace.tiny)
                 .background(OOColor.currentTint, in: Capsule())
-                .overlay(Capsule().stroke(OOColor.primary.opacity(0.35), lineWidth: 1))
                 .frame(minWidth: ooMinimumTarget, minHeight: ooMinimumTarget)
                 .contentShape(Rectangle())
         }
@@ -415,9 +414,10 @@ struct UlwCheckpointCard: View {
 
 /// Shown while the agent works on a reply: how long you've waited, and Stop after a while.
 struct WaitingForAgentRow: View {
-    /// Stop only appears after this long, so a quick reply doesn't flash a button.
+    /// After this long the row says "Still waiting" and offers Cancel, so a quick reply doesn't flash a button.
     static let stopDelay = 10
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let startedAt: Date
     let agentName: String
     /// Nil when there's nothing to stop.
@@ -431,23 +431,23 @@ struct WaitingForAgentRow: View {
                     .tint(OOColor.primary)
                     .accessibilityHidden(true)
 
-                Text("Waiting for \(agentName) · \(seconds) s")
+                Text("\(seconds >= Self.stopDelay ? "Still waiting" : "Waiting") for \(agentName) · \(seconds) s")
                     .foregroundStyle(OOColor.inkSecondary)
                     .monospacedDigit()
-                    .contentTransition(.numericText())
+                    .contentTransition(reduceMotion ? .identity : .numericText())
 
                 if seconds >= Self.stopDelay, let onStop {
-                    Button("Stop", action: onStop)
+                    Button("Cancel", action: onStop)
                         .buttonStyle(.plain)
                         .foregroundStyle(OOColor.inkSecondary)
                         .underline()
                         .padding(.horizontal, OOSpace.small)
                         .frame(minHeight: ooMinimumTarget)
                         .contentShape(Rectangle())
-                        .accessibilityLabel("Stop \(agentName)")
+                        .accessibilityLabel("Cancel waiting for \(agentName)")
                 }
             }
-            // Always the height of the Stop button, so the row doesn't grow when it appears.
+            // Always the height of the Cancel button, so the row doesn't grow when it appears.
             .frame(minHeight: ooMinimumTarget)
         }
     }

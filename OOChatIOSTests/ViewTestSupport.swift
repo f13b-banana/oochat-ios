@@ -173,6 +173,20 @@ enum ViewHost {
         return activated
     }
 
+    /// Presses the button whose label is exactly `label`. SwiftUI toolbar buttons don't always
+    /// pass their accessibility identifier through to UIKit, but their label is always there.
+    @discardableResult
+    static func activateButton(label: String, in window: UIWindow) -> Bool {
+        guard let match = accessibilityElements(in: window).first(where: { element in
+            element.accessibilityLabel == label && element.accessibilityTraits.contains(.button)
+        }) else {
+            return false
+        }
+        let activated = match.accessibilityActivate()
+        pump()
+        return activated
+    }
+
     private static func accessibilityIdentifier(of element: NSObject) -> String? {
         if let identification = element as? UIAccessibilityIdentification,
            let identifier = identification.accessibilityIdentifier {

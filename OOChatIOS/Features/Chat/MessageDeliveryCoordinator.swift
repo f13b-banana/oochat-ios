@@ -22,6 +22,8 @@ final class MessageDeliveryCoordinator: ObservableObject {
     /// Conversation ID, the failed message's ID, and the error.
     var onDeliveryError: ((String, String, Error) -> Void)?
     var onDeliveriesIdle: (() -> Void)?
+    /// conversationID, the agent's reply ("" when it sent none), and whether another device sent the turn.
+    var onRunFinished: ((String, String, Bool) -> Void)?
     // conversationID, the confirmed mode, and turns_left (full access only)
     var onModeChanged: ((String, OIPPermissionMode, Int?) -> Void)?
 
@@ -33,6 +35,11 @@ final class MessageDeliveryCoordinator: ObservableObject {
     private var activeMessageIDsByConversationID: [String: String] = [:]
     // User messages typed on another device: never offered for retry, whatever happens to the turn.
     private var mirroredMessageIDs: Set<String> = []
+
+    /// The turn running in this chat was sent from another of the person's devices.
+    func isMirroredTurn(conversationID: String) -> Bool {
+        activeMessageIDsByConversationID[conversationID].map(mirroredMessageIDs.contains) ?? false
+    }
     private var pausedConversationIDs: Set<String> = []
     // Chats whose next send must reconnect first, because their session was rewound.
     private var restartSessionConversationIDs: Set<String> = []
@@ -540,6 +547,7 @@ final class MessageDeliveryCoordinator: ObservableObject {
         onConnectionStateChange?(conversationID, .connected)
         conversationState.upsert(updated)
         conversationState.markCompletedUnread(conversationID: conversationID)
+        onRunFinished?(conversationID, result.output ?? "", mirroredMessageIDs.contains(messageID))
     }
 
     private func failDelivery(

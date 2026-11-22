@@ -20,6 +20,8 @@ extension ChatViewModel {
             pendingImages = []
             pendingFiles = []
             errorMessage = nil
+            // Runs can take minutes, so this is when notifications start to matter.
+            chatNotifier?.requestPermissionIfNeeded()
         case .rejected(let message):
             errorMessage = message
         }

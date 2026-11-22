@@ -56,7 +56,7 @@ struct AgentPaneHeader: View {
             Text(isStation ? "Claude Station" : (isOnline ? "Online" : "Offline"))
                 .foregroundStyle(OOColor.inkSecondary)
             // An agent named by its address doesn't repeat it here.
-            if let address = Self.shortAddress(agent.address), address != name {
+            if let address = agent.shortAddress, address != name {
                 Text("·")
                     .foregroundStyle(OOColor.inkTertiary)
                     .accessibilityHidden(true)
@@ -102,7 +102,7 @@ struct AgentPaneHeader: View {
             Button(role: .destructive) {
                 actions.delete(agent)
             } label: {
-                Label("Delete Agent", systemImage: "trash")
+                Label("Remove agent…", systemImage: "trash")
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -112,17 +112,6 @@ struct AgentPaneHeader: View {
                 .contentShape(Rectangle())
         }
         .accessibilityLabel("More for \(name)")
-    }
-
-    /// 0x1234...abcd, as the rest of the app shortens an address.
-    static func shortAddress(_ address: String) -> String? {
-        guard !address.isEmpty else {
-            return nil
-        }
-        guard address.count > 12 else {
-            return address
-        }
-        return "\(address.prefix(6))...\(address.suffix(4))"
     }
 
     private func copyAddress() {
@@ -250,5 +239,18 @@ extension View {
         ))
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
+    }
+}
+
+extension SavedAgent {
+    /// 0x1234...abcd, as the rest of the app shortens an address.
+    var shortAddress: String? {
+        guard !address.isEmpty else {
+            return nil
+        }
+        guard address.count > 12 else {
+            return address
+        }
+        return "\(address.prefix(6))...\(address.suffix(4))"
     }
 }

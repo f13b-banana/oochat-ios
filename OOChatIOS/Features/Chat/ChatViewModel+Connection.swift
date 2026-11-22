@@ -76,7 +76,6 @@ extension ChatViewModel {
 
     func reconnect() async {
         errorMessage = nil
-        retryableErrorMessage = nil
         await recoveryCoordinator.reconnectActiveConversation()
     }
 
@@ -112,7 +111,6 @@ extension ChatViewModel {
 
     func dismissError() {
         errorMessage = nil
-        retryableErrorMessage = nil
     }
 
     /// -32010 gets its own screen instead of the red banner. Returns false for every other error.
@@ -153,13 +151,13 @@ extension ChatViewModel {
         }
         let agentName = activeAgent?.name ?? "the agent"
         let sentence = HostedAgentClientError.chatFailure(for: error).sentence(agentName: agentName)
-        retryableErrorMessage = sentence
         errorMessage = sentence
+        isErrorRetryable = true
     }
 
     /// The error banner offers Retry only for a failed reconnect.
     var canRetryError: Bool {
-        errorMessage != nil && errorMessage == retryableErrorMessage
+        errorMessage != nil && isErrorRetryable
     }
 
     /// The plain reason a message wasn't sent, and the raw text for "Copy error details".

@@ -136,6 +136,11 @@ enum AppMotion {
         )
     }
 
+    /// A panel sliding in from a side, such as the iPad agent pane. A fade with Reduce Motion.
+    static func slide(reduceMotion: Bool, edge: Edge) -> AnyTransition {
+        reduceMotion ? .opacity : .move(edge: edge).combined(with: .opacity)
+    }
+
     static func disclosure(reduceMotion: Bool) -> AnyTransition {
         guard !reduceMotion else {
             return .opacity

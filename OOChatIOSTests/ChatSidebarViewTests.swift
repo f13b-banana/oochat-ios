@@ -269,7 +269,7 @@ final class ChatSidebarViewTests: XCTestCase {
 
         XCTAssertTrue(ViewHost.enterText("Saved Agent", intoTextInput: "Name", in: window))
         XCTAssertTrue(ViewHost.enterText(sidebarHostedAddress, intoTextInput: "Agent address", in: window))
-        XCTAssertTrue(ViewHost.activateButton(labelContains: "Save", in: window))
+        XCTAssertTrue(ViewHost.activateButton(label: "Add", in: window))
         ViewHost.pump(0.4)
 
         XCTAssertEqual(viewModel.agents.first?.name, "Saved Agent")

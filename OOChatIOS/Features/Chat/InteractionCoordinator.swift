@@ -72,6 +72,10 @@ final class InteractionCoordinator: ObservableObject {
     @Published private var interactionsByConversationID: [String: [HostedAgentInteraction]] = [:]
 
     private var supersededGateIDs: Set<String> = []
+    /// A card appeared (interaction, conversationID), so the app can notify.
+    var onPresented: ((HostedAgentInteraction, String) -> Void)?
+    /// A card went away for any reason (answered, superseded, cancelled).
+    var onDismissed: ((HostedAgentInteraction, String) -> Void)?
 
     private let approvalGate = ContinuationGate<ApprovalDecision>(
         cancellationDecision: .rejectHard(feedback: "Approval cancelled."),
@@ -272,6 +276,7 @@ final class InteractionCoordinator: ObservableObject {
         for old in superseded {
             resolveSuperseded(old, conversationID: conversationID)
         }
+        onPresented?(interaction, conversationID)
         return true
     }
 
@@ -308,6 +313,7 @@ final class InteractionCoordinator: ObservableObject {
         } else {
             interactionsByConversationID[conversationID] = interactions
         }
+        onDismissed?(interaction, conversationID)
     }
 
     private func interaction(

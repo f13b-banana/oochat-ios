@@ -1,4 +1,5 @@
 import Foundation
+import ConnectOnionKit
 
 // sends only the newest queued state update for each conversation
 final class HostedAgentConnectionStateObserver: @unchecked Sendable {

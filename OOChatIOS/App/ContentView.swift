@@ -36,6 +36,22 @@ struct ContentView: View {
             AppMotion.contentArrival(reduceMotion: reduceMotion),
             value: viewModel.errorMessage
         )
+        .fullScreenCover(
+            isPresented: Binding(
+                get: { viewModel.incompatibility != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        viewModel.dismissIncompatibility()
+                    }
+                }
+            )
+        ) {
+            if let incompatibility = viewModel.incompatibility {
+                IncompatibleAgentView(incompatibility: incompatibility) {
+                    viewModel.dismissIncompatibility()
+                }
+            }
+        }
         .tint(AppTheme.primary)
         .preferredColorScheme(AppAppearance(rawValue: appAppearance)?.colorScheme)
         .onAppear {
